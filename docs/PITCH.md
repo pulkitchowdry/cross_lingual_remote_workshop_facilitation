@@ -19,47 +19,38 @@ beat below names the exact file to have on screen.
 
 ## Timing (5:00 total)
 
-| Time | Section | Say / show |
-| --- | --- | --- |
-| 0:00–0:40 | Problem | State the problem in one sentence: facilitators and learners lose each other across a language gap in live sessions — someone falls behind, and nobody notices until it's too late. Reference `docs/problem_statement.md`'s challenge statement directly. |
-| 0:40–1:15 | Approach | One diagram, one sentence: "we turn live speech into translated captions, then have an AI layer read the transcript for goal/decisions/blockers instead of leaving that to a human." Show the architecture diagram below. |
-| 1:15–3:15 | Live demo | The core two minutes — see script below. |
-| 3:15–4:15 | Why this is hard / what's real | Diarized STT → translation → evidence-grounded AI summary is a three-stage pipeline where each stage can drop accuracy; call out `validateInsightDraft` (`src/lib/providers/insight.ts`) rejecting any AI insight that cites a transcript segment outside its source batch — the guardrail against hallucinated "decisions." |
-| 4:15–4:50 | Impact & feasibility | Tie back to judging criteria: impact (nobody is left behind silently), prototype quality (real Postgres-backed sessions, not slideware), feasibility (Deepgram + DeepL + Claude are shipping APIs, not research). |
-| 4:50–5:00 | Close | One-line ask / next step. |
+Read the **Say** column out loud, close to verbatim — it's word-counted to
+fit its time slot at a normal speaking pace. **Show** tells you what's on
+screen while you say it.
+
+| Time | Section | Say | Show |
+| --- | --- | --- | --- |
+| 0:00–0:40 | Problem | "Online workshops run across languages every day. When a facilitator and a learner don't share one, the facilitator can't tell who's actually following — and a learner who's lost usually stays quiet instead of saying so. By the time anyone notices, the moment to help has already passed. That's the problem we're solving: helping facilitators and learners understand each other in real time, across languages, in a live learning session." | Talking head, or the problem statement in `docs/problem_statement.md`. |
+| 0:40–1:15 | Approach | "Our approach: capture speech, transcribe and translate it live, and then have an AI layer read the growing transcript to track the goal, the current activity, decisions, and blockers — instead of leaving that tracking to an already-busy facilitator. Every one of those AI-generated insights is linked back to the exact line of transcript it came from, so nothing is invented." | Architecture diagram (below). |
+| 1:15–3:15 | Live demo | Follow the live demo script below almost word for word — it's written as an exact walkthrough, not a summary. | Facilitator dashboard → learner join → learner question → quiet-learner nudge → glossary → history. |
+| 3:15–4:15 | Why this is hard | "This looks simple, but it's a three-stage pipeline — speech-to-text, translation, then AI summarization — and each stage can quietly lose accuracy. So we added a guardrail: before any AI-generated insight reaches the dashboard, we check that it only cites transcript lines from the batch it was actually generated from. If it cites anything outside that batch, we reject it. That's what stops the AI from inventing a decision nobody actually made." | `src/lib/providers/insight.ts`, the `validateInsightDraft` function. |
+| 4:15–4:50 | Impact & feasibility | "This matters because a learner going quiet in a language the facilitator doesn't speak used to be invisible — now it's a card on the dashboard. It's a real prototype, not a slide: real sessions, real Postgres storage, role-scoped join links. And it's feasible today, because Deepgram, DeepL, and Claude are shipping APIs we can call right now, not research projects." | Dashboard + terminal running `npm run db:seed`. |
+| 4:50–5:00 | Close | "That's Breaking Language Barriers: live translation plus grounded understanding, so no one gets left behind in their own workshop. Thank you." | Talking head. |
 
 ## Live demo script (1:15–3:15)
 
 Follow the facilitator → learner → facilitator loop so the video shows a
-real round-trip, not just two static screens.
+real round-trip, not just two static screens. Each beat below gives the
+exact line to say and the exact screen to be on.
 
-1. **Facilitator dashboard** (`docs/screenshots/dashboard.png`) — point at
-   the goal card, then the live-updating decisions/blockers cards, and note
-   they're each linked to the transcript line that produced them (evidence
-   grounding, not a generic summary).
-2. **Learner joins mid-session** (`docs/screenshots/phase0-facilitator-qr.png`
-   → `docs/screenshots/learner.png`) — scan/open the join link, show captions
-   arriving translated into the learner's language with the original
-   preserved underneath.
-3. **Learner asks a question in their own language**
-   (`docs/screenshots/dashboard-learner-questions.png`) — show it arriving
-   translated on the facilitator side, and the facilitator replying through
-   the auto-translating reply box.
-4. **Quiet-learner nudge** (`docs/screenshots/dashboard-quiet-escalation.png`,
-   `docs/screenshots/learner-quiet-nudge.png`) — the system notices a learner
-   has gone quiet and prompts a check-in; this is the "facilitators can't
-   tell who's lost" problem from the challenge statement, solved directly.
-5. **Glossary protecting code terms**
-   (`docs/screenshots/ai-glossary-before.png` →
-   `docs/screenshots/ai-glossary-after.png`) — a one-shot visual proof that
-   translation doesn't mangle `validateEmail()` or `req.body.email`.
-6. **Catch-up history** (`docs/screenshots/history.png`) — a learner who
-   joined late gets a grounded summary instead of scrolling a raw transcript.
+| # | Show | Say |
+| --- | --- | --- |
+| 1 | `docs/screenshots/dashboard.png` — point at the goal card, then decisions/blockers. | "Here's the facilitator dashboard. The goal comes straight from setup. These decision and blocker cards weren't typed by anyone — they were pulled live from the transcript, and each one links back to the exact line it came from." |
+| 2 | `docs/screenshots/phase0-facilitator-qr.png` → scan/open → `docs/screenshots/learner.png` | "Now let's join as a learner, mid-session, in a different language — just by scanning this QR code. No account setup. And here's their view: the facilitator's words, captioned and translated live, with the original still visible underneath." |
+| 3 | `docs/screenshots/dashboard-learner-questions.png` | "The learner can ask a question in their own language. Watch it land on the facilitator's side — already translated. The facilitator replies here, and that reply is auto-translated back to the learner." |
+| 4 | `docs/screenshots/dashboard-quiet-escalation.png`, `docs/screenshots/learner-quiet-nudge.png` | "This is the part that doesn't exist anywhere else: when a learner goes quiet for too long, the facilitator gets nudged to check in — and the learner gets a gentle, low-pressure prompt too. Nobody has to notice the silence themselves." |
+| 5 | `docs/screenshots/ai-glossary-before.png` → `docs/screenshots/ai-glossary-after.png` | "One more thing worth thirty seconds: translation doesn't mangle code. `validateEmail()` and `req.body.email` come through untouched, every time." |
+| 6 | `docs/screenshots/history.png` | "And if a learner joins even later, they don't scroll a wall of transcript — they get this grounded catch-up summary instead." |
 
-Cut anything you're short on time for in this order (least to most
-essential): glossary demo, quiet nudge, history — keep goal/decisions/
-blockers and the live translated Q&A round-trip no matter what, since that's
-the challenge statement's suggested demo almost verbatim.
+If you're short on time, cut in this order (least to most essential):
+glossary demo, quiet nudge, history — keep goal/decisions/blockers and the
+live translated Q&A round-trip no matter what, since that's the challenge
+statement's suggested demo almost verbatim.
 
 ## Architecture (for the 0:40–1:15 beat)
 
