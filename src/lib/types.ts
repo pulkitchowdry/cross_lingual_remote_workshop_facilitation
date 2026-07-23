@@ -1,5 +1,10 @@
 export type Confidence = "high" | "medium" | "low";
 
+export interface SimplifiedExplanation {
+  original: string;
+  translation: string;
+}
+
 export interface TranscriptEntry {
   id: string;
   speaker: string;
@@ -7,6 +12,7 @@ export interface TranscriptEntry {
   translation: string;
   confidence: Confidence;
   hasPreservedSpan: boolean;
+  simplified?: SimplifiedExplanation;
 }
 
 export interface Blocker {

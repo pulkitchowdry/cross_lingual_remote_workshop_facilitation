@@ -42,6 +42,10 @@ export const mockFacilitatorReplies: TranscriptEntry[] = [
     translation: "试着检查一下 validateEmail() 在传入空字符串时是否会抛出异常。",
     confidence: "high",
     hasPreservedSpan: true,
+    simplified: {
+      original: "Check what happens if you give validateEmail() nothing to check.",
+      translation: "检查一下，如果不给 validateEmail() 任何内容，会发生什么。",
+    },
   },
   {
     id: "f2",
@@ -50,6 +54,10 @@ export const mockFacilitatorReplies: TranscriptEntry[] = [
     translation: "发现得好——把那个调用包在 try/catch 里，并记录错误日志来确认。",
     confidence: "high",
     hasPreservedSpan: false,
+    simplified: {
+      original: "Nice find. Put that line inside a try/catch and print the error to be sure.",
+      translation: "找得好。把那一行放进 try/catch，并打印错误信息来确认。",
+    },
   },
 ];
 
