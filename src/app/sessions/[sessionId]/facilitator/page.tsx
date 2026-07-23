@@ -1,8 +1,9 @@
+import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -41,6 +42,12 @@ export default async function FacilitatorSessionPage({
 
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
   const learnerLink = learnerToken ? `/join/${learnerToken}` : null;
+  let learnerLinkQrCode: string | null = null;
+  if (learnerLink) {
+    const headerList = await headers();
+    const origin = `${headerList.get("x-forwarded-proto") ?? "http"}://${headerList.get("host") ?? "localhost:3000"}`;
+    learnerLinkQrCode = await QRCode.toDataURL(`${origin}${learnerLink}`, { margin: 1, width: 176 });
+  }
   const startAction = startSession.bind(null, sessionId);
   const endAction = endSession.bind(null, sessionId);
   const demoAction = loadDemoScenario.bind(null, sessionId);
@@ -219,19 +226,32 @@ export default async function FacilitatorSessionPage({
       </section>
       <Card eyebrow="Learner invitation" title="Share this private link">
         {learnerLink ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-muted-foreground">
-              Learners will choose a language and consent before entering the session.
-            </p>
-            <input
-              aria-label="Learner invitation link"
-              className="w-full rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
-              readOnly
-              value={learnerLink}
-            />
-            <p className="text-xs text-muted-foreground">
-              Link rotation and expiry controls are the next session-management task.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            {learnerLinkQrCode && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                alt="QR code for the learner invitation link"
+                className="h-24 w-24 rounded-md border border-border-strong bg-white p-1"
+                height={96}
+                src={learnerLinkQrCode}
+                width={96}
+              />
+            )}
+            <div className="flex flex-1 flex-col gap-2">
+              <p className="text-muted-foreground">
+                Learners will choose a language and consent before entering the session. Scan the QR code or share the
+                link below.
+              </p>
+              <input
+                aria-label="Learner invitation link"
+                className="w-full rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
+                readOnly
+                value={learnerLink}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link rotation and expiry controls are the next session-management task.
+              </p>
+            </div>
           </div>
         ) : (
           <p className="text-muted-foreground">

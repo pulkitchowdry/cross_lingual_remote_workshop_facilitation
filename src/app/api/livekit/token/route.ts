@@ -1,19 +1,14 @@
-import { AccessToken } from "livekit-server-sdk";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
+import { roomProvider, type RoomRole } from "@/lib/providers/room";
 
-type RequestedRole = "facilitator" | "learner";
-
-function isRequestedRole(value: unknown): value is RequestedRole {
+function isRequestedRole(value: unknown): value is RoomRole {
   return value === "facilitator" || value === "learner";
 }
 
 export async function POST(request: NextRequest) {
-  const serverUrl = process.env.LIVEKIT_URL;
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-  if (!serverUrl || !apiKey || !apiSecret) {
+  if (!roomProvider.isConfigured) {
     return Response.json({ error: "LiveKit is not configured." }, { status: 503 });
   }
 
@@ -33,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
     const facilitator = await prisma.user.findUnique({ where: { id: session.facilitatorId } });
     if (!facilitator) return Response.json({ error: "Facilitator not found." }, { status: 404 });
-    identity = `facilitator:${facilitator.id}`;
+    identity = facilitator.id;
     name = facilitator.displayName;
   } else {
     const participantId = await learnerParticipantId(session.id);
@@ -45,23 +40,16 @@ export async function POST(request: NextRequest) {
     if (!participant || participant.sessionId !== session.id) {
       return Response.json({ error: "Learner not found." }, { status: 404 });
     }
-    identity = `learner:${participant.id}`;
+    identity = participant.id;
     name = participant.user.displayName;
   }
 
-  const token = new AccessToken(apiKey, apiSecret, {
+  const credential = await roomProvider.issueCredential({
+    sessionId: session.id,
+    role: body.role,
     identity,
-    name,
-    metadata: JSON.stringify({ sessionId: session.id, role: body.role }),
-    ttl: "15m",
-  });
-  token.addGrant({
-    roomJoin: true,
-    room: `workshop-${session.id}`,
-    canPublish: true,
-    canSubscribe: true,
-    canPublishData: true,
+    displayName: name,
   });
 
-  return Response.json({ serverUrl, token: await token.toJwt() });
+  return Response.json(credential);
 }
