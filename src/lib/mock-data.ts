@@ -162,7 +162,7 @@ export const mockParticipation: ParticipationSnapshot = {
   ],
 };
 
-export const mockCurrentLearnerId = "l6";
+export const mockCurrentLearnerId = "l4";
 
 export const mockHistory: SessionSummary[] = [
   {
