@@ -81,6 +81,38 @@ The app uses Prisma with PostgreSQL for session/message storage (see `prisma/sch
    ```bash
    npm run dev
    ```
+6. Run livekit locally:
+
+  Add the below env variables for local environment
+  
+  ```bash
+  livekit-server --dev
+  ```
+7. Run Prisma locally:
+  In case there is an error related to Prisma from Next.js then verify if prisma db is running locally
+  ```bash
+  # Install postgresql if not present
+  sudo apt update
+  sudo apt install postgresql postgresql-contrib
+
+  # Login as postgresql and create the database
+  sudo -u postgres psql
+
+  CREATE ROLE workshop LOGIN PASSWORD 'workshop';
+  CREATE DATABASE workshop_copilot OWNER workshop;
+  GRANT ALL PRIVILEGES ON DATABASE workshop_copilot TO workshop;
+  ALTER ROLE workshop CREATEDB;
+  \q
+
+  # Update .env.local to have below url
+  DATABASE_URL="postgresql://workshop:workshop@localhost:5432/workshop_copilot"
+
+  npx prisma migrate dev
+  # Enter name as init if its for the first time that you are running this
+
+  npx prisma generate
+  npx prisma dev
+  ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the app. Edit `src/app/page.tsx` to get started — the page auto-updates as you edit.
 

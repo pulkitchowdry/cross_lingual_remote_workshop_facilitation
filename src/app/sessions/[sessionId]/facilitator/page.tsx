@@ -40,8 +40,9 @@ export default async function FacilitatorSessionPage({
   });
   if (!session) notFound();
 
+  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
-  const learnerLink = learnerToken ? `/join/${learnerToken}` : null;
+  const learnerLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
   let learnerLinkQrCode: string | null = null;
   if (learnerLink) {
     const headerList = await headers();
@@ -248,9 +249,6 @@ export default async function FacilitatorSessionPage({
                 readOnly
                 value={learnerLink}
               />
-              <p className="text-xs text-muted-foreground">
-                Link rotation and expiry controls are the next session-management task.
-              </p>
             </div>
           </div>
         ) : (
