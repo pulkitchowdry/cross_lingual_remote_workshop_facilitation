@@ -56,3 +56,19 @@ export interface Poll {
   options: PollOption[];
   status: "active" | "closed";
 }
+
+export type ParticipationStatus = "active" | "quiet" | "confused";
+
+export interface LearnerParticipation {
+  id: string;
+  name: string;
+  language: string;
+  status: ParticipationStatus;
+  participationScore: number;
+}
+
+export interface ParticipationSnapshot {
+  learners: LearnerParticipation[];
+  pollAccuracy: number;
+  translationConfidenceAvg: number;
+}
