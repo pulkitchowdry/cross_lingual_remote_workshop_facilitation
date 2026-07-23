@@ -1,0 +1,1 @@
+ALTER TABLE "Session" ADD COLUMN "learnerLanguages" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
