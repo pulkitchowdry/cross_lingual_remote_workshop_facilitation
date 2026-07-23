@@ -14,8 +14,13 @@ beat below names the exact file to have on screen.
 2. `npm run dev`, open the facilitator dashboard in one window/tab and the
    learner view (via the seeded join link, or the QR code on `/setup`) in
    another — see `docs/screenshots/phase0-facilitator-qr.png`.
+
+   ![Facilitator QR code on the setup page](screenshots/phase0-facilitator-qr.png)
+
 3. Have `docs/screenshots/setup.png` ready in case you want to show session
    creation instead of narrating it.
+
+   ![Session setup screen](screenshots/setup.png)
 
 ## Timing (5:00 total)
 
@@ -57,25 +62,39 @@ exact screen to be on and the exact line to say.
 - Show: `docs/screenshots/dashboard.png` — point at the goal card, then decisions/blockers.
 - Say: "Here's the facilitator dashboard. The goal comes straight from setup. These decision and blocker cards weren't typed by anyone — they were pulled live from the transcript, and each one links back to the exact line it came from."
 
+  ![Facilitator dashboard with goal, decisions, and blockers](screenshots/dashboard.png)
+
 **2.**
 - Show: `docs/screenshots/phase0-facilitator-qr.png` → scan/open → `docs/screenshots/learner.png`
 - Say: "Now let's join as a learner, mid-session, in a different language — just by scanning this QR code. No account setup. And here's their view: the facilitator's words, captioned and translated live, with the original still visible underneath."
+
+  ![Learner view with live translated captions](screenshots/learner.png)
 
 **3.**
 - Show: `docs/screenshots/dashboard-learner-questions.png`
 - Say: "The learner can ask a question in their own language. Watch it land on the facilitator's side — already translated. The facilitator replies here, and that reply is auto-translated back to the learner."
 
+  ![Facilitator dashboard showing a translated learner question](screenshots/dashboard-learner-questions.png)
+
 **4.**
 - Show: `docs/screenshots/dashboard-quiet-escalation.png`, `docs/screenshots/learner-quiet-nudge.png`
 - Say: "This is the part that doesn't exist anywhere else: when a learner goes quiet for too long, the facilitator gets nudged to check in — and the learner gets a gentle, low-pressure prompt too. Nobody has to notice the silence themselves."
+
+  ![Facilitator dashboard quiet-learner escalation](screenshots/dashboard-quiet-escalation.png)
+  ![Learner-side quiet nudge prompt](screenshots/learner-quiet-nudge.png)
 
 **5.**
 - Show: `docs/screenshots/ai-glossary-before.png` → `docs/screenshots/ai-glossary-after.png`
 - Say: "One more thing worth thirty seconds: translation doesn't mangle code. `validateEmail()` and `req.body.email` come through untouched, every time."
 
+  ![Translation before the code-aware glossary fix](screenshots/ai-glossary-before.png)
+  ![Translation after the code-aware glossary fix](screenshots/ai-glossary-after.png)
+
 **6.**
 - Show: `docs/screenshots/history.png`
 - Say: "And if a learner joins even later, they don't scroll a wall of transcript — they get this grounded catch-up summary instead."
+
+  ![Session history catch-up summary](screenshots/history.png)
 
 If you're short on time, cut in this order (least to most essential):
 glossary demo, quiet nudge, history — keep goal/decisions/blockers and the
