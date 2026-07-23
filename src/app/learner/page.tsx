@@ -3,6 +3,7 @@ import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
 import { PollWidget } from "@/components/PollWidget";
 import { QuestionBox } from "@/components/QuestionBox";
 import { QuietParticipantNudge } from "@/components/QuietParticipantNudge";
+import { RaiseHandSuggestion } from "@/components/RaiseHandSuggestion";
 import {
   mockCurrentLearnerId,
   mockFacilitatorReplies,
@@ -20,6 +21,7 @@ export default function LearnerPage() {
     <div className="flex flex-col gap-6">
       <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
       {currentLearner && <QuietParticipantNudge learner={currentLearner} />}
+      {currentLearner && <RaiseHandSuggestion learner={currentLearner} />}
       <div>
         <h1 className="font-heading text-2xl font-semibold">Facilitator messages</h1>
         <p className="text-sm text-muted-foreground">
