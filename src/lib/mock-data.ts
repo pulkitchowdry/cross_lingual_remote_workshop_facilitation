@@ -69,6 +69,17 @@ export const mockBlockers: Blocker[] = [
   },
 ];
 
+export const mockLearnerQuestions: TranscriptEntry[] = [
+  {
+    id: "q1",
+    speaker: "Learner B",
+    original: "validateEmail() 是我们自己写的还是用的库？",
+    translation: "Is validateEmail() something we wrote, or from a library?",
+    confidence: "high",
+    hasPreservedSpan: true,
+  },
+];
+
 export const mockHistory: SessionSummary[] = [
   {
     id: "h1",

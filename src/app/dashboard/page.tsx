@@ -6,6 +6,7 @@ import {
   mockCurrentActivity,
   mockDecisions,
   mockGoal,
+  mockLearnerQuestions,
   mockTranscript,
 } from "@/lib/mock-data";
 import type { TranscriptEntry } from "@/lib/types";
@@ -59,6 +60,16 @@ export default function DashboardPage() {
           </ul>
         </DashboardPanel>
       </div>
+      {mockLearnerQuestions.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Learner questions</h2>
+          <div className="flex flex-col gap-3">
+            {mockLearnerQuestions.map((entry) => (
+              <TranscriptEntryView key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </section>
+      )}
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Transcript</h2>
         <div className="flex flex-col gap-3">
