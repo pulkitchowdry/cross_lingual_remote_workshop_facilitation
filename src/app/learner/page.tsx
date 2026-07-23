@@ -1,3 +1,4 @@
+import { QuestionBox } from "@/components/QuestionBox";
 import { mockFacilitatorReplies } from "@/lib/mock-data";
 
 export default function LearnerPage() {
@@ -23,6 +24,15 @@ export default function LearnerPage() {
           </div>
         ))}
       </div>
+      <section className="flex flex-col gap-3 border-t border-black/10 pt-6 dark:border-white/10">
+        <div>
+          <h2 className="text-lg font-semibold">Have a question?</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Ask in your own language — the facilitator will see it translated.
+          </p>
+        </div>
+        <QuestionBox />
+      </section>
     </div>
   );
 }
