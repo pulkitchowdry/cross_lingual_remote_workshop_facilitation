@@ -1,4 +1,5 @@
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
+import { ParticipationDashboard } from "@/components/ParticipationDashboard";
 import { PollResults } from "@/components/PollResults";
 import { ReplyBox } from "@/components/ReplyBox";
 import { TranscriptEntryView } from "@/components/TranscriptEntryView";
@@ -12,6 +13,7 @@ import {
   mockGoal,
   mockLearnerQuestions,
   mockLiveCaptionFeed,
+  mockParticipation,
   mockPoll,
   mockTranscript,
 } from "@/lib/mock-data";
@@ -44,6 +46,7 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
       <h1 className="font-heading text-2xl font-semibold">Facilitator dashboard</h1>
+      <ParticipationDashboard snapshot={mockParticipation} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card eyebrow="Goal">{mockGoal}</Card>
         <Card eyebrow="Current activity">{mockCurrentActivity}</Card>

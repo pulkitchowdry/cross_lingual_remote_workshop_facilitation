@@ -1,4 +1,12 @@
-import type { Blocker, Decision, GlossaryEntry, Poll, SessionSummary, TranscriptEntry } from "./types";
+import type {
+  Blocker,
+  Decision,
+  GlossaryEntry,
+  ParticipationSnapshot,
+  Poll,
+  SessionSummary,
+  TranscriptEntry,
+} from "./types";
 
 export const mockGoal =
   "Implement a working REST endpoint for user signup, including input validation.";
@@ -124,6 +132,19 @@ export const mockPoll: Poll = {
     { id: "o1", text: "Yes, makes sense", votes: 7 },
     { id: "o2", text: "Mostly, one detail unclear", votes: 3 },
     { id: "o3", text: "No, still confused", votes: 1 },
+  ],
+};
+
+export const mockParticipation: ParticipationSnapshot = {
+  pollAccuracy: 82,
+  translationConfidenceAvg: 88,
+  learners: [
+    { id: "l1", name: "Learner A", language: "Mandarin", status: "active", participationScore: 91 },
+    { id: "l2", name: "Learner B", language: "Mandarin", status: "active", participationScore: 84 },
+    { id: "l3", name: "Learner C", language: "Spanish", status: "quiet", participationScore: 38 },
+    { id: "l4", name: "Learner D", language: "Spanish", status: "confused", participationScore: 45 },
+    { id: "l5", name: "Learner E", language: "French", status: "active", participationScore: 76 },
+    { id: "l6", name: "Learner F", language: "Mandarin", status: "quiet", participationScore: 29 },
   ],
 };
 
