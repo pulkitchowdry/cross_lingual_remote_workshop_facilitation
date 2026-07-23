@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const NAV_LINKS = [
   { href: "/setup", label: "Setup" },
@@ -8,19 +11,31 @@ const NAV_LINKS = [
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-black/10 dark:border-white/10">
+      <header className="border-b border-border-subtle bg-surface shadow-sm">
         <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-          <span className="font-semibold">Workshop Copilot</span>
-          <ul className="flex gap-4 text-sm">
-            {NAV_LINKS.map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className="hover:underline">
-                  {link.label}
-                </Link>
-              </li>
-            ))}
+          <span className="font-semibold tracking-tight">Workshop Copilot</span>
+          <ul className="flex gap-1 text-sm">
+            {NAV_LINKS.map((link) => {
+              const active = pathname?.startsWith(link.href);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className={`rounded-full px-3 py-1.5 transition-colors ${
+                      active
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </header>
