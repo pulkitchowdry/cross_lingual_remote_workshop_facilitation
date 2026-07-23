@@ -8,6 +8,28 @@ import {
   mockGoal,
   mockTranscript,
 } from "@/lib/mock-data";
+import type { TranscriptEntry } from "@/lib/types";
+
+const confidenceStyles: Record<TranscriptEntry["confidence"], string> = {
+  high: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  low: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
+};
+
+function QuoteLine({ quoteId }: { quoteId: string }) {
+  const entry = mockTranscript.find((t) => t.id === quoteId);
+  if (!entry) return null;
+  return (
+    <div className="mt-1 flex items-start gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${confidenceStyles[entry.confidence]}`}
+      >
+        {entry.confidence} confidence
+      </span>
+      <span className="italic">&ldquo;{entry.translation}&rdquo;</span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   return (
@@ -19,14 +41,20 @@ export default function DashboardPage() {
         <DashboardPanel title="Decisions">
           <ul className="list-disc pl-5">
             {mockDecisions.map((decision) => (
-              <li key={decision.id}>{decision.summary}</li>
+              <li key={decision.id}>
+                {decision.summary}
+                <QuoteLine quoteId={decision.quoteId} />
+              </li>
             ))}
           </ul>
         </DashboardPanel>
         <DashboardPanel title="Blockers">
           <ul className="list-disc pl-5">
             {mockBlockers.map((blocker) => (
-              <li key={blocker.id}>{blocker.summary}</li>
+              <li key={blocker.id}>
+                {blocker.summary}
+                <QuoteLine quoteId={blocker.quoteId} />
+              </li>
             ))}
           </ul>
         </DashboardPanel>
