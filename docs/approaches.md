@@ -27,6 +27,13 @@ This builds on `problem_statement.md`. What we've already decided: a full-stack 
 
 **Bottom line:** this is a smart, well-supported guess about a real problem — not yet a "we asked 50 facilitators and they all said yes." If your team has even an hour spare, talking to 2-3 real people who've run multilingual training would be the single best use of that hour before you lock your demo script.
 
+**Which of these products is actually most popular?** This is really two different questions, since "Teams/Zoom" and "Wordly/Otter/Fireflies" aren't competing on the same axis:
+
+- **Host-platform reach:** **Microsoft Teams** has the larger installed base of the two (bundled into Microsoft 365, dominant in enterprise/education); **Zoom**'s translated-captions feature sits behind the paid AI Companion add-on. Both dwarf the specialist tools below in raw user count — but that's popularity of the *video-call platform*, not of the translation/tracking *feature* itself, which rides along as one checkbox people may never turn on.
+- **Feature-specific popularity (the fairer comparison):** among tools built specifically around live cross-lingual translation or live meeting-tracking, **Otter.ai** has the largest user base (tens of millions), **Wordly** is the most established name specifically for live translation/captioning at conferences and events, and **Fireflies.ai** is the most widely adopted of the live blocker/decision-tracking tools (bigger than Fellow or Read.ai) — but all three are still niche relative to Teams/Zoom's total user count.
+
+Either way, none of these — bundled or standalone — combine live cross-lingual translation *with* live understanding-tracking (goal/activity/decisions/blockers), which is the gap Approach 1 targets.
+
 **What's already been tried** (so you don't accidentally re-build something that already exists or already failed):
 
 - **LINC** — the closest research project we found: a live multilingual meeting tool plus a summary dashboard. Its own authors pulled the paper back to revise it, so even the closest attempt isn't a finished, proven success yet.
