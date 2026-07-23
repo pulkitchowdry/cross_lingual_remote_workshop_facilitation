@@ -1,30 +1,29 @@
+import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
+import { getSpeakerColor } from "@/lib/speaker-color";
 import type { TranscriptEntry } from "@/lib/types";
 
-const confidenceStyles: Record<TranscriptEntry["confidence"], string> = {
-  high: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
-  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  low: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
-};
-
 export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
+  const speakerColor = getSpeakerColor(entry.speaker);
+
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-black/10 p-3 dark:border-white/10">
+    <div
+      className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface-raised p-3"
+      style={{ borderLeft: `3px solid ${speakerColor}` }}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold">{entry.speaker}</span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${confidenceStyles[entry.confidence]}`}
-        >
-          {entry.confidence} confidence
+        <span className="font-heading text-sm font-semibold" style={{ color: speakerColor }}>
+          {entry.speaker}
         </span>
+        <ConfidenceTick confidence={entry.confidence} />
       </div>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400" lang="und">
+      <p className="text-xs italic text-muted-foreground" lang="und">
         {entry.original}
       </p>
-      <p className="text-sm">
+      <p className="text-base leading-snug text-foreground">
         {entry.translation}
         {entry.hasPreservedSpan && (
-          <span className="ml-2 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
-            code/jargon preserved
+          <span className="font-data ml-2 rounded border border-border-strong px-1.5 py-0.5 text-[0.6875rem] text-muted-foreground">
+            {"</>"} preserved
           </span>
         )}
       </p>
