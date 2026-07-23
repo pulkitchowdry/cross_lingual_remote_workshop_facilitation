@@ -1,4 +1,4 @@
-import type { Blocker, Decision, SessionSummary, TranscriptEntry } from "./types";
+import type { Blocker, Decision, GlossaryEntry, SessionSummary, TranscriptEntry } from "./types";
 
 export const mockGoal =
   "Implement a working REST endpoint for user signup, including input validation.";
@@ -93,6 +93,26 @@ export const mockLearnerQuestions: TranscriptEntry[] = [
     translation: "Is validateEmail() something we wrote, or from a library?",
     confidence: "high",
     hasPreservedSpan: true,
+  },
+];
+
+export const mockGlossary: GlossaryEntry[] = [
+  {
+    id: "g1",
+    term: "validateEmail()",
+    pronunciation: "/ˈvælɪdeɪt iˈmeɪl/",
+    definition: "A function that checks whether a given string is a correctly formatted email address.",
+    example: "validateEmail(\"\") should return false instead of throwing.",
+    translation: "验证邮箱格式是否正确的函数。",
+  },
+  {
+    id: "g2",
+    term: "try/catch",
+    pronunciation: "/traɪ kætʃ/",
+    definition:
+      "A block that lets you run code that might fail (try) and handle the failure gracefully (catch) instead of crashing.",
+    example: "Wrap the risky call in try/catch so one bad input doesn't take down the whole request.",
+    translation: "一种代码结构：先尝试执行可能出错的代码，再捕获并处理错误。",
   },
 ];
 
