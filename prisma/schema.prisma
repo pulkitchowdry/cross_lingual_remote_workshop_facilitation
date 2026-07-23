@@ -1,0 +1,175 @@
+// Run `prisma migrate dev` after installing Prisma and setting DATABASE_URL.
+// The application code must keep database access server-only.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionStatus {
+  DRAFT
+  LIVE
+  ENDED
+}
+
+enum ParticipantRole {
+  FACILITATOR
+  LEARNER
+  CO_FACILITATOR
+  OBSERVER
+}
+
+enum InsightType {
+  ACTIVITY
+  DECISION
+  BLOCKER
+  CONFUSION
+}
+
+model User {
+  id             String               @id @default(cuid())
+  displayName    String
+  preferredLanguage String?
+  createdAt      DateTime             @default(now())
+  sessions       Session[]            @relation("SessionFacilitator")
+  participations SessionParticipant[]
+  messages       Message[]
+}
+
+model Session {
+  id              String               @id @default(cuid())
+  title           String
+  goal            String
+  sourceLanguage  String
+  learnerLanguages String[]
+  retentionDays   Int                  @default(7)
+  status          SessionStatus        @default(DRAFT)
+  facilitatorId   String
+  facilitator     User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
+  createdAt       DateTime             @default(now())
+  startedAt       DateTime?
+  endedAt         DateTime?
+  participants    SessionParticipant[]
+  joinLinks       JoinLink[]
+  transcript      TranscriptSegment[]
+  messages        Message[]
+  insights        Insight[]
+  glossaryTerms   GlossaryTerm[]
+}
+
+model SessionParticipant {
+  id                String          @id @default(cuid())
+  sessionId         String
+  userId            String
+  role              ParticipantRole
+  preferredLanguage String
+  consentedAt       DateTime?
+  joinedAt          DateTime        @default(now())
+  lastActiveAt      DateTime        @default(now())
+  session           Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+}
+
+model JoinLink {
+  id         String          @id @default(cuid())
+  sessionId  String
+  role       ParticipantRole @default(LEARNER)
+  tokenHash  String          @unique
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  maxUses    Int?
+  useCount   Int             @default(0)
+  createdAt  DateTime        @default(now())
+  session    Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model TranscriptSegment {
+  id           String    @id @default(cuid())
+  sessionId    String
+  speakerId    String?
+  originalText String
+  language     String
+  startedAt    DateTime
+  endedAt      DateTime
+  isFinal      Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  translations Translation[]
+  evidence     InsightEvidence[]
+}
+
+model Translation {
+  id                  String            @id @default(cuid())
+  transcriptSegmentId String
+  targetLanguage      String
+  text                String
+  provider            String
+  qualitySignal       String?
+  preservedSpans      Json?
+  transcriptSegment   TranscriptSegment @relation(fields: [transcriptSegmentId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptSegmentId, targetLanguage])
+}
+
+model GlossaryTerm {
+  id                  String   @id @default(cuid())
+  sessionId           String
+  sourceTerm          String
+  approvedTranslation String?
+  aliases             String[]
+  preserveVerbatim    Boolean  @default(false)
+  session             Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sourceTerm])
+}
+
+model Message {
+  id           String   @id @default(cuid())
+  sessionId    String
+  senderId     String
+  originalText String
+  language     String
+  kind         String
+  sentAt       DateTime @default(now())
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender       User     @relation(fields: [senderId], references: [id])
+  translations MessageTranslation[]
+}
+
+model MessageTranslation {
+  id             String   @id @default(cuid())
+  messageId      String
+  targetLanguage String
+  text           String
+  provider       String
+  qualitySignal  String?
+  message        Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, targetLanguage])
+}
+
+model Insight {
+  id        String       @id @default(cuid())
+  sessionId String
+  type      InsightType
+  summary   String
+  status    String       @default("ACTIVE")
+  createdAt DateTime     @default(now())
+  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  evidence  InsightEvidence[]
+}
+
+model InsightEvidence {
+  insightId           String
+  transcriptSegmentId String
+  insight             Insight           @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  transcriptSegment   TranscriptSegment @relation(fields: [transcriptSegmentId], references: [id], onDelete: Cascade)
+
+  @@id([insightId, transcriptSegmentId])
+}
