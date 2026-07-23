@@ -90,11 +90,18 @@ export function ParticipationDashboard({ snapshot }: { snapshot: ParticipationSn
                 className="flex items-center justify-between rounded-md border border-border-subtle bg-background px-2.5 py-1.5 text-sm"
               >
                 <span>{learner.name}</span>
-                <span
-                  className="font-data text-xs font-medium uppercase tracking-wider"
-                  style={{ color: STATUS_COLOR[learner.status] }}
-                >
-                  {STATUS_LABEL[learner.status]}
+                <span className="flex items-center gap-2">
+                  {learner.status === "quiet" && (
+                    <span className="font-data text-[0.6875rem] text-muted-foreground">
+                      {learner.reminderSent ? "Reminder sent — still quiet" : "Reminder pending"}
+                    </span>
+                  )}
+                  <span
+                    className="font-data text-xs font-medium uppercase tracking-wider"
+                    style={{ color: STATUS_COLOR[learner.status] }}
+                  >
+                    {STATUS_LABEL[learner.status]}
+                  </span>
                 </span>
               </li>
             ))}

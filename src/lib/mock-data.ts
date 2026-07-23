@@ -141,12 +141,28 @@ export const mockParticipation: ParticipationSnapshot = {
   learners: [
     { id: "l1", name: "Learner A", language: "Mandarin", status: "active", participationScore: 91 },
     { id: "l2", name: "Learner B", language: "Mandarin", status: "active", participationScore: 84 },
-    { id: "l3", name: "Learner C", language: "Spanish", status: "quiet", participationScore: 38 },
+    {
+      id: "l3",
+      name: "Learner C",
+      language: "Spanish",
+      status: "quiet",
+      participationScore: 38,
+      reminderSent: true,
+    },
     { id: "l4", name: "Learner D", language: "Spanish", status: "confused", participationScore: 45 },
     { id: "l5", name: "Learner E", language: "French", status: "active", participationScore: 76 },
-    { id: "l6", name: "Learner F", language: "Mandarin", status: "quiet", participationScore: 29 },
+    {
+      id: "l6",
+      name: "Learner F",
+      language: "Mandarin",
+      status: "quiet",
+      participationScore: 29,
+      reminderSent: false,
+    },
   ],
 };
+
+export const mockCurrentLearnerId = "l6";
 
 export const mockHistory: SessionSummary[] = [
   {
