@@ -53,6 +53,14 @@ export const mockFacilitatorReplies: TranscriptEntry[] = [
   },
 ];
 
+export const mockLiveCaptionFeed: TranscriptEntry[] = [
+  mockTranscript[0],
+  mockTranscript[1],
+  mockFacilitatorReplies[0],
+  mockTranscript[2],
+  mockFacilitatorReplies[1],
+];
+
 export const mockDecisions: Decision[] = [
   {
     id: "d1",
