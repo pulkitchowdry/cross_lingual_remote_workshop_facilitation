@@ -1,8 +1,8 @@
-import { Card } from "@/components/ui/Card";
-import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
 import { ReplyBox } from "@/components/ReplyBox";
 import { TranscriptEntryView } from "@/components/TranscriptEntryView";
+import { Card } from "@/components/ui/Card";
+import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
 import { getSpeakerColor } from "@/lib/speaker-color";
 import {
   mockBlockers,
