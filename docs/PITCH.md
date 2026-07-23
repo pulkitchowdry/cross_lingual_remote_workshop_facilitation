@@ -53,7 +53,7 @@ real round-trip, not just two static screens. Each beat below gives the
 exact screen to be on and the exact line to say — follow it almost word
 for word, it's written as an exact walkthrough, not a summary.
 
-1. Show: `docs/screenshots/dashboard.png` — point at the goal card, then decisions/blockers.
+1. **1:15–1:35** · Show: `docs/screenshots/dashboard.png` — point at the goal card, then decisions/blockers.
    Say: "Here's the facilitator dashboard. The goal comes straight from setup. These decision and blocker cards weren't typed by anyone — they were pulled live from the transcript, and each one links back to the exact line it came from."
 
    <details>
@@ -63,7 +63,7 @@ for word, it's written as an exact walkthrough, not a summary.
 
    </details>
 
-2. Show: `docs/screenshots/phase0-facilitator-qr.png` → scan/open → `docs/screenshots/learner.png`
+2. **1:35–2:00** · Show: `docs/screenshots/phase0-facilitator-qr.png` → scan/open → `docs/screenshots/learner.png`
    Say: "Now let's join as a learner, mid-session, in a different language — just by scanning this QR code. No account setup. And here's their view: the facilitator's words, captioned and translated live, with the original still visible underneath."
 
    <details>
@@ -73,7 +73,7 @@ for word, it's written as an exact walkthrough, not a summary.
 
    </details>
 
-3. Show: `docs/screenshots/dashboard-learner-questions.png`
+3. **2:00–2:25** · Show: `docs/screenshots/dashboard-learner-questions.png`
    Say: "The learner can ask a question in their own language. Watch it land on the facilitator's side — already translated. The facilitator replies here, and that reply is auto-translated back to the learner."
 
    <details>
@@ -83,7 +83,7 @@ for word, it's written as an exact walkthrough, not a summary.
 
    </details>
 
-4. Show: `docs/screenshots/dashboard-quiet-escalation.png`, `docs/screenshots/learner-quiet-nudge.png`
+4. **2:25–2:50** · Show: `docs/screenshots/dashboard-quiet-escalation.png`, `docs/screenshots/learner-quiet-nudge.png`
    Say: "This is the part that doesn't exist anywhere else: when a learner goes quiet for too long, the facilitator gets nudged to check in — and the learner gets a gentle, low-pressure prompt too. Nobody has to notice the silence themselves."
 
    <details>
@@ -94,7 +94,7 @@ for word, it's written as an exact walkthrough, not a summary.
 
    </details>
 
-5. Show: `docs/screenshots/ai-glossary-before.png` → `docs/screenshots/ai-glossary-after.png`
+5. **2:50–3:05** · Show: `docs/screenshots/ai-glossary-before.png` → `docs/screenshots/ai-glossary-after.png`
    Say: "One more thing worth thirty seconds: translation doesn't mangle code. `validateEmail()` and `req.body.email` come through untouched, every time."
 
    <details>
@@ -105,7 +105,7 @@ for word, it's written as an exact walkthrough, not a summary.
 
    </details>
 
-6. Show: `docs/screenshots/history.png`
+6. **3:05–3:15** · Show: `docs/screenshots/history.png`
    Say: "And if a learner joins even later, they don't scroll a wall of transcript — they get this grounded catch-up summary instead."
 
    <details>
