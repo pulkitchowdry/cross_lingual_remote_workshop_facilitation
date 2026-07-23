@@ -5,8 +5,8 @@ export default function HistoryPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Session history</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold tracking-tight">Session history</h1>
+        <p className="text-sm text-muted-foreground">
           Catch-up summaries for a facilitator joining mid-session or reviewing after.
         </p>
       </div>
