@@ -1,8 +1,10 @@
 # Cross-Lingual Remote Workshop Facilitation
 
-A prototype that helps remote facilitators support hands-on workshops run in a language they don't speak — live speech-to-text, translation, and AI-generated context (progress, decisions, blockers) grounded in the actual discussion.
+A prototype built for the **"Breaking Language Barriers"** hackathon challenge: help learners and facilitators communicate more clearly across language differences during real-time online/hybrid learning sessions — live speech-to-text, translation, and AI-generated context (progress, decisions, blockers) grounded in the actual discussion.
 
-See [`docs/problem_statement.md`](docs/problem_statement.md) for the problem, target users, and success criteria, and [`docs/approaches.md`](docs/approaches.md) for market validation, the shared pipeline design, and the five candidate approaches under consideration.
+Our demo scenario: a remote facilitator supporting a hands-on workshop run in a language they don't speak.
+
+See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement, our interpretation, target users, and success criteria, and [`docs/approaches.md`](docs/approaches.md) for market validation, the shared pipeline design, and the five candidate approaches under consideration.
 
 ## Tech Stack
 
