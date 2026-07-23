@@ -1,12 +1,9 @@
+import { FacilitatorMessage } from "@/components/FacilitatorMessage";
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
 import { QuestionBox } from "@/components/QuestionBox";
-import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
-import { getSpeakerColor } from "@/lib/speaker-color";
 import { mockFacilitatorReplies, mockLiveCaptionFeed } from "@/lib/mock-data";
 
 export default function LearnerPage() {
-  const facilitatorColor = getSpeakerColor("Facilitator");
-
   return (
     <div className="flex flex-col gap-6">
       <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
@@ -18,25 +15,7 @@ export default function LearnerPage() {
       </div>
       <div className="flex flex-col gap-3">
         {mockFacilitatorReplies.map((entry) => (
-          <div
-            key={entry.id}
-            className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface-raised p-3"
-            style={{ borderLeft: `3px solid ${facilitatorColor}` }}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className="font-heading text-sm font-semibold"
-                style={{ color: facilitatorColor }}
-              >
-                {entry.speaker}
-              </span>
-              <ConfidenceTick confidence={entry.confidence} />
-            </div>
-            <p className="text-base leading-snug text-foreground">{entry.translation}</p>
-            <p className="text-xs italic text-muted-foreground" lang="und">
-              {entry.original}
-            </p>
-          </div>
+          <FacilitatorMessage key={entry.id} entry={entry} />
         ))}
       </div>
       <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
