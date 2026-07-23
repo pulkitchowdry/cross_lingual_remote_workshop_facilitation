@@ -2,12 +2,24 @@ import { FacilitatorMessage } from "@/components/FacilitatorMessage";
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
 import { PollWidget } from "@/components/PollWidget";
 import { QuestionBox } from "@/components/QuestionBox";
-import { mockFacilitatorReplies, mockLiveCaptionFeed, mockPoll } from "@/lib/mock-data";
+import { QuietParticipantNudge } from "@/components/QuietParticipantNudge";
+import {
+  mockCurrentLearnerId,
+  mockFacilitatorReplies,
+  mockLiveCaptionFeed,
+  mockParticipation,
+  mockPoll,
+} from "@/lib/mock-data";
 
 export default function LearnerPage() {
+  const currentLearner = mockParticipation.learners.find(
+    (learner) => learner.id === mockCurrentLearnerId
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
+      {currentLearner && <QuietParticipantNudge learner={currentLearner} />}
       <div>
         <h1 className="font-heading text-2xl font-semibold">Facilitator messages</h1>
         <p className="text-sm text-muted-foreground">

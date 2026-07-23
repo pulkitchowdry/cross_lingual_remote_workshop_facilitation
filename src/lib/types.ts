@@ -65,6 +65,7 @@ export interface LearnerParticipation {
   language: string;
   status: ParticipationStatus;
   participationScore: number;
+  reminderSent?: boolean;
 }
 
 export interface ParticipationSnapshot {
