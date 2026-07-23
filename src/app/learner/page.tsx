@@ -1,13 +1,27 @@
+import { FacilitatorMessage } from "@/components/FacilitatorMessage";
+import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
+import { PollWidget } from "@/components/PollWidget";
 import { QuestionBox } from "@/components/QuestionBox";
-import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
-import { getSpeakerColor } from "@/lib/speaker-color";
-import { mockFacilitatorReplies } from "@/lib/mock-data";
+import { QuietParticipantNudge } from "@/components/QuietParticipantNudge";
+import { RaiseHandSuggestion } from "@/components/RaiseHandSuggestion";
+import {
+  mockCurrentLearnerId,
+  mockFacilitatorReplies,
+  mockLiveCaptionFeed,
+  mockParticipation,
+  mockPoll,
+} from "@/lib/mock-data";
 
 export default function LearnerPage() {
-  const facilitatorColor = getSpeakerColor("Facilitator");
+  const currentLearner = mockParticipation.learners.find(
+    (learner) => learner.id === mockCurrentLearnerId
+  );
 
   return (
     <div className="flex flex-col gap-6">
+      <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
+      {currentLearner && <QuietParticipantNudge learner={currentLearner} />}
+      {currentLearner && <RaiseHandSuggestion learner={currentLearner} />}
       <div>
         <h1 className="font-heading text-2xl font-semibold">Facilitator messages</h1>
         <p className="text-sm text-muted-foreground">
@@ -16,27 +30,18 @@ export default function LearnerPage() {
       </div>
       <div className="flex flex-col gap-3">
         {mockFacilitatorReplies.map((entry) => (
-          <div
-            key={entry.id}
-            className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface-raised p-3"
-            style={{ borderLeft: `3px solid ${facilitatorColor}` }}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className="font-heading text-sm font-semibold"
-                style={{ color: facilitatorColor }}
-              >
-                {entry.speaker}
-              </span>
-              <ConfidenceTick confidence={entry.confidence} />
-            </div>
-            <p className="text-base leading-snug text-foreground">{entry.translation}</p>
-            <p className="text-xs italic text-muted-foreground" lang="und">
-              {entry.original}
-            </p>
-          </div>
+          <FacilitatorMessage key={entry.id} entry={entry} />
         ))}
       </div>
+      <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
+        <div>
+          <h2 className="font-heading text-lg font-semibold">Comprehension poll</h2>
+          <p className="text-sm text-muted-foreground">
+            The facilitator wants a quick check on how the session is landing.
+          </p>
+        </div>
+        <PollWidget poll={mockPoll} />
+      </section>
       <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
         <div>
           <h2 className="font-heading text-lg font-semibold">Have a question?</h2>

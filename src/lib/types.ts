@@ -1,5 +1,10 @@
 export type Confidence = "high" | "medium" | "low";
 
+export interface SimplifiedExplanation {
+  original: string;
+  translation: string;
+}
+
 export interface TranscriptEntry {
   id: string;
   speaker: string;
@@ -7,6 +12,16 @@ export interface TranscriptEntry {
   translation: string;
   confidence: Confidence;
   hasPreservedSpan: boolean;
+  simplified?: SimplifiedExplanation;
+}
+
+export interface GlossaryEntry {
+  id: string;
+  term: string;
+  pronunciation: string;
+  definition: string;
+  example: string;
+  translation: string;
 }
 
 export interface Blocker {
@@ -27,4 +42,34 @@ export interface SessionSummary {
   activity: string;
   decisions: string[];
   blockers: string[];
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  options: PollOption[];
+  status: "active" | "closed";
+}
+
+export type ParticipationStatus = "active" | "quiet" | "confused";
+
+export interface LearnerParticipation {
+  id: string;
+  name: string;
+  language: string;
+  status: ParticipationStatus;
+  participationScore: number;
+  reminderSent?: boolean;
+}
+
+export interface ParticipationSnapshot {
+  learners: LearnerParticipation[];
+  pollAccuracy: number;
+  translationConfidenceAvg: number;
 }

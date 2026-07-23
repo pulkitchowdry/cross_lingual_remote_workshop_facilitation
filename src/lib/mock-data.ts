@@ -1,4 +1,12 @@
-import type { Blocker, Decision, SessionSummary, TranscriptEntry } from "./types";
+import type {
+  Blocker,
+  Decision,
+  GlossaryEntry,
+  ParticipationSnapshot,
+  Poll,
+  SessionSummary,
+  TranscriptEntry,
+} from "./types";
 
 export const mockGoal =
   "Implement a working REST endpoint for user signup, including input validation.";
@@ -42,6 +50,10 @@ export const mockFacilitatorReplies: TranscriptEntry[] = [
     translation: "试着检查一下 validateEmail() 在传入空字符串时是否会抛出异常。",
     confidence: "high",
     hasPreservedSpan: true,
+    simplified: {
+      original: "Check what happens if you give validateEmail() nothing to check.",
+      translation: "检查一下，如果不给 validateEmail() 任何内容，会发生什么。",
+    },
   },
   {
     id: "f2",
@@ -50,7 +62,19 @@ export const mockFacilitatorReplies: TranscriptEntry[] = [
     translation: "发现得好——把那个调用包在 try/catch 里，并记录错误日志来确认。",
     confidence: "high",
     hasPreservedSpan: false,
+    simplified: {
+      original: "Nice find. Put that line inside a try/catch and print the error to be sure.",
+      translation: "找得好。把那一行放进 try/catch，并打印错误信息来确认。",
+    },
   },
+];
+
+export const mockLiveCaptionFeed: TranscriptEntry[] = [
+  mockTranscript[0],
+  mockTranscript[1],
+  mockFacilitatorReplies[0],
+  mockTranscript[2],
+  mockFacilitatorReplies[1],
 ];
 
 export const mockDecisions: Decision[] = [
@@ -79,6 +103,66 @@ export const mockLearnerQuestions: TranscriptEntry[] = [
     hasPreservedSpan: true,
   },
 ];
+
+export const mockGlossary: GlossaryEntry[] = [
+  {
+    id: "g1",
+    term: "validateEmail()",
+    pronunciation: "/ˈvælɪdeɪt iˈmeɪl/",
+    definition: "A function that checks whether a given string is a correctly formatted email address.",
+    example: "validateEmail(\"\") should return false instead of throwing.",
+    translation: "验证邮箱格式是否正确的函数。",
+  },
+  {
+    id: "g2",
+    term: "try/catch",
+    pronunciation: "/traɪ kætʃ/",
+    definition:
+      "A block that lets you run code that might fail (try) and handle the failure gracefully (catch) instead of crashing.",
+    example: "Wrap the risky call in try/catch so one bad input doesn't take down the whole request.",
+    translation: "一种代码结构：先尝试执行可能出错的代码，再捕获并处理错误。",
+  },
+];
+
+export const mockPoll: Poll = {
+  id: "p1",
+  question: "Did everyone understand why validateEmail() was throwing?",
+  status: "active",
+  options: [
+    { id: "o1", text: "Yes, makes sense", votes: 7 },
+    { id: "o2", text: "Mostly, one detail unclear", votes: 3 },
+    { id: "o3", text: "No, still confused", votes: 1 },
+  ],
+};
+
+export const mockParticipation: ParticipationSnapshot = {
+  pollAccuracy: 82,
+  translationConfidenceAvg: 88,
+  learners: [
+    { id: "l1", name: "Learner A", language: "Mandarin", status: "active", participationScore: 91 },
+    { id: "l2", name: "Learner B", language: "Mandarin", status: "active", participationScore: 84 },
+    {
+      id: "l3",
+      name: "Learner C",
+      language: "Spanish",
+      status: "quiet",
+      participationScore: 38,
+      reminderSent: true,
+    },
+    { id: "l4", name: "Learner D", language: "Spanish", status: "confused", participationScore: 45 },
+    { id: "l5", name: "Learner E", language: "French", status: "active", participationScore: 76 },
+    {
+      id: "l6",
+      name: "Learner F",
+      language: "Mandarin",
+      status: "quiet",
+      participationScore: 29,
+      reminderSent: false,
+    },
+  ],
+};
+
+export const mockCurrentLearnerId = "l4";
 
 export const mockHistory: SessionSummary[] = [
   {
