@@ -6,6 +6,29 @@ Our demo scenario: a remote facilitator supporting a hands-on workshop run in a 
 
 See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement, our interpretation, target users, and success criteria, and [`docs/approaches.md`](docs/approaches.md) for market validation, the shared pipeline design, and the five candidate approaches under consideration.
 
+Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md) for a 5-minute
+script, shot list, and the architecture diagram below.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Live[Live session]
+        Mic["Facilitator / learner speech"] --> STT["Speech-to-text\n(Deepgram Nova-3, diarized)"]
+        STT --> MT["Translation\n(DeepL)"]
+    end
+
+    MT --> Captions["Live translated captions\n(learner view)"]
+    MT --> Transcript[("Growing transcript\nPostgres")]
+
+    Transcript --> AI["Understanding layer\n(Claude, prompt-cached over transcript)"]
+    AI --> Guard{{"validateInsightDraft\nreject ungrounded citations"}}
+    Guard --> Dashboard["Facilitator dashboard\ngoal / activity / decisions / blockers"]
+
+    Learner["Learner question"] --> MT
+    Dashboard --> Reply["Facilitator reply"] --> MT --> Captions
+```
+
 ## Tech Stack
 
 - **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
@@ -125,6 +148,39 @@ application code never depends on a vendor SDK directly:
 **Facilitator learner invitation — QR code + opaque link**
 
 ![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
+
+**Facilitator live session view**
+
+![Facilitator live session view](docs/screenshots/phase0-facilitator-live.png)
+
+**Quiet-learner escalation** — the facilitator is nudged when a learner has gone quiet, and the learner sees a gentle check-in.
+
+![Dashboard quiet-learner escalation](docs/screenshots/dashboard-quiet-escalation.png)
+![Learner quiet nudge](docs/screenshots/learner-quiet-nudge.png)
+
+**Participation snapshot** — who's spoken, who hasn't, at a glance.
+
+![Dashboard participation snapshot](docs/screenshots/dashboard-participation.png)
+
+**Polls** — quick comprehension checks, translated for every learner.
+
+![Dashboard poll](docs/screenshots/dashboard-poll.png)
+![Learner poll](docs/screenshots/learner-poll.png)
+
+**Raise-hand suggestion** — the system suggests when a learner should raise a question.
+
+![Raise-hand suggestion](docs/screenshots/raise-hand-suggestion.png)
+![Raise-hand suggestion sent](docs/screenshots/raise-hand-suggestion-sent.png)
+
+**Technical glossary protection** — code, commands, and named terms survive translation unchanged.
+
+![AI glossary, before protection](docs/screenshots/ai-glossary-before.png)
+![AI glossary, after protection](docs/screenshots/ai-glossary-after.png)
+
+**Explanation simplification** — a facilitator explanation, simplified for a learner who's struggling.
+
+![Simplify explanation, before](docs/screenshots/simplify-explanation-before.png)
+![Simplify explanation, after](docs/screenshots/simplify-explanation-after.png)
 
 ## Project Structure
 
