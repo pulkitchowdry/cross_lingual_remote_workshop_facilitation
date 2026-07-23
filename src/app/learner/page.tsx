@@ -1,5 +1,5 @@
-import { QuestionBox } from "@/components/QuestionBox";
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
+import { QuestionBox } from "@/components/QuestionBox";
 import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
 import { getSpeakerColor } from "@/lib/speaker-color";
 import { mockFacilitatorReplies, mockLiveCaptionFeed } from "@/lib/mock-data";
