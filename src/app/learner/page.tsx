@@ -1,7 +1,8 @@
 import { FacilitatorMessage } from "@/components/FacilitatorMessage";
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
+import { PollWidget } from "@/components/PollWidget";
 import { QuestionBox } from "@/components/QuestionBox";
-import { mockFacilitatorReplies, mockLiveCaptionFeed } from "@/lib/mock-data";
+import { mockFacilitatorReplies, mockLiveCaptionFeed, mockPoll } from "@/lib/mock-data";
 
 export default function LearnerPage() {
   return (
@@ -18,6 +19,15 @@ export default function LearnerPage() {
           <FacilitatorMessage key={entry.id} entry={entry} />
         ))}
       </div>
+      <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
+        <div>
+          <h2 className="font-heading text-lg font-semibold">Comprehension poll</h2>
+          <p className="text-sm text-muted-foreground">
+            The facilitator wants a quick check on how the session is landing.
+          </p>
+        </div>
+        <PollWidget poll={mockPoll} />
+      </section>
       <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
         <div>
           <h2 className="font-heading text-lg font-semibold">Have a question?</h2>
