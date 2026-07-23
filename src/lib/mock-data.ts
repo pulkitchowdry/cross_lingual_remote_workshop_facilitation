@@ -1,4 +1,4 @@
-import type { Blocker, Decision, GlossaryEntry, SessionSummary, TranscriptEntry } from "./types";
+import type { Blocker, Decision, GlossaryEntry, Poll, SessionSummary, TranscriptEntry } from "./types";
 
 export const mockGoal =
   "Implement a working REST endpoint for user signup, including input validation.";
@@ -115,6 +115,17 @@ export const mockGlossary: GlossaryEntry[] = [
     translation: "一种代码结构：先尝试执行可能出错的代码，再捕获并处理错误。",
   },
 ];
+
+export const mockPoll: Poll = {
+  id: "p1",
+  question: "Did everyone understand why validateEmail() was throwing?",
+  status: "active",
+  options: [
+    { id: "o1", text: "Yes, makes sense", votes: 7 },
+    { id: "o2", text: "Mostly, one detail unclear", votes: 3 },
+    { id: "o3", text: "No, still confused", votes: 1 },
+  ],
+};
 
 export const mockHistory: SessionSummary[] = [
   {

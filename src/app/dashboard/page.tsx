@@ -1,4 +1,5 @@
 import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
+import { PollResults } from "@/components/PollResults";
 import { ReplyBox } from "@/components/ReplyBox";
 import { TranscriptEntryView } from "@/components/TranscriptEntryView";
 import { Card } from "@/components/ui/Card";
@@ -11,6 +12,7 @@ import {
   mockGoal,
   mockLearnerQuestions,
   mockLiveCaptionFeed,
+  mockPoll,
   mockTranscript,
 } from "@/lib/mock-data";
 
@@ -66,6 +68,12 @@ export default function DashboardPage() {
           </ul>
         </Card>
       </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="font-heading text-lg font-semibold">Comprehension poll</h2>
+        <Card>
+          <PollResults poll={mockPoll} />
+        </Card>
+      </section>
       {mockLearnerQuestions.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="font-heading text-lg font-semibold">Learner questions</h2>
