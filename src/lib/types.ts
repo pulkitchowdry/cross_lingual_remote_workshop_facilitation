@@ -15,6 +15,15 @@ export interface TranscriptEntry {
   simplified?: SimplifiedExplanation;
 }
 
+export interface GlossaryEntry {
+  id: string;
+  term: string;
+  pronunciation: string;
+  definition: string;
+  example: string;
+  translation: string;
+}
+
 export interface Blocker {
   id: string;
   summary: string;

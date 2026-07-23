@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { GlossaryText } from "@/components/GlossaryText";
 import { Button } from "@/components/ui/Button";
 import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
+import { mockGlossary } from "@/lib/mock-data";
 import { getSpeakerColor } from "@/lib/speaker-color";
 import type { TranscriptEntry } from "@/lib/types";
 
@@ -32,9 +34,9 @@ export function FacilitatorMessage({ entry }: { entry: TranscriptEntry }) {
           </span>
         )}
       </p>
-      <p className="text-xs italic text-muted-foreground" lang="und">
-        {original}
-      </p>
+      <div className="text-xs italic text-muted-foreground" lang="und">
+        <GlossaryText text={original} glossary={mockGlossary} />
+      </div>
       {entry.simplified && (
         <Button
           type="button"
