@@ -51,3 +51,24 @@ export async function translateText(
 
   return { text: translated, provider: "deepl", qualitySignal: "provider-confirmed" };
 }
+
+/**
+ * Server-only boundary matching `SpeechToTextProvider`/`InsightProvider`/
+ * `RoomProvider` in `src/lib/providers/`, kept here (rather than moved) so
+ * existing `translateText` call sites are unaffected.
+ */
+export interface TranslationProvider {
+  readonly isConfigured: boolean;
+  translate(
+    text: string,
+    sourceLanguage: SupportedLanguage,
+    targetLanguage: SupportedLanguage,
+  ): Promise<TranslationResult | null>;
+}
+
+export const translationProvider: TranslationProvider = {
+  get isConfigured() {
+    return Boolean(process.env.DEEPL_API_KEY);
+  },
+  translate: translateText,
+};

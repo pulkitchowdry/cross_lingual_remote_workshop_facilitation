@@ -47,13 +47,42 @@ The app uses Prisma with PostgreSQL for session/message storage (see `prisma/sch
    npx prisma generate
    ```
 
-4. Run the dev server:
+4. (Optional) Seed a demo session with a facilitator and a ready learner join link:
+
+   ```bash
+   npm run db:seed
+   ```
+
+5. Run the dev server:
 
    ```bash
    npm run dev
    ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the app. Edit `src/app/page.tsx` to get started — the page auto-updates as you edit.
+
+## Testing
+
+- `npm test` — unit tests (Vitest) for session-security tokens, environment
+  validation, and the insight citation guardrail.
+- `npm run test:e2e` — Playwright smoke test covering the facilitator
+  create-session flow and the opaque learner join link (starts its own dev
+  server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
+
+## Server-only provider interfaces
+
+`src/lib/providers/` and `src/lib/translation.ts` define typed boundaries so
+application code never depends on a vendor SDK directly:
+
+- `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room
+  credentials.
+- `TranslationProvider` (`translation.ts`) — DeepL-backed today.
+- `SpeechToTextProvider` (`speech-to-text.ts`) — mock until `STT_API_KEY` is
+  configured and a streaming adapter (e.g. Deepgram/Soniox) is wired in.
+- `InsightProvider` (`insight.ts`) — mock (returns no insights) until
+  `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any
+  insight that cites a transcript segment outside the batch it was derived
+  from, per `docs/PLAN.md`'s evidence-grounding requirement.
 
 ## Screenshots
 
@@ -92,6 +121,10 @@ Open [http://localhost:3000](http://localhost:3000) to view the app. Edit `src/a
 **Live caption ticker — learner view**
 
 ![Live caption ticker, learner view](docs/screenshots/live-caption-ticker-learner.png)
+
+**Facilitator learner invitation — QR code + opaque link**
+
+![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
 
 ## Project Structure
 
