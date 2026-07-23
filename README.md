@@ -6,6 +6,29 @@ Our demo scenario: a remote facilitator supporting a hands-on workshop run in a 
 
 See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement, our interpretation, target users, and success criteria, and [`docs/approaches.md`](docs/approaches.md) for market validation, the shared pipeline design, and the five candidate approaches under consideration.
 
+Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md) for a 5-minute
+script, shot list, and the architecture diagram below.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Live[Live session]
+        Mic["Facilitator / learner speech"] --> STT["Speech-to-text\n(Deepgram Nova-3, diarized)"]
+        STT --> MT["Translation\n(DeepL)"]
+    end
+
+    MT --> Captions["Live translated captions\n(learner view)"]
+    MT --> Transcript[("Growing transcript\nPostgres")]
+
+    Transcript --> AI["Understanding layer\n(Claude, prompt-cached over transcript)"]
+    AI --> Guard{{"validateInsightDraft\nreject ungrounded citations"}}
+    Guard --> Dashboard["Facilitator dashboard\ngoal / activity / decisions / blockers"]
+
+    Learner["Learner question"] --> MT
+    Dashboard --> Reply["Facilitator reply"] --> MT --> Captions
+```
+
 ## Tech Stack
 
 - **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
@@ -86,45 +109,49 @@ application code never depends on a vendor SDK directly:
 
 ## Screenshots
 
-**Facilitator dashboard** — goal, current activity, decisions, and blockers extracted from the live transcript, plus learner questions and a reply box that auto-translates.
-
-![Facilitator dashboard](docs/screenshots/dashboard.png)
-
-**Facilitator dashboard (light mode)**
-
-![Facilitator dashboard, light mode](docs/screenshots/dashboard-light.png)
-
-**Learner view** — facilitator messages translated into the learner's language, with the original preserved.
-
-![Learner view](docs/screenshots/learner.png)
-
-**Learner question box** — learners can ask questions in their own language; the facilitator sees a translation.
-
-![Learner question box](docs/screenshots/learner-question-box.png)
-
-**Dashboard with learner questions**
-
-![Dashboard with learner questions](docs/screenshots/dashboard-learner-questions.png)
+Ten highlights covering the full facilitator → learner → facilitator loop;
+the rest of `docs/screenshots/` (light mode, poll/raise-hand pairs, glossary
+before/after, etc.) is covered shot-by-shot in `docs/PITCH.md`.
 
 **Session setup**
 
 ![Setup](docs/screenshots/setup.png)
 
-**Session history**
+**Facilitator learner invitation — QR code + opaque link**
 
-![History](docs/screenshots/history.png)
+![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
+
+**Facilitator dashboard** — goal, current activity, decisions, and blockers extracted from the live transcript, plus learner questions and a reply box that auto-translates.
+
+![Facilitator dashboard](docs/screenshots/dashboard.png)
 
 **Live caption ticker — facilitator dashboard**
 
 ![Live caption ticker, dashboard](docs/screenshots/live-caption-ticker-dashboard.png)
 
-**Live caption ticker — learner view**
+**Learner view** — facilitator messages translated into the learner's language, with the original preserved.
 
-![Live caption ticker, learner view](docs/screenshots/live-caption-ticker-learner.png)
+![Learner view](docs/screenshots/learner.png)
 
-**Facilitator learner invitation — QR code + opaque link**
+**Dashboard with learner questions**
 
-![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
+![Dashboard with learner questions](docs/screenshots/dashboard-learner-questions.png)
+
+**Quiet-learner escalation** — the facilitator is nudged when a learner has gone quiet.
+
+![Dashboard quiet-learner escalation](docs/screenshots/dashboard-quiet-escalation.png)
+
+**Technical glossary protection** — code, commands, and named terms survive translation unchanged.
+
+![AI glossary, after protection](docs/screenshots/ai-glossary-after.png)
+
+**Polls** — quick comprehension checks, translated for every learner.
+
+![Dashboard poll](docs/screenshots/dashboard-poll.png)
+
+**Session history** — a grounded catch-up summary for a learner who joined late.
+
+![History](docs/screenshots/history.png)
 
 ## Project Structure
 
