@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card";
 import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
+import { LiveCaptionTicker } from "@/components/LiveCaptionTicker";
 import { ReplyBox } from "@/components/ReplyBox";
 import { TranscriptEntryView } from "@/components/TranscriptEntryView";
 import { getSpeakerColor } from "@/lib/speaker-color";
@@ -9,6 +10,7 @@ import {
   mockDecisions,
   mockGoal,
   mockLearnerQuestions,
+  mockLiveCaptionFeed,
   mockTranscript,
 } from "@/lib/mock-data";
 
@@ -38,6 +40,7 @@ function QuoteLine({ quoteId }: { quoteId: string }) {
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
+      <LiveCaptionTicker feed={mockLiveCaptionFeed} label="Live captions" />
       <h1 className="font-heading text-2xl font-semibold">Facilitator dashboard</h1>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card eyebrow="Goal">{mockGoal}</Card>
