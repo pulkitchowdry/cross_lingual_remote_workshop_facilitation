@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
 
 export function SetupForm() {
   const [goal, setGoal] = useState("");
@@ -17,7 +18,7 @@ export function SetupForm() {
       <label className="flex flex-col gap-2 text-sm font-medium">
         Workshop goal
         <textarea
-          className="rounded-lg border border-black/10 p-3 text-sm dark:border-white/10 dark:bg-black"
+          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           rows={4}
           required
           value={goal}
@@ -28,14 +29,9 @@ export function SetupForm() {
           placeholder="e.g. Implement a working REST endpoint for user signup, including input validation."
         />
       </label>
-      <button
-        type="submit"
-        className="w-fit rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-      >
-        Start session
-      </button>
+      <Button type="submit">Start session</Button>
       {submitted && (
-        <p className="text-sm text-emerald-700 dark:text-emerald-400">
+        <p className="text-sm" style={{ color: "var(--tick-high)" }}>
           Goal set. The facilitator dashboard will track progress against: &ldquo;{goal}&rdquo;
         </p>
       )}

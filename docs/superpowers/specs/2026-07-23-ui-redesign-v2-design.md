@@ -151,6 +151,24 @@ flowchart LR
   icon[icon.tsx / apple-icon.tsx] -.replaces.-> favicon[favicon.ico]
 ```
 
+## Addendum: dark mode by default + toggle
+
+Added mid-implementation per user request. The token tables above already defined both a light
+and dark palette; this addendum changes *which one is the default* and adds a manual switch:
+
+- `globals.css` base `:root` now holds the dark ("Interpreter Console") values directly, since
+  dark is the default theme. `:root[data-theme="light"]` overrides to the warm-paper values.
+  The `@media (prefers-color-scheme: dark)` query is removed — theme is now explicit, not
+  OS-driven, per the request.
+- `layout.tsx` runs a small inline script (first child of `<body>`, no new dependency) before
+  paint: it reads `localStorage.theme`, defaults to `"dark"` when unset, and sets
+  `data-theme` on `<html>`. `suppressHydrationWarning` is set on `<html>` since this
+  attribute is written by the script, not by SSR.
+- `ThemeToggle.tsx` (new) is a small button in `AppShell`'s header using
+  `useSyncExternalStore` (not `useEffect` + `setState`, which the project's
+  `react-hooks/set-state-in-effect` lint rule flags) to read/flip `data-theme` and persist
+  the choice to `localStorage`.
+
 ## Testing / verification
 
 - `npm run build` (TypeScript + lint gate via Next's build) after implementation.

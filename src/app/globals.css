@@ -1,22 +1,55 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f8fa;
-  --foreground: #16181d;
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.14);
-  --muted-foreground: #5b6472;
-  --accent: #3457d5;
-  --accent-foreground: #ffffff;
+  /* Interpreter Console — dark broadcast-console ink is the default theme;
+     [data-theme="light"] below overrides to the warm-paper variant. Theme is
+     set by an inline script in layout.tsx (before paint) + ThemeToggle. */
+  color-scheme: dark;
 
-  --confidence-high-bg: #e3f6ea;
-  --confidence-high-fg: #0f7a3d;
-  --confidence-medium-bg: #fdf1d6;
-  --confidence-medium-fg: #9a6400;
-  --confidence-low-bg: #fbe4e6;
-  --confidence-low-fg: #b31d2c;
+  --background: #0a0e16;
+  --foreground: #eef0f4;
+  --surface: #12161f;
+  --surface-raised: #161b26;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --muted-foreground: #9aa1af;
+  --accent: #ff7a3d;
+  --accent-foreground: #0a0e16;
+
+  /* Confidence ticks — coarse buckets, not fake-precise scores */
+  --tick-high: #3ddb9d;
+  --tick-medium: #e0b23d;
+  --tick-low: #f0596c;
+
+  /* Per-speaker identity (Facilitator uses --accent instead, to read as a distinct role).
+     Chosen to stay clearly outside the tick (green/gold/red) and accent (orange) hues. */
+  --speaker-1: #9b8ce8;
+  --speaker-2: #7fa8f2;
+  --speaker-3: #d97fc9;
+  --speaker-4: #8fb0cf;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #f7f5f1;
+  --foreground: #0b1220;
+  --surface: #ffffff;
+  --surface-raised: #fdfbf7;
+  --border-subtle: rgba(11, 18, 32, 0.08);
+  --border-strong: rgba(11, 18, 32, 0.16);
+  --muted-foreground: #5f6470;
+  --accent: #e8622c;
+  --accent-foreground: #0b1220;
+
+  --tick-high: #1f8a63;
+  --tick-medium: #b8860b;
+  --tick-low: #c0293c;
+
+  --speaker-1: #6d5acb;
+  --speaker-2: #3468c2;
+  --speaker-3: #a1428f;
+  --speaker-4: #57708a;
 }
 
 @theme inline {
@@ -29,33 +62,35 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0d12;
-    --foreground: #edeef2;
-    --surface: #14161c;
-    --surface-raised: #191c24;
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.16);
-    --muted-foreground: #97a0af;
-    --accent: #7f9bff;
-    --accent-foreground: #0b0d12;
-
-    --confidence-high-bg: rgba(16, 185, 100, 0.16);
-    --confidence-high-fg: #4ade95;
-    --confidence-medium-bg: rgba(245, 176, 47, 0.16);
-    --confidence-medium-fg: #f5c04a;
-    --confidence-low-bg: rgba(244, 63, 94, 0.16);
-    --confidence-low-fg: #fb7185;
-  }
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
+  --font-mono: var(--font-data);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
+}
+
+.font-heading {
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
+}
+
+.font-data {
+  font-family: var(--font-data), "Courier New", monospace;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 2s ease-in-out infinite;
 }

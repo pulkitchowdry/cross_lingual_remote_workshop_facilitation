@@ -1,6 +1,8 @@
-import { DashboardPanel } from "@/components/DashboardPanel";
+import { Card } from "@/components/ui/Card";
+import { ConfidenceTick } from "@/components/ui/ConfidenceTick";
 import { ReplyBox } from "@/components/ReplyBox";
 import { TranscriptEntryView } from "@/components/TranscriptEntryView";
+import { getSpeakerColor } from "@/lib/speaker-color";
 import {
   mockBlockers,
   mockCurrentActivity,
@@ -9,25 +11,26 @@ import {
   mockLearnerQuestions,
   mockTranscript,
 } from "@/lib/mock-data";
-import type { TranscriptEntry } from "@/lib/types";
-
-const confidenceStyles: Record<TranscriptEntry["confidence"], string> = {
-  high: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
-  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  low: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
-};
 
 function QuoteLine({ quoteId }: { quoteId: string }) {
   const entry = mockTranscript.find((t) => t.id === quoteId);
   if (!entry) return null;
+  const speakerColor = getSpeakerColor(entry.speaker);
+
   return (
-    <div className="mt-1 flex items-start gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-      <span
-        className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${confidenceStyles[entry.confidence]}`}
-      >
-        {entry.confidence} confidence
+    <div
+      className="mt-1.5 flex flex-col gap-1 rounded-md border border-border-subtle bg-background px-2.5 py-2"
+      style={{ borderLeft: `2px solid ${speakerColor}` }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-data text-xs font-medium" style={{ color: speakerColor }}>
+          {entry.speaker}
+        </span>
+        <ConfidenceTick confidence={entry.confidence} />
+      </div>
+      <span className="text-xs italic text-muted-foreground">
+        &ldquo;{entry.translation}&rdquo;
       </span>
-      <span className="italic">&ldquo;{entry.translation}&rdquo;</span>
     </div>
   );
 }
@@ -35,12 +38,12 @@ function QuoteLine({ quoteId }: { quoteId: string }) {
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Facilitator dashboard</h1>
+      <h1 className="font-heading text-2xl font-semibold">Facilitator dashboard</h1>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <DashboardPanel title="Goal">{mockGoal}</DashboardPanel>
-        <DashboardPanel title="Current activity">{mockCurrentActivity}</DashboardPanel>
-        <DashboardPanel title="Decisions">
-          <ul className="list-disc pl-5">
+        <Card eyebrow="Goal">{mockGoal}</Card>
+        <Card eyebrow="Current activity">{mockCurrentActivity}</Card>
+        <Card eyebrow="Decisions">
+          <ul className="flex flex-col gap-3">
             {mockDecisions.map((decision) => (
               <li key={decision.id}>
                 {decision.summary}
@@ -48,9 +51,9 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
-        </DashboardPanel>
-        <DashboardPanel title="Blockers">
-          <ul className="list-disc pl-5">
+        </Card>
+        <Card eyebrow="Blockers">
+          <ul className="flex flex-col gap-3">
             {mockBlockers.map((blocker) => (
               <li key={blocker.id}>
                 {blocker.summary}
@@ -58,11 +61,11 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
-        </DashboardPanel>
+        </Card>
       </div>
       {mockLearnerQuestions.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Learner questions</h2>
+          <h2 className="font-heading text-lg font-semibold">Learner questions</h2>
           <div className="flex flex-col gap-3">
             {mockLearnerQuestions.map((entry) => (
               <TranscriptEntryView key={entry.id} entry={entry} />
@@ -71,7 +74,7 @@ export default function DashboardPage() {
         </section>
       )}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Transcript</h2>
+        <h2 className="font-heading text-lg font-semibold">Transcript</h2>
         <div className="flex flex-col gap-3">
           {mockTranscript.map((entry) => (
             <TranscriptEntryView key={entry.id} entry={entry} />
