@@ -17,12 +17,41 @@ See [`docs/problem_statement.md`](docs/problem_statement.md) for the official ch
 
 ## Getting Started
 
-Install dependencies and run the dev server:
+The app uses Prisma with PostgreSQL for session/message storage (see `prisma/schema.prisma`).
 
-```bash
-npm install
-npm run dev
-```
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create a `.env.local` with a `DATABASE_URL` pointing at a PostgreSQL database, e.g. for a local Postgres instance:
+
+   ```bash
+   # create a database and role once:
+   psql -h localhost -U postgres -c "CREATE ROLE workshop LOGIN PASSWORD 'workshop';"
+   psql -h localhost -U postgres -c "CREATE DATABASE workshop_copilot OWNER workshop;"
+   ```
+
+   ```env
+   # .env.local
+   DATABASE_URL="postgresql://workshop:workshop@localhost:5432/workshop_copilot?schema=public"
+   ```
+
+   See `.env.example` for the full list of environment variables (LiveKit, DeepL, etc.).
+
+3. Apply migrations and generate the Prisma client:
+
+   ```bash
+   npx prisma migrate deploy
+   npx prisma generate
+   ```
+
+4. Run the dev server:
+
+   ```bash
+   npm run dev
+   ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the app. Edit `src/app/page.tsx` to get started — the page auto-updates as you edit.
 
