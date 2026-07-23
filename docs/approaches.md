@@ -97,6 +97,38 @@ quadrantChart
 
 ---
 
+## 3b. Scored against the official judging criteria
+
+This section was added after the organizers issued the official "Breaking Language Barriers" challenge text (see `problem_statement.md`). The table above used our own ad-hoc columns; here each approach is scored 1-5 directly against the three **official judging criteria** and checked against the **four official minimum requirements** (2+ languages, supports both learners and facilitators, realistic real-time demo, and response speed/accuracy/accessibility/privacy).
+
+| # | Idea | Impact | Prototype Quality | Innovation & Feasibility | Privacy/accessibility notes |
+|---|---|---|---|---|---|
+| 1 | Live Status Dashboard | 5 — directly targets "facilitators struggle to confirm understanding," the core pain point named in the challenge | 3 — hardest to keep reliable, but highest payoff if it works | 5 — the one combination nobody else ships, per our research | Quote-grounded claims aid accessibility (screen-readable evidence); no extra privacy exposure beyond STT/MT already required |
+| 2 | Stuck Alert | 4 — hits the single highest-value moment named in the challenge ("learners hesitate to speak / miss instructions") | 5 — small surface area, easy to keep reliable for a live demo | 3 — narrower slice of the gap than the full dashboard | Same privacy footprint as #1, smaller UI so easier to keep accessible |
+| 3 | Ask-Anything Chat | 3 — flexible, but doesn't proactively surface understanding gaps the way the challenge emphasizes | 4 — simple to build reliably | 2 — closest to existing "chat with your meeting" products, weakest on innovation | Neutral — same data as #1/#2, but request/response latency risks the "response speed" requirement |
+| 4 | Trustworthy Translation | 3 — improves accuracy/trust, one of the four required qualities, but doesn't itself close the "confirm understanding" gap | 4 — narrow, well-defined scope | 3 — solid but a smaller bet, best paired with another approach | Directly satisfies the official "accuracy" requirement; no privacy change |
+| 5 | Catch-Up Digest | 3 — helps latecomers, a secondary scenario vs. the challenge's live-discussion focus | 5 — lowest engineering risk | 2 — matches features Zoom/Google/Microsoft already ship | Lowest real-time load, easiest to keep responsive |
+
+**All five approaches satisfy the two structural minimum requirements** (2+ languages via DeepL; both learner and facilitator views) — the table above focuses on where they differ: Impact, Prototype Quality, Innovation & Feasibility, and the accuracy/accessibility/privacy qualities the challenge calls out.
+
+```mermaid
+flowchart LR
+  subgraph Criteria["Official judging criteria"]
+    direction TB
+    IMP[Impact]
+    QUA[Prototype Quality]
+    INN[Innovation & Feasibility]
+  end
+  A1["1: Live Status Dashboard"] -->|"5"| IMP
+  A1 -->|"3"| QUA
+  A1 -->|"5"| INN
+  A2["2: Stuck Alert"] -->|"4"| IMP
+  A2 -->|"5"| QUA
+  A2 -->|"3"| INN
+```
+
+---
+
 ## 4. The five ideas
 
 ### Approach 1 — Live Status Dashboard
@@ -205,6 +237,29 @@ flowchart TD
   end
   RowA --> RowB
 ```
+
+---
+
+## 5b. Decision confirmed: Approach 1
+
+**Approach 1 (Live Status Dashboard) is the direction that's been built.** It scores highest on both Impact and Innovation & Feasibility above, and is the only one of the five that directly closes the gap the official challenge names: *"Facilitators may also find it difficult to confirm whether participants have understood the discussion."* The frontend already implements its four building blocks — Goal, current Activity, Decisions, and Blockers — each grounded in a translated quote, matching the "response speed, accuracy, accessibility, and privacy" requirement from the official text.
+
+| Setup | Facilitator Dashboard |
+|---|---|
+| ![Setup screen](screenshots/setup.png) | ![Facilitator dashboard](screenshots/dashboard.png) |
+
+| Learner View | Session History |
+|---|---|
+| ![Learner view](screenshots/learner.png) | ![Session history](screenshots/history.png) |
+
+```mermaid
+flowchart TD
+  CHALLENGE["Official challenge:<br/>facilitators can't confirm understanding"] --> A1["Approach 1: Live Status Dashboard"]
+  A1 --> BUILT["Already scaffolded:<br/>Setup, Dashboard, Learner, History views"]
+  BUILT --> NEXT["Next: wire pages to live STT/MT/LLM data<br/>(tracked in issue #18)"]
+```
+
+Approach 4's "leave code/jargon untouched" translation guard remains a recommended add-on for the coding-workshop demo, layered on top of Approach 1 rather than built standalone.
 
 ---
 
