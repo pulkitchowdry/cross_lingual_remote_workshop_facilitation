@@ -34,6 +34,25 @@ export const mockTranscript: TranscriptEntry[] = [
   },
 ];
 
+export const mockFacilitatorReplies: TranscriptEntry[] = [
+  {
+    id: "f1",
+    speaker: "Facilitator",
+    original: "Try checking whether validateEmail() throws when given an empty string.",
+    translation: "试着检查一下 validateEmail() 在传入空字符串时是否会抛出异常。",
+    confidence: "high",
+    hasPreservedSpan: true,
+  },
+  {
+    id: "f2",
+    speaker: "Facilitator",
+    original: "Good catch — wrap that call in a try/catch and log the error to confirm.",
+    translation: "发现得好——把那个调用包在 try/catch 里，并记录错误日志来确认。",
+    confidence: "high",
+    hasPreservedSpan: false,
+  },
+];
+
 export const mockDecisions: Decision[] = [
   {
     id: "d1",

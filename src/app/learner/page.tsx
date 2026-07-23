@@ -1,4 +1,4 @@
-import { mockTranscript } from "@/lib/mock-data";
+import { mockFacilitatorReplies } from "@/lib/mock-data";
 
 export default function LearnerPage() {
   return (
@@ -10,7 +10,7 @@ export default function LearnerPage() {
         </p>
       </div>
       <div className="flex flex-col gap-3">
-        {mockTranscript.map((entry) => (
+        {mockFacilitatorReplies.map((entry) => (
           <div
             key={entry.id}
             className="flex flex-col gap-1 rounded-lg border border-black/10 p-3 dark:border-white/10"
