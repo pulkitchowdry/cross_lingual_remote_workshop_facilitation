@@ -109,78 +109,49 @@ application code never depends on a vendor SDK directly:
 
 ## Screenshots
 
-**Facilitator dashboard** — goal, current activity, decisions, and blockers extracted from the live transcript, plus learner questions and a reply box that auto-translates.
-
-![Facilitator dashboard](docs/screenshots/dashboard.png)
-
-**Facilitator dashboard (light mode)**
-
-![Facilitator dashboard, light mode](docs/screenshots/dashboard-light.png)
-
-**Learner view** — facilitator messages translated into the learner's language, with the original preserved.
-
-![Learner view](docs/screenshots/learner.png)
-
-**Learner question box** — learners can ask questions in their own language; the facilitator sees a translation.
-
-![Learner question box](docs/screenshots/learner-question-box.png)
-
-**Dashboard with learner questions**
-
-![Dashboard with learner questions](docs/screenshots/dashboard-learner-questions.png)
+Ten highlights covering the full facilitator → learner → facilitator loop;
+the rest of `docs/screenshots/` (light mode, poll/raise-hand pairs, glossary
+before/after, etc.) is covered shot-by-shot in `docs/PITCH.md`.
 
 **Session setup**
 
 ![Setup](docs/screenshots/setup.png)
 
-**Session history**
+**Facilitator learner invitation — QR code + opaque link**
 
-![History](docs/screenshots/history.png)
+![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
+
+**Facilitator dashboard** — goal, current activity, decisions, and blockers extracted from the live transcript, plus learner questions and a reply box that auto-translates.
+
+![Facilitator dashboard](docs/screenshots/dashboard.png)
 
 **Live caption ticker — facilitator dashboard**
 
 ![Live caption ticker, dashboard](docs/screenshots/live-caption-ticker-dashboard.png)
 
-**Live caption ticker — learner view**
+**Learner view** — facilitator messages translated into the learner's language, with the original preserved.
 
-![Live caption ticker, learner view](docs/screenshots/live-caption-ticker-learner.png)
+![Learner view](docs/screenshots/learner.png)
 
-**Facilitator learner invitation — QR code + opaque link**
+**Dashboard with learner questions**
 
-![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
+![Dashboard with learner questions](docs/screenshots/dashboard-learner-questions.png)
 
-**Facilitator live session view**
-
-![Facilitator live session view](docs/screenshots/phase0-facilitator-live.png)
-
-**Quiet-learner escalation** — the facilitator is nudged when a learner has gone quiet, and the learner sees a gentle check-in.
+**Quiet-learner escalation** — the facilitator is nudged when a learner has gone quiet.
 
 ![Dashboard quiet-learner escalation](docs/screenshots/dashboard-quiet-escalation.png)
-![Learner quiet nudge](docs/screenshots/learner-quiet-nudge.png)
 
-**Participation snapshot** — who's spoken, who hasn't, at a glance.
+**Technical glossary protection** — code, commands, and named terms survive translation unchanged.
 
-![Dashboard participation snapshot](docs/screenshots/dashboard-participation.png)
+![AI glossary, after protection](docs/screenshots/ai-glossary-after.png)
 
 **Polls** — quick comprehension checks, translated for every learner.
 
 ![Dashboard poll](docs/screenshots/dashboard-poll.png)
-![Learner poll](docs/screenshots/learner-poll.png)
 
-**Raise-hand suggestion** — the system suggests when a learner should raise a question.
+**Session history** — a grounded catch-up summary for a learner who joined late.
 
-![Raise-hand suggestion](docs/screenshots/raise-hand-suggestion.png)
-![Raise-hand suggestion sent](docs/screenshots/raise-hand-suggestion-sent.png)
-
-**Technical glossary protection** — code, commands, and named terms survive translation unchanged.
-
-![AI glossary, before protection](docs/screenshots/ai-glossary-before.png)
-![AI glossary, after protection](docs/screenshots/ai-glossary-after.png)
-
-**Explanation simplification** — a facilitator explanation, simplified for a learner who's struggling.
-
-![Simplify explanation, before](docs/screenshots/simplify-explanation-before.png)
-![Simplify explanation, after](docs/screenshots/simplify-explanation-after.png)
+![History](docs/screenshots/history.png)
 
 ## Project Structure
 
