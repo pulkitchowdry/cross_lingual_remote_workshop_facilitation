@@ -6,7 +6,7 @@ import { roomProvider } from "@/lib/providers/room";
 import { generateSessionInsights } from "@/lib/insights";
 import { insightProvider } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 
 /**
  * Translates `originalText` into every learner language, persists it as a
@@ -21,8 +21,7 @@ export async function publishTranslatedCaption(
 ) {
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations = await Promise.all(
-    session.learnerLanguages.map(async (targetLanguage) => {
-      const target = targetLanguage as SupportedLanguage;
+    SUPPORTED_LANGUAGES.map(async ({ value: target }) => {
       const result = await translateText(input.originalText, input.language, target, { allowCloudFallback });
       return result
         ? {

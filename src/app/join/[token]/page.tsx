@@ -38,16 +38,10 @@ export default async function JoinPage({
     notFound();
   }
 
-  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
-    invite.session.learnerLanguages.includes(language.value),
-  );
-  // The facilitator's own language is only a meaningful default when it's
-  // actually one of the enabled learner languages — otherwise fall back to
-  // the first enabled option explicitly, rather than relying on the browser
-  // to silently pick something when defaultValue matches no <option>.
-  const defaultLanguage = learnerLanguageOptions.some((language) => language.value === invite.session.sourceLanguage)
-    ? invite.session.sourceLanguage
-    : learnerLanguageOptions[0]?.value;
+  // Learners pick freely from every supported language — the session no
+  // longer restricts this to a facilitator-curated subset.
+  const learnerLanguageOptions = SUPPORTED_LANGUAGES;
+  const defaultLanguage = invite.session.sourceLanguage;
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">

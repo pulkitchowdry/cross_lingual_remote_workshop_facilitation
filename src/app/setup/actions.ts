@@ -41,14 +41,6 @@ export async function createSession(formData: FormData) {
     throw new Error("Choose a retention period between 1 and 30 days.");
   }
 
-  const learnerLanguages = formData
-    .getAll("learnerLanguages")
-    .filter((value): value is string => typeof value === "string" && languageValues.has(value));
-
-  if (learnerLanguages.length === 0) {
-    throw new Error("Choose at least one learner language.");
-  }
-
   const strictPrivacy = formData.get("strictPrivacy") === "on";
   const translationMode = strictPrivacy ? TranslationMode.LOCAL_ONLY : TranslationMode.AUTO;
 
@@ -70,7 +62,10 @@ export async function createSession(formData: FormData) {
         title,
         goal,
         sourceLanguage,
-        learnerLanguages: [...new Set(learnerLanguages)],
+        // Learners choose freely from every supported language at join time
+        // (see join/[token]/page.tsx) — this isn't a facilitator-curated
+        // subset, so it's just the full supported set.
+        learnerLanguages: SUPPORTED_LANGUAGES.map((language) => language.value),
         retentionDays,
         translationMode,
         facilitatorId: facilitator.id,

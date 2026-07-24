@@ -54,18 +54,6 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
           ))}
         </select>
       </label>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{dict.setup.learnerLanguages}</legend>
-        <p className="text-sm text-muted-foreground">{dict.setup.learnerLanguagesHint}</p>
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {SUPPORTED_LANGUAGES.map((language) => (
-            <label key={language.value} className="flex items-center gap-2 text-sm">
-              <input name="learnerLanguages" type="checkbox" value={language.value} defaultChecked />
-              {languageNames[language.value]}
-            </label>
-          ))}
-        </div>
-      </fieldset>
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.retention}
         <select
