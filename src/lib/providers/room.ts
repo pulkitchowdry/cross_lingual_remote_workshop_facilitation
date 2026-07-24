@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, DataPacket_Kind, RoomServiceClient } from "livekit-server-sdk";
 
 export type RoomRole = "facilitator" | "learner";
 
@@ -22,6 +22,13 @@ export interface RoomCredential {
 export interface RoomProvider {
   readonly isConfigured: boolean;
   issueCredential(request: RoomCredentialRequest): Promise<RoomCredential>;
+  /**
+   * Pushes a "captions changed" signal to every participant in the session's
+   * room over a LiveKit DataChannel, so clients can react immediately instead
+   * of waiting for the next poll. The payload is a lightweight signal, not the
+   * caption itself — clients still refetch from the server on receipt.
+   */
+  notifyCaptionsChanged(sessionId: string): Promise<void>;
 }
 
 class LiveKitRoomProvider implements RoomProvider {
@@ -52,6 +59,23 @@ class LiveKitRoomProvider implements RoomProvider {
     });
 
     return { serverUrl, token: await token.toJwt() };
+  }
+
+  async notifyCaptionsChanged(sessionId: string): Promise<void> {
+    if (!this.isConfigured) return;
+    const serverUrl = process.env.LIVEKIT_URL!;
+    const apiKey = process.env.LIVEKIT_API_KEY!;
+    const apiSecret = process.env.LIVEKIT_API_SECRET!;
+    const client = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+    const payload = new TextEncoder().encode(JSON.stringify({ type: "captions-changed" }));
+    try {
+      await client.sendData(`workshop-${sessionId}`, payload, DataPacket_Kind.RELIABLE, { topic: "captions" });
+    } catch {
+      // Best-effort: DataChannel push is a latency optimization, not a
+      // correctness requirement — polling (SessionAutoRefresh) still delivers
+      // captions if the room has no active LiveKit participants yet or the
+      // push itself fails.
+    }
   }
 }
 

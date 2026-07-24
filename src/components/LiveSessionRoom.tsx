@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ControlBar,
   GridLayout,
@@ -8,10 +9,23 @@ import {
   ParticipantTile,
   RoomAudioRenderer,
   TrackLoop,
+  useDataChannel,
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
+
+/**
+ * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
+ * arrives, so captions land near-instantly instead of waiting for the next
+ * `SessionAutoRefresh` poll. Must render inside `<LiveKitRoom>` to reach room
+ * context; renders nothing itself.
+ */
+function CaptionChannelRefresher() {
+  const router = useRouter();
+  useDataChannel("captions", () => router.refresh());
+  return null;
+}
 
 type Role = "facilitator" | "learner";
 
@@ -84,6 +98,7 @@ export function LiveSessionRoom({ sessionId, role }: { sessionId: string; role: 
       >
         <WorkshopVideoStage />
         <RoomAudioRenderer />
+        <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>
   );
