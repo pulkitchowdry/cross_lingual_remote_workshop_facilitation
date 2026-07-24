@@ -4,7 +4,7 @@ A prototype built for the **"Breaking Language Barriers"** hackathon challenge: 
 
 Our demo scenario: a remote facilitator supporting a hands-on workshop run in a language they don't speak.
 
-See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement and [`docs/approaches.md`](docs/approaches.md) for the design rationale. Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md). For the detailed, privacy-first translation pipeline design (speech translation, captions, TTS, chat/Q&A, provider comparisons), see [`docs/TRANSLATION_ARCHITECTURE.md`](docs/TRANSLATION_ARCHITECTURE.md).
+See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement and [`docs/approaches.md`](docs/approaches.md) for the design rationale. Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md). For the detailed, privacy-first translation pipeline design (speech translation, captions, TTS, chat/Q&A, provider comparisons), see [`docs/TRANSLATION_ARCHITECTURE.md`](docs/TRANSLATION_ARCHITECTURE.md). For the facilitator-auth-provider and PostgreSQL-hosting decision, see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md).
 
 ## Architecture
 
@@ -32,7 +32,8 @@ flowchart LR
 - **Speech-to-text:** Deepgram Nova-3 (multi-speaker diarization)
 - **Translation & understanding:** Claude API (prompt-cached over the growing transcript)
 - **Real-time transport:** LiveKit + WebSockets
-- **Database:** PostgreSQL via Prisma
+- **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
+- **Facilitator authentication:** Clerk (learner join links stay on the existing cookie/token flow)
 - **Hosting:** Vercel
 
 ## Getting Started
