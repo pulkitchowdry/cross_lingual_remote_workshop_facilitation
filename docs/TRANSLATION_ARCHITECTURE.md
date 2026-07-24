@@ -130,11 +130,25 @@ server action, which transcribes, translates per learner language, and persists
 a `TranscriptSegment` — the same pipeline `publishCaption` already used for typed
 captions. This satisfies `transcribeChunk`'s "already-recorded chunk" contract
 using Deepgram's prerecorded `/listen` endpoint rather than its websocket
-streaming API, and delivery to viewers still goes through the existing
-`revalidatePath`-driven page refresh, **not** LiveKit DataChannels yet — the
-DataChannel transport and true low-latency streaming STT described below remain
-follow-up work, along with server-side track subscription (Part 1) so captions
-work without the facilitator's own mic UI.
+streaming API.
+
+Delivery is now DataChannel-signaled: `RoomProvider.notifyCaptionsChanged`
+sends a lightweight "captions changed" message over a LiveKit DataChannel
+(topic `captions`) to every room participant after a segment is persisted; a
+`CaptionChannelRefresher` mounted inside `<LiveKitRoom>` triggers an immediate
+`router.refresh()` on receipt. The DataChannel only carries a signal, not the
+caption payload itself, so clients always re-fetch the authoritative
+translated text from the server rather than trusting an unauthenticated data
+message. `SessionAutoRefresh`'s 2s poll remains as a fallback for viewers who
+haven't joined the LiveKit room yet (or if the push itself fails).
+
+True low-latency **streaming** STT (Deepgram's websocket API instead of
+per-chunk REST) and **server-side track subscription** — so captions work
+without the facilitator's own mic UI — remain follow-up work. Server-side
+track subscription specifically requires a persistent LiveKit Agents worker
+process, which doesn't fit this app's serverless (Vercel Functions) deployment
+target without adding a separate always-on service; that tradeoff needs an
+explicit decision before building it.
 
 **Streaming STT choice:** Deepgram Nova-3 for the managed default (already named
 in `README.md`'s tech stack — diarization support matters for speaker
@@ -146,7 +160,7 @@ deployment" privacy requirement without a second interface.
 
 | Question | Decision |
 | --- | --- |
-| DataChannels or something else? | LiveKit reliable DataChannel messages, keyed by `segmentId` so late-joiners can request replay of the last N final segments |
+| DataChannels or something else? | LiveKit reliable DataChannel messages. **Shipped:** a signal-only message (topic `captions`) that triggers a refetch — simple and never drifts from the DB, but re-fetches the whole transcript per event. **Designed, not yet built:** carry the segment payload itself, keyed by `segmentId`, so late-joiners can request replay of the last N final segments without a full refetch |
 | Central or distributed generation? | Centralized — one server-side consumer per active speaker; distributing STT to each client would leak provider API keys to the browser |
 | Sync with video? | Final segments carry `startedAt`/`endedAt` from the STT provider; client renders captions against local playback clock, no server-side muxing needed since LiveKit already keeps audio/video in sync per track |
 

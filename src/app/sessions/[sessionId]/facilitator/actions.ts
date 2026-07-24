@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { translateText } from "@/lib/providers/translation";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { roomProvider } from "@/lib/providers/room";
 import type { Session } from "@/generated/prisma/client";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -194,6 +195,7 @@ export async function publishCaption(sessionId: string, formData: FormData) {
 
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
+  await roomProvider.notifyCaptionsChanged(sessionId);
 }
 
 /**
@@ -242,4 +244,5 @@ export async function transcribeAndPublishCaption(sessionId: string, formData: F
 
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
+  await roomProvider.notifyCaptionsChanged(sessionId);
 }
