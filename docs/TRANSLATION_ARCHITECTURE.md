@@ -149,10 +149,29 @@ message. `SessionAutoRefresh`'s 2s poll remains as a fallback for viewers who
 haven't joined the LiveKit room yet (or if the push itself fails).
 
 **Server-side track subscription** — so captions work without the
-facilitator's own mic UI — remains follow-up work. It requires a persistent
-LiveKit Agents worker process, which doesn't fit this app's serverless
-(Vercel Functions) deployment target without adding a separate always-on
-service; that tradeoff needs an explicit decision before building it.
+facilitator's own mic UI — is now scaffolded in `agent/`, a standalone
+[LiveKit Agents](https://docs.livekit.io/agents/) worker. It's deliberately a
+separate package (own `package.json`, not a dependency of the Next.js app):
+it needs a persistent, long-running process, which doesn't fit Vercel
+Functions, and `@livekit/agents` is an 18MB+ dependency tree with native/
+ffmpeg bits that shouldn't bloat the app's install/deploy. The worker
+subscribes to the `facilitator:*` participant's audio track, streams it
+through the same `SpeechToTextProvider.openStream` boundary the browser mic
+path uses, and publishes final transcripts to a new authenticated endpoint,
+`/api/captions/agent` (shared-secret protected via `CAPTION_AGENT_SECRET`),
+rather than importing `@/lib/db`/`@/lib/captions` directly — an earlier draft
+tried the direct import and it broke: the generated Prisma client's
+`export * from "./enums"` doesn't propagate through `tsx`/esbuild's module
+resolution the way it does through Next's bundler, so `SessionStatus` came
+back `undefined` outside of Next. See `agent/README.md` for env vars and the
+full rationale.
+
+**Where this stands is a deploy decision, not a build one.** The worker code
+exists and passes local import/typecheck verification, but running a full
+session through it end-to-end needs LiveKit Cloud + Deepgram credentials this
+environment doesn't have, and the repo still hasn't picked a host for a
+persistent process (a small VM, Fly.io, Railway, etc.) — that choice is
+explicitly deferred to whoever deploys this.
 
 **Streaming STT choice:** Deepgram Nova-3 for the managed default (already named
 in `README.md`'s tech stack — diarization support matters for speaker

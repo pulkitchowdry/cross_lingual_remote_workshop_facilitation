@@ -23,6 +23,15 @@ describe("validateEnv", () => {
     const result = validateEnv({ DATABASE_URL: "postgresql://localhost/db", CLAUDE_API_KEY: "key" });
     expect(result.configuredOptional).toContain("CLAUDE_API_KEY");
   });
+
+  it("lists CAPTION_AGENT_SECRET as optional, configured only when set", () => {
+    expect(validateEnv({ DATABASE_URL: "postgresql://localhost/db" }).configuredOptional).not.toContain(
+      "CAPTION_AGENT_SECRET",
+    );
+    expect(
+      validateEnv({ DATABASE_URL: "postgresql://localhost/db", CAPTION_AGENT_SECRET: "s" }).configuredOptional,
+    ).toContain("CAPTION_AGENT_SECRET");
+  });
 });
 
 describe("assertRequiredEnv", () => {

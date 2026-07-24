@@ -20,6 +20,11 @@ const ENV_SPEC: EnvSpec[] = [
   { key: "CLAUDE_API_URL", required: false, description: "Claude API base URL" },
   { key: "STT_API_KEY", required: false, description: "Speech-to-text provider key" },
   { key: "INSIGHT_MODEL_API_KEY", required: false, description: "Structured-insight LLM provider key" },
+  {
+    key: "CAPTION_AGENT_SECRET",
+    required: false,
+    description: "Shared secret authorizing the standalone agent/ worker's /api/captions/agent calls",
+  },
 ];
 
 export interface EnvValidationResult {
