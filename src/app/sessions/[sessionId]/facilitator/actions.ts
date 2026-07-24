@@ -5,48 +5,8 @@ import { redirect } from "next/navigation";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
-import { translateText } from "@/lib/providers/translation";
-import { speechToTextProvider } from "@/lib/providers/speech-to-text";
-import { roomProvider } from "@/lib/providers/room";
-import type { Session } from "@/generated/prisma/client";
+import { publishTranslatedCaption } from "@/lib/captions";
 import type { SupportedLanguage } from "@/lib/session-contracts";
-
-/** Translates `originalText` into every learner language and persists it as a transcript segment. */
-async function persistTranslatedSegment(
-  session: Session,
-  input: { speakerId: string | null; originalText: string; language: SupportedLanguage; startedAt: Date; endedAt: Date },
-) {
-  const translations = await Promise.all(
-    session.learnerLanguages.map(async (targetLanguage) => {
-      const target = targetLanguage as SupportedLanguage;
-      const result = await translateText(input.originalText, input.language, target);
-      return result
-        ? {
-            targetLanguage: target,
-            text: result.text,
-            provider: result.provider,
-            qualitySignal: result.qualitySignal,
-          }
-        : null;
-    }),
-  );
-
-  await prisma.transcriptSegment.create({
-    data: {
-      sessionId: session.id,
-      speakerId: input.speakerId,
-      originalText: input.originalText,
-      language: input.language,
-      startedAt: input.startedAt,
-      endedAt: input.endedAt,
-      translations: {
-        create: translations.filter(
-          (translation): translation is NonNullable<typeof translation> => translation !== null,
-        ),
-      },
-    },
-  });
-}
 
 export async function startSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
@@ -185,64 +145,11 @@ export async function publishCaption(sessionId: string, formData: FormData) {
   }
 
   const now = new Date();
-  await persistTranslatedSegment(session, {
+  await publishTranslatedCaption(session, {
     speakerId: "Facilitator",
     originalText: captionText.trim(),
     language: session.sourceLanguage as SupportedLanguage,
     startedAt: now,
     endedAt: now,
   });
-
-  revalidatePath(`/sessions/${sessionId}/facilitator`);
-  revalidatePath(`/sessions/${sessionId}/learn`);
-  await roomProvider.notifyCaptionsChanged(sessionId);
-}
-
-/**
- * Transcribes a recorded audio chunk via `speechToTextProvider` and publishes
- * it the same way `publishCaption` publishes typed text — Part 2 of
- * `docs/TRANSLATION_ARCHITECTURE.md`. No-ops (rather than throwing) when the
- * transcript comes back empty, since silence/noise chunks are expected in a
- * chunked-capture flow.
- */
-export async function transcribeAndPublishCaption(sessionId: string, formData: FormData) {
-  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
-
-  if (!speechToTextProvider.isConfigured) {
-    throw new Error("Speech-to-text is not configured: set STT_API_KEY.");
-  }
-
-  const audio = formData.get("audio");
-  if (!(audio instanceof Blob) || audio.size === 0) {
-    throw new Error("An audio chunk is required.");
-  }
-
-  const session = await prisma.session.findUnique({ where: { id: sessionId } });
-  if (!session || session.status !== SessionStatus.LIVE) {
-    throw new Error("Start the session before publishing captions.");
-  }
-
-  const sourceLanguage = session.sourceLanguage as SupportedLanguage;
-  const segment = await speechToTextProvider.transcribeChunk({
-    audio: new Uint8Array(await audio.arrayBuffer()),
-    mimeType: audio.type || "audio/webm",
-    expectedLanguage: sourceLanguage,
-    speakerId: "Facilitator",
-  });
-
-  if (!segment.originalText) {
-    return;
-  }
-
-  await persistTranslatedSegment(session, {
-    speakerId: segment.speakerId,
-    originalText: segment.originalText,
-    language: segment.language,
-    startedAt: segment.startedAt,
-    endedAt: segment.endedAt,
-  });
-
-  revalidatePath(`/sessions/${sessionId}/facilitator`);
-  revalidatePath(`/sessions/${sessionId}/learn`);
-  await roomProvider.notifyCaptionsChanged(sessionId);
 }

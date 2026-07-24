@@ -122,19 +122,25 @@ GPU/API load proportional to active speakers, not room size.
 
 ## Part 2 — Live captions (STT integration)
 
-**Shipped so far:** `SpeechToTextProvider` now has a real Deepgram Nova-3 adapter
-(`DeepgramSpeechToTextProvider` in `speech-to-text.ts`), and the facilitator page
-has a `LiveCaptionMic` control that records mic audio in ~5s chunks
-(`MediaRecorder`) and posts each chunk to a new `transcribeAndPublishCaption`
-server action, which transcribes, translates per learner language, and persists
-a `TranscriptSegment` — the same pipeline `publishCaption` already used for typed
-captions. This satisfies `transcribeChunk`'s "already-recorded chunk" contract
-using Deepgram's prerecorded `/listen` endpoint rather than its websocket
-streaming API.
+**Shipped so far:** `SpeechToTextProvider` has a real Deepgram Nova-3 adapter
+(`DeepgramSpeechToTextProvider` in `speech-to-text.ts`) with two capabilities:
+`transcribeChunk` (one-shot, prerecorded `/listen` REST — used for a full
+pre-recorded clip) and `openStream` (Deepgram's live websocket API, used by
+the facilitator's live-caption control). The facilitator page's
+`LiveCaptionStream` component streams mic audio in ~250ms `MediaRecorder`
+frames over a WebSocket to `/api/captions/stream` (built with
+`experimental_upgradeWebSocket` from `@vercel/functions`, so it runs on
+Vercel Functions/Fluid Compute with no separate WebSocket server). The route
+authenticates the facilitator on the plain HTTP `GET` before upgrading, opens
+a Deepgram streaming session per connection, and on every **final** segment
+calls `publishTranslatedCaption` (`src/lib/captions.ts`) — the same helper
+`publishCaption` uses for typed captions — which translates per learner
+language, persists a `TranscriptSegment`, and pushes the DataChannel signal
+below.
 
-Delivery is now DataChannel-signaled: `RoomProvider.notifyCaptionsChanged`
-sends a lightweight "captions changed" message over a LiveKit DataChannel
-(topic `captions`) to every room participant after a segment is persisted; a
+Delivery is DataChannel-signaled: `RoomProvider.notifyCaptionsChanged` sends a
+lightweight "captions changed" message over a LiveKit DataChannel (topic
+`captions`) to every room participant after a segment is persisted; a
 `CaptionChannelRefresher` mounted inside `<LiveKitRoom>` triggers an immediate
 `router.refresh()` on receipt. The DataChannel only carries a signal, not the
 caption payload itself, so clients always re-fetch the authoritative
@@ -142,13 +148,11 @@ translated text from the server rather than trusting an unauthenticated data
 message. `SessionAutoRefresh`'s 2s poll remains as a fallback for viewers who
 haven't joined the LiveKit room yet (or if the push itself fails).
 
-True low-latency **streaming** STT (Deepgram's websocket API instead of
-per-chunk REST) and **server-side track subscription** — so captions work
-without the facilitator's own mic UI — remain follow-up work. Server-side
-track subscription specifically requires a persistent LiveKit Agents worker
-process, which doesn't fit this app's serverless (Vercel Functions) deployment
-target without adding a separate always-on service; that tradeoff needs an
-explicit decision before building it.
+**Server-side track subscription** — so captions work without the
+facilitator's own mic UI — remains follow-up work. It requires a persistent
+LiveKit Agents worker process, which doesn't fit this app's serverless
+(Vercel Functions) deployment target without adding a separate always-on
+service; that tradeoff needs an explicit decision before building it.
 
 **Streaming STT choice:** Deepgram Nova-3 for the managed default (already named
 in `README.md`'s tech stack — diarization support matters for speaker

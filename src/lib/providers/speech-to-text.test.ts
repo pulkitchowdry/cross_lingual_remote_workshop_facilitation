@@ -1,6 +1,43 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseDeepgramStreamingMessage } from "./speech-to-text";
 
 const ORIGINAL_STT_API_KEY = process.env.STT_API_KEY;
+
+describe("parseDeepgramStreamingMessage", () => {
+  it("extracts final transcripts from a Results message", () => {
+    const raw = JSON.stringify({
+      type: "Results",
+      is_final: true,
+      channel: { alternatives: [{ transcript: "we tried adding an early return" }] },
+    });
+    expect(parseDeepgramStreamingMessage(raw)).toEqual({
+      text: "we tried adding an early return",
+      isFinal: true,
+    });
+  });
+
+  it("extracts interim transcripts as non-final", () => {
+    const raw = JSON.stringify({
+      type: "Results",
+      is_final: false,
+      channel: { alternatives: [{ transcript: "we tried" }] },
+    });
+    expect(parseDeepgramStreamingMessage(raw)).toEqual({ text: "we tried", isFinal: false });
+  });
+
+  it("ignores non-Results message types", () => {
+    expect(parseDeepgramStreamingMessage(JSON.stringify({ type: "Metadata" }))).toBeNull();
+  });
+
+  it("ignores Results messages with an empty transcript", () => {
+    const raw = JSON.stringify({ type: "Results", is_final: true, channel: { alternatives: [{ transcript: "" }] } });
+    expect(parseDeepgramStreamingMessage(raw)).toBeNull();
+  });
+
+  it("returns null for malformed JSON", () => {
+    expect(parseDeepgramStreamingMessage("not json")).toBeNull();
+  });
+});
 
 describe("speechToTextProvider", () => {
   afterEach(() => {
@@ -15,6 +52,7 @@ describe("speechToTextProvider", () => {
     const { speechToTextProvider } = await import("./speech-to-text");
 
     expect(speechToTextProvider.isConfigured).toBe(false);
+    expect(speechToTextProvider.openStream).toBeUndefined();
     const draft = await speechToTextProvider.transcribeChunk({
       audio: new Uint8Array(),
       mimeType: "audio/webm",
@@ -22,6 +60,21 @@ describe("speechToTextProvider", () => {
       speakerId: "Facilitator",
     });
     expect(draft.originalText).toContain("mock transcription");
+  });
+
+  it("exposes openStream and throws when STT_API_KEY is missing at call time", async () => {
+    process.env.STT_API_KEY = "test-key";
+    const { speechToTextProvider } = await import("./speech-to-text");
+    expect(speechToTextProvider.openStream).toBeInstanceOf(Function);
+
+    delete process.env.STT_API_KEY;
+    expect(() =>
+      speechToTextProvider.openStream!({
+        expectedLanguage: "en",
+        onSegment: () => {},
+        onError: () => {},
+      }),
+    ).toThrow(/Deepgram is not configured/);
   });
 
   it("selects the Deepgram provider and parses its transcript when STT_API_KEY is set", async () => {
