@@ -1,5 +1,7 @@
 import { WebSocket } from "ws";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { isLocalInferenceConfigured, localTranscribe } from "@/lib/providers/local-inference-client";
+import { LocalBufferingSpeechToTextStream } from "@/lib/providers/local-speech-buffer";
 
 export interface TranscriptSegmentDraft {
   speakerId: string | null;
@@ -21,10 +23,35 @@ export interface SpeechToTextStream {
   close(): void;
 }
 
+interface TranscribeChunkInput {
+  audio: Uint8Array;
+  mimeType: string;
+  expectedLanguage: SupportedLanguage;
+  speakerId: string | null;
+  /** Disables the cloud fallback tier for this call — a session's strict-privacy mode. Defaults to true. */
+  allowCloudFallback?: boolean;
+}
+
+interface OpenStreamInput {
+  expectedLanguage: SupportedLanguage;
+  onSegment: (event: StreamingTranscriptEvent) => void;
+  onError: (error: Error) => void;
+  /**
+   * Explicit PCM framing for callers that send raw, uncontainerized audio
+   * (e.g. the LiveKit Agents worker, which resamples track audio to a known
+   * rate/channel count). Omit for containerized audio (e.g. a browser's
+   * WebM/Opus `MediaRecorder` chunks), which Deepgram auto-detects and the
+   * local tier's buffering class ships as-is.
+   */
+  encoding?: { format: "linear16"; sampleRate: number; channels: number };
+  /** Disables the cloud fallback tier for this call — a session's strict-privacy mode. Defaults to true. */
+  allowCloudFallback?: boolean;
+}
+
 /**
  * Server-only boundary for streaming speech-to-text. Call sites must depend
  * on `SpeechToTextProvider`, never on a vendor SDK directly, so the STT
- * vendor can change without touching call sites.
+ * vendor/tier can change without touching call sites.
  */
 export interface SpeechToTextProvider {
   readonly isConfigured: boolean;
@@ -32,57 +59,46 @@ export interface SpeechToTextProvider {
    * Transcribes a single already-recorded audio chunk into a final segment.
    * Used for one-shot chunk transcription (e.g. a full pre-recorded clip).
    */
-  transcribeChunk(input: {
-    audio: Uint8Array;
-    mimeType: string;
-    expectedLanguage: SupportedLanguage;
-    speakerId: string | null;
-  }): Promise<TranscriptSegmentDraft>;
+  transcribeChunk(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft>;
   /**
    * Opens a live streaming transcription session for real-time interim/final
-   * transcripts, matching the doc's "true low-latency streaming STT" design.
-   * Optional — only implemented by providers with a real streaming API; the
-   * mock provider omits it.
+   * transcripts. Only present when at least one streaming-capable tier
+   * (local-inference or Deepgram) is configured — omitted entirely otherwise,
+   * matching the pre-tiering mock provider's contract, so callers can use
+   * `speechToTextProvider.openStream` presence to gate streaming UI/routes.
    */
-  openStream?(input: {
-    expectedLanguage: SupportedLanguage;
-    onSegment: (event: StreamingTranscriptEvent) => void;
-    onError: (error: Error) => void;
-    /**
-     * Explicit PCM framing for callers that send raw, uncontainerized audio
-     * (e.g. the LiveKit Agents worker, which resamples track audio to a known
-     * rate/channel count). Omit for containerized audio (e.g. a browser's
-     * WebM/Opus `MediaRecorder` chunks), which Deepgram auto-detects.
-     */
-    encoding?: { format: "linear16"; sampleRate: number; channels: number };
-  }): SpeechToTextStream;
+  openStream?(input: OpenStreamInput): SpeechToTextStream;
 }
 
 /**
- * Deterministic stand-in used until `STT_API_KEY` is configured, so the rest
+ * Deterministic stand-in used until any STT tier is configured, so the rest
  * of the transcript/translation pipeline can be developed and tested without
- * a live provider. Never used when `isConfigured` is false in a code path
- * that requires real transcription.
+ * a live provider.
  */
-class MockSpeechToTextProvider implements SpeechToTextProvider {
-  readonly isConfigured = false;
+async function mockTranscribeChunk(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft> {
+  const now = new Date();
+  return {
+    speakerId: input.speakerId,
+    originalText: "[mock transcription — configure LOCAL_INFERENCE_URL or STT_API_KEY for live speech-to-text]",
+    language: input.expectedLanguage,
+    startedAt: now,
+    endedAt: now,
+    isFinal: true,
+  };
+}
 
-  async transcribeChunk(input: {
-    audio: Uint8Array;
-    mimeType: string;
-    expectedLanguage: SupportedLanguage;
-    speakerId: string | null;
-  }): Promise<TranscriptSegmentDraft> {
-    const now = new Date();
-    return {
-      speakerId: input.speakerId,
-      originalText: "[mock transcription — configure STT_API_KEY for live speech-to-text]",
-      language: input.expectedLanguage,
-      startedAt: now,
-      endedAt: now,
-      isFinal: true,
-    };
-  }
+async function transcribeChunkLocally(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft> {
+  const startedAt = new Date();
+  const { text } = await localTranscribe(input.audio, input.mimeType, input.expectedLanguage);
+  const endedAt = new Date();
+  return {
+    speakerId: input.speakerId,
+    originalText: text,
+    language: input.expectedLanguage,
+    startedAt,
+    endedAt,
+    isFinal: true,
+  };
 }
 
 const DEEPGRAM_MODEL = "nova-3";
@@ -96,79 +112,108 @@ interface DeepgramListenResponse {
   };
 }
 
+async function transcribeChunkWithDeepgram(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft> {
+  const apiKey = process.env.STT_API_KEY;
+  if (!apiKey) {
+    throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
+  }
+
+  const startedAt = new Date();
+  const params = new URLSearchParams({
+    model: DEEPGRAM_MODEL,
+    language: input.expectedLanguage,
+    smart_format: "true",
+    punctuate: "true",
+  });
+
+  const response = await fetch(`https://api.deepgram.com/v1/listen?${params.toString()}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      "Content-Type": input.mimeType,
+    },
+    body: new Blob([new Uint8Array(input.audio)]),
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Deepgram transcription failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as DeepgramListenResponse;
+  const transcript = payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
+  const endedAt = new Date();
+
+  return {
+    speakerId: input.speakerId,
+    originalText: transcript,
+    language: input.expectedLanguage,
+    startedAt,
+    endedAt,
+    isFinal: true,
+  };
+}
+
 /**
- * Deepgram adapter for `SpeechToTextProvider`. Uses the prerecorded `/listen`
- * endpoint per chunk (matching `transcribeChunk`'s "already-recorded audio
- * chunk" contract) rather than Deepgram's websocket streaming API, so it
- * fits the same request/response server boundary as `translateText` without
- * requiring a long-lived connection. A future streaming adapter can replace
- * this class without touching call sites.
+ * Tries the self-hosted faster-whisper tier first, then falls back to
+ * Deepgram on any local failure, unless `allowCloudFallback: false` (a
+ * session's strict-privacy mode) — matching the same policy as
+ * `translateText`/`synthesizeSpeech`. Falls through to the mock draft only
+ * when no tier is configured at all.
  */
-class DeepgramSpeechToTextProvider implements SpeechToTextProvider {
-  get isConfigured() {
-    return Boolean(process.env.STT_API_KEY);
+async function transcribeChunk(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft> {
+  const allowCloudFallback = input.allowCloudFallback ?? true;
+  const cloudConfigured = Boolean(process.env.STT_API_KEY);
+
+  if (isLocalInferenceConfigured()) {
+    try {
+      return await transcribeChunkLocally(input);
+    } catch (error) {
+      if (!allowCloudFallback) throw error instanceof Error ? error : new Error(String(error));
+      // Fall through to the cloud tier below.
+    }
+  } else if (!allowCloudFallback && cloudConfigured) {
+    throw new Error("Local speech-to-text is not configured and cloud fallback is disabled for this session.");
   }
 
-  async transcribeChunk(input: {
-    audio: Uint8Array;
-    mimeType: string;
-    expectedLanguage: SupportedLanguage;
-    speakerId: string | null;
-  }): Promise<TranscriptSegmentDraft> {
-    const apiKey = process.env.STT_API_KEY;
-    if (!apiKey) {
-      throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
-    }
+  if (cloudConfigured) return transcribeChunkWithDeepgram(input);
+  return mockTranscribeChunk(input);
+}
 
-    const startedAt = new Date();
-    const params = new URLSearchParams({
-      model: DEEPGRAM_MODEL,
-      language: input.expectedLanguage,
-      smart_format: "true",
-      punctuate: "true",
+function openDeepgramStream(input: OpenStreamInput): SpeechToTextStream {
+  const apiKey = process.env.STT_API_KEY;
+  if (!apiKey) {
+    throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
+  }
+  return new DeepgramStreamingSession(apiKey, input.expectedLanguage, input.onSegment, input.onError, input.encoding);
+}
+
+/**
+ * Opens a streaming session on whichever tier is configured. When
+ * local-inference is configured, this is always a `LocalBufferingSpeechToTextStream`
+ * (chunked, not true streaming — see that class's doc comment) with Deepgram
+ * wired in as its lazy, sticky fallback factory; otherwise it opens a
+ * Deepgram streaming session directly, matching pre-tiering behavior.
+ */
+function openStream(input: OpenStreamInput): SpeechToTextStream {
+  const allowCloudFallback = input.allowCloudFallback ?? true;
+
+  if (isLocalInferenceConfigured()) {
+    return new LocalBufferingSpeechToTextStream({
+      expectedLanguage: input.expectedLanguage,
+      onSegment: input.onSegment,
+      onError: input.onError,
+      encoding: input.encoding,
+      allowCloudFallback,
+      openCloudFallback: () => openDeepgramStream(input),
     });
-
-    const response = await fetch(`https://api.deepgram.com/v1/listen?${params.toString()}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${apiKey}`,
-        "Content-Type": input.mimeType,
-      },
-      body: new Blob([new Uint8Array(input.audio)]),
-      cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Deepgram transcription failed with status ${response.status}.`);
-    }
-
-    const payload = (await response.json()) as DeepgramListenResponse;
-    const transcript = payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
-    const endedAt = new Date();
-
-    return {
-      speakerId: input.speakerId,
-      originalText: transcript,
-      language: input.expectedLanguage,
-      startedAt,
-      endedAt,
-      isFinal: true,
-    };
   }
 
-  openStream(input: {
-    expectedLanguage: SupportedLanguage;
-    onSegment: (event: StreamingTranscriptEvent) => void;
-    onError: (error: Error) => void;
-    encoding?: { format: "linear16"; sampleRate: number; channels: number };
-  }): SpeechToTextStream {
-    const apiKey = process.env.STT_API_KEY;
-    if (!apiKey) {
-      throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
-    }
-    return new DeepgramStreamingSession(apiKey, input.expectedLanguage, input.onSegment, input.onError, input.encoding);
+  if (!allowCloudFallback) {
+    throw new Error("Local caption service is not configured and cloud fallback is disabled for this session.");
   }
+  return openDeepgramStream(input);
 }
 
 /** Minimal slice of Deepgram's live-streaming `Results` message shape. */
@@ -244,6 +289,24 @@ class DeepgramStreamingSession implements SpeechToTextStream {
   }
 }
 
-export const speechToTextProvider: SpeechToTextProvider = process.env.STT_API_KEY
-  ? new DeepgramSpeechToTextProvider()
-  : new MockSpeechToTextProvider();
+function createSpeechToTextProvider(): SpeechToTextProvider {
+  const streamingConfigured = isLocalInferenceConfigured() || Boolean(process.env.STT_API_KEY);
+
+  const provider: SpeechToTextProvider = {
+    get isConfigured() {
+      return isLocalInferenceConfigured() || Boolean(process.env.STT_API_KEY);
+    },
+    transcribeChunk,
+  };
+
+  // Matches the pre-tiering mock provider's contract: `openStream` is entirely
+  // absent (not just throwing) when no streaming-capable tier is configured,
+  // so callers can gate streaming UI/routes on its presence.
+  if (streamingConfigured) {
+    provider.openStream = openStream;
+  }
+
+  return provider;
+}
+
+export const speechToTextProvider: SpeechToTextProvider = createSpeechToTextProvider();

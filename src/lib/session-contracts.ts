@@ -8,12 +8,16 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];
 
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
+export type TranslationMode = "AUTO" | "LOCAL_ONLY";
+
 export interface CreateSessionInput {
   title: string;
   goal: string;
   sourceLanguage: SupportedLanguage;
   learnerLanguages: SupportedLanguage[];
   retentionDays: number;
+  /** AUTO (default): local-inference first, cloud fallback on failure. LOCAL_ONLY: never call cloud providers. */
+  translationMode?: TranslationMode;
 }
 
 export interface JoinSessionInput {

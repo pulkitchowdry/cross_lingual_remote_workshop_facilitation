@@ -65,4 +65,11 @@ describe("providerAvailability", () => {
     expect(providerAvailability({}).textToSpeech).toBe(false);
     expect(providerAvailability({ TTS_API_KEY: "key" }).textToSpeech).toBe(true);
   });
+
+  it("requires both local-inference variables before reporting it configured", () => {
+    expect(providerAvailability({ LOCAL_INFERENCE_URL: "https://x" }).localInference).toBe(false);
+    expect(
+      providerAvailability({ LOCAL_INFERENCE_URL: "https://x", LOCAL_INFERENCE_SECRET: "s" }).localInference,
+    ).toBe(true);
+  });
 });

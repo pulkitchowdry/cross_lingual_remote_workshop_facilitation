@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { ParticipantRole } from "@/generated/prisma/client";
+import { ParticipantRole, TranslationMode } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
   createOpaqueToken,
@@ -49,6 +49,9 @@ export async function createSession(formData: FormData) {
     throw new Error("Choose at least one learner language.");
   }
 
+  const strictPrivacy = formData.get("strictPrivacy") === "on";
+  const translationMode = strictPrivacy ? TranslationMode.LOCAL_ONLY : TranslationMode.AUTO;
+
   const facilitatorToken = createOpaqueToken();
   const learnerToken = createOpaqueToken();
   // Tie both join links' lifetime to the facilitator's own retention choice: once the
@@ -69,6 +72,7 @@ export async function createSession(formData: FormData) {
         sourceLanguage,
         learnerLanguages: [...new Set(learnerLanguages)],
         retentionDays,
+        translationMode,
         facilitatorId: facilitator.id,
         participants: {
           create: {

@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
 
       const sttStream = speechToTextProvider.openStream!({
         expectedLanguage: sourceLanguage,
+        allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
         onSegment: (event) => {
           if (!event.isFinal) return;
           // Capture and advance the timestamp synchronously, in the same tick the

@@ -45,9 +45,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "No text available in the requested language." }, { status: 404 });
   }
 
+  const session = await prisma.session.findUnique({
+    where: { id: segment.sessionId },
+    select: { translationMode: true },
+  });
+
   let speech;
   try {
-    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage);
+    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage, {
+      allowCloudFallback: session?.translationMode !== "LOCAL_ONLY",
+    });
   } catch {
     return Response.json({ error: "Speech synthesis failed." }, { status: 502 });
   }

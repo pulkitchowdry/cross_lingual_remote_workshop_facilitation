@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
   return Response.json({
     isLive: session.status === SessionStatus.LIVE,
     sourceLanguage: session.sourceLanguage,
+    translationMode: session.translationMode,
   });
 }
 

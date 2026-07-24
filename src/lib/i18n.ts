@@ -45,6 +45,8 @@ export interface Dictionary {
     retentionWeek: string;
     retentionMonth: string;
     privacyNote: string;
+    strictPrivacyLabel: string;
+    strictPrivacyHint: string;
     submit: string;
   };
   join: {
@@ -177,6 +179,9 @@ const en: Dictionary = {
     retentionWeek: "Delete after 7 days",
     retentionMonth: "Delete after 30 days",
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
+    strictPrivacyLabel: "Strict privacy mode",
+    strictPrivacyHint:
+      "Never send audio or text to external translation providers. If the local translation service is unavailable, captions and translations will show as unavailable instead of falling back to the cloud.",
     submit: "Create session",
   },
   join: {
@@ -307,6 +312,8 @@ const zh: Dictionary = {
     retentionWeek: "7 天后删除",
     retentionMonth: "30 天后删除",
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
+    strictPrivacyLabel: "严格隐私模式",
+    strictPrivacyHint: "绝不将音频或文本发送给外部翻译服务。如果本地翻译服务不可用，字幕和翻译将显示为不可用，而不会回退到云端。",
     submit: "创建场次",
   },
   join: {
@@ -438,6 +445,9 @@ const es: Dictionary = {
     retentionWeek: "Eliminar después de 7 días",
     retentionMonth: "Eliminar después de 30 días",
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
+    strictPrivacyLabel: "Modo de privacidad estricto",
+    strictPrivacyHint:
+      "Nunca se enviará audio ni texto a proveedores de traducción externos. Si el servicio de traducción local no está disponible, los subtítulos y traducciones se mostrarán como no disponibles en lugar de recurrir a la nube.",
     submit: "Crear sesión",
   },
   join: {

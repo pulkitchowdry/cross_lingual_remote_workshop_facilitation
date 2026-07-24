@@ -79,6 +79,11 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
         </select>
       </label>
       <p className="text-sm text-muted-foreground">{dict.setup.privacyNote}</p>
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input name="strictPrivacy" type="checkbox" />
+        {dict.setup.strictPrivacyLabel}
+      </label>
+      <p className="text-sm text-muted-foreground">{dict.setup.strictPrivacyHint}</p>
       <Button type="submit">{dict.setup.submit}</Button>
     </form>
   );

@@ -1,8 +1,9 @@
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { isLocalInferenceConfigured, localTranslate } from "@/lib/providers/local-inference-client";
 
 export interface TranslationResult {
   text: string;
-  provider: "claude";
+  provider: string;
   qualitySignal: "provider-confirmed";
 }
 
@@ -14,21 +15,18 @@ const languageName: Record<SupportedLanguage, string> = {
 
 const CLAUDE_TRANSLATION_MODEL = "claude-haiku-4-5-20251001";
 
-export async function translateText(
+/**
+ * Cloud fallback tier — Claude Haiku. Never throws; any error/timeout/non-OK
+ * degrades to `null` (see `translateText`'s doc comment for why).
+ */
+async function translateWithClaude(
   text: string,
   sourceLanguage: SupportedLanguage,
   targetLanguage: SupportedLanguage,
 ): Promise<TranslationResult | null> {
-  if (sourceLanguage === targetLanguage) return null;
-
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) return null;
 
-  // A hung or errored translation for one learner language must not sink the whole
-  // batch — publishTranslatedCaption/sendChatMessage run this per-language inside
-  // Promise.all, so a thrown network/timeout error here would fail every other
-  // language's translation too. Degrade to "no translation" instead, same as an
-  // explicit non-OK response.
   try {
     const response = await fetch(process.env.CLAUDE_API_URL ?? "https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -62,9 +60,41 @@ export async function translateText(
 }
 
 /**
+ * Tries the self-hosted NLLB tier first (privacy-preserving — nothing leaves
+ * this server), then falls back to Claude on any local failure, unless the
+ * caller passes `allowCloudFallback: false` (a session's strict-privacy
+ * mode — see `docs/TRANSLATION_ARCHITECTURE.md` Part 5), in which case a
+ * local failure degrades straight to `null` just like an unconfigured/failed
+ * Claude call always has. A hung or errored translation for one learner
+ * language must not sink the whole batch — publishTranslatedCaption/
+ * sendChatMessage run this per-language inside `Promise.all`.
+ */
+export async function translateText(
+  text: string,
+  sourceLanguage: SupportedLanguage,
+  targetLanguage: SupportedLanguage,
+  options?: { allowCloudFallback?: boolean },
+): Promise<TranslationResult | null> {
+  if (sourceLanguage === targetLanguage) return null;
+  const allowCloudFallback = options?.allowCloudFallback ?? true;
+
+  if (isLocalInferenceConfigured()) {
+    try {
+      const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
+      if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
+    } catch {
+      // Fall through to the cloud tier below (or to null, if disallowed).
+    }
+  }
+
+  if (!allowCloudFallback) return null;
+  return translateWithClaude(text, sourceLanguage, targetLanguage);
+}
+
+/**
  * Server-only boundary matching `SpeechToTextProvider`/`InsightProvider`/
  * `RoomProvider`. Application code should depend on `TranslationProvider`,
- * never on the Claude API directly, so the translation vendor can change
+ * never on a vendor API directly, so the translation vendor/tier can change
  * without touching call sites.
  */
 export interface TranslationProvider {
@@ -73,12 +103,13 @@ export interface TranslationProvider {
     text: string,
     sourceLanguage: SupportedLanguage,
     targetLanguage: SupportedLanguage,
+    options?: { allowCloudFallback?: boolean },
   ): Promise<TranslationResult | null>;
 }
 
 export const translationProvider: TranslationProvider = {
   get isConfigured() {
-    return Boolean(process.env.CLAUDE_API_KEY);
+    return Boolean(process.env.CLAUDE_API_KEY) || isLocalInferenceConfigured();
   },
   translate: translateText,
 };

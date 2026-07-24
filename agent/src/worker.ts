@@ -41,12 +41,18 @@ class CaptionAgentClient {
     this.secret = secret;
   }
 
-  async getSessionInfo(sessionId: string): Promise<{ isLive: boolean; sourceLanguage: SupportedLanguage } | null> {
+  async getSessionInfo(
+    sessionId: string,
+  ): Promise<{ isLive: boolean; sourceLanguage: SupportedLanguage; translationMode: "AUTO" | "LOCAL_ONLY" } | null> {
     const response = await fetch(`${this.baseUrl}/api/captions/agent?sessionId=${encodeURIComponent(sessionId)}`, {
       headers: { "x-caption-agent-secret": this.secret },
     });
     if (!response.ok) return null;
-    return (await response.json()) as { isLive: boolean; sourceLanguage: SupportedLanguage };
+    return (await response.json()) as {
+      isLive: boolean;
+      sourceLanguage: SupportedLanguage;
+      translationMode: "AUTO" | "LOCAL_ONLY";
+    };
   }
 
   async publishCaption(input: { sessionId: string; originalText: string; startedAt: Date; endedAt: Date }): Promise<void> {
@@ -96,6 +102,7 @@ async function streamFacilitatorAudio(
   track: RemoteAudioTrack,
   sessionId: string,
   sourceLanguage: SupportedLanguage,
+  translationMode: "AUTO" | "LOCAL_ONLY",
   client: CaptionAgentClient,
 ) {
   if (!speechToTextProvider.openStream) {
@@ -107,6 +114,7 @@ async function streamFacilitatorAudio(
   const sttStream = speechToTextProvider.openStream({
     expectedLanguage: sourceLanguage,
     encoding: { format: "linear16", sampleRate: STREAM_SAMPLE_RATE, channels: STREAM_CHANNELS },
+    allowCloudFallback: translationMode !== "LOCAL_ONLY",
     onSegment: (event) => {
       if (!event.isFinal) return;
       // Capture and advance synchronously — see the matching comment in
@@ -150,7 +158,7 @@ export default defineAgent({
     ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
       if (!(track instanceof RemoteAudioTrack)) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
-      void streamFacilitatorAudio(track, sessionId, info.sourceLanguage, client);
+      void streamFacilitatorAudio(track, sessionId, info.sourceLanguage, info.translationMode, client);
     });
   },
 });
