@@ -19,6 +19,7 @@ const ENV_SPEC: EnvSpec[] = [
   { key: "CLAUDE_API_KEY", required: false, description: "Claude translation provider key" },
   { key: "CLAUDE_API_URL", required: false, description: "Claude API base URL" },
   { key: "STT_API_KEY", required: false, description: "Speech-to-text provider key" },
+  { key: "TTS_API_KEY", required: false, description: "Text-to-speech provider key (opt-in translated audio)" },
   { key: "INSIGHT_MODEL_API_KEY", required: false, description: "Structured-insight LLM provider key" },
   {
     key: "CAPTION_AGENT_SECRET",
@@ -75,6 +76,7 @@ export function providerAvailability(source: Record<string, string | undefined> 
     liveKit: Boolean(source.LIVEKIT_URL && source.LIVEKIT_API_KEY && source.LIVEKIT_API_SECRET),
     claude: Boolean(source.CLAUDE_API_KEY),
     speechToText: Boolean(source.STT_API_KEY),
+    textToSpeech: Boolean(source.TTS_API_KEY),
     insightModel: Boolean(source.INSIGHT_MODEL_API_KEY),
   };
 }

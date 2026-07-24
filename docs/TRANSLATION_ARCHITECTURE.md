@@ -196,20 +196,39 @@ overlapping speech within one track.
 
 ## Part 3 — Voice translation (TTS)
 
+**Shipped so far:** `TextToSpeechProvider` (`text-to-speech.ts`) with a mock
+(no audio, until `TTS_API_KEY` is set) and an ElevenLabs adapter. The
+learner page shows an opt-in "Play translated audio for new captions"
+checkbox (`TranslatedAudioPlayer`) only when the provider is configured —
+**nothing is synthesized or played until the learner explicitly checks it**,
+per the decision below. When enabled, each new caption is fetched on demand
+from `/api/captions/[segmentId]/audio?lang=<preferredLanguage>` and queued
+for sequential playback so overlapping captions don't talk over each other.
+
 - **Opt-in only, never auto-play** — matches the issue's privacy question
-  directly. A learner enables "translated audio" in their preferences; nothing
-  is synthesized for them until they do.
-- **Delivery as a synthetic LiveKit participant, scoped per-language, not
-  per-listener.** One `interpreter-<lang>` bot participant per *distinct*
-  requested target language publishes a synthesized audio track; any learner who
-  opted into that language subscribes to that track. This reuses LiveKit's
-  existing publish/subscribe fan-out instead of the server transcoding N
-  individual streams.
+  directly. A learner enables "translated audio"; nothing is synthesized for
+  them until they do. **Shipped as designed.**
+- **Delivery is per-listener, not the designed per-language interpreter
+  participant.** The doc's original design was one `interpreter-<lang>` bot
+  participant per distinct target language publishing a synthesized LiveKit
+  audio track, reusing LiveKit's publish/subscribe fan-out instead of
+  transcoding per listener. What's shipped instead: synthesize-on-request per
+  segment per listener, streamed back over a plain HTTP route. This was a
+  deliberate scope cut — the interpreter-participant design needs the same
+  always-on-process tradeoff as `agent/`'s track-subscription worker (a
+  persistent bot participant per language, not a serverless function), and
+  building a second piece of always-on infrastructure in the same phase as
+  the first wasn't worth it yet. The per-listener version is a straight
+  Vercel Function, ships now, and can be swapped for the bot-participant
+  design later without changing `TextToSpeechProvider`'s interface.
 - **Self-hosted option:** Piper or Coqui TTS behind the same
-  `TextToSpeechProvider` interface pattern as the other two adapters, for
-  fully self-hosted deployments.
-- Voice output is deferred to *after* captions are reliable (Phase 1 of
-  `PLAN.md` before Phase 2's voice work) — captions alone satisfy the "is
+  `TextToSpeechProvider` interface, for fully self-hosted deployments. Not
+  shipped — the managed (ElevenLabs) adapter shipped first since Piper needs a
+  self-hosted model server this repo doesn't run anywhere, mirroring the
+  `agent/` worker's "managed path first, self-hosted needs a hosting
+  decision" pattern.
+- Voice output shipped *after* captions were hardened (streaming STT +
+  DataChannel delivery, #56/#57/#58) — captions alone satisfied the "is
   translated audio required" open question for the MVP; audio is additive.
 
 ## Part 4 — Chat and Q&A translation
@@ -236,7 +255,7 @@ issue asks about that aren't yet decided:
 | --- | --- | --- | --- | --- |
 | STT | faster-whisper | Deepgram Nova-3 | Deepgram (managed) | Streaming interim/final segments and diarization out of the box; self-hosted faster-whisper is the privacy-mode fallback but needs GPU capacity planning |
 | MT | LibreTranslate / NLLB / Marian NMT | Claude, DeepL, Google, Microsoft | Claude (managed) | Already implemented (`translation.ts`); strong quality on English/Chinese/Spanish (this app's `SupportedLanguage` set) without per-language-pair model management. LibreTranslate is the self-hosted fallback when `CLAUDE_API_KEY` is intentionally unset |
-| TTS | Piper / Coqui | Provider-native TTS | Piper (self-hosted default) | Keeps the opt-in voice feature cheap to run per-language-bot rather than per-listener; managed TTS is a config swap behind `TextToSpeechProvider` if quality needs outweigh cost |
+| TTS | Piper / Coqui (not shipped — needs a self-hosted model server) | ElevenLabs (**shipped**) | ElevenLabs (managed) | Ships as a plain Vercel Function today; Piper stays the lower-cost/self-hosted option behind the same `TextToSpeechProvider` interface once a self-hosted-model-server decision is made, same pattern as `agent/`'s deployment-target tradeoff |
 
 Every "managed" choice above is reachable purely by configuring an API key;
 every "self-hosted" choice needs zero external network calls once deployed —

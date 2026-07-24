@@ -2,10 +2,12 @@ import { Card } from "@/components/ui/Card";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { sendChatMessage } from "@/app/sessions/actions";
 
 export default async function LearnerSessionPage({
@@ -75,6 +77,17 @@ export default async function LearnerSessionPage({
               : "Waiting for the facilitator to start"}
           </h2>
         </div>
+        {textToSpeechProvider.isConfigured && (
+          <TranslatedAudioPlayer
+            segments={participant.session.transcript.map((segment) => ({
+              id: segment.id,
+              hasTranslation:
+                segment.language === participant.preferredLanguage ||
+                segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+            }))}
+            preferredLanguage={participant.preferredLanguage}
+          />
+        )}
         {participant.session.transcript.length > 0 ? (
           <div className="flex flex-col gap-3">
             {participant.session.transcript.map((segment) => {
