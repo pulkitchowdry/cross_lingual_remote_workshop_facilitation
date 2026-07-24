@@ -119,8 +119,8 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         token={credentials.token}
         serverUrl={credentials.serverUrl}
         connect
-        audio
-        video={false}
+        audio={false}
+        video
         data-lk-theme="default"
       >
         <WorkshopVideoStage role={role} />
