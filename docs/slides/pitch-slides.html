@@ -38,6 +38,12 @@
     font-weight: 800;
   }
   p.lead { font-size: 19px; line-height: 1.45; color: #33334d; max-width: 1140px; margin: 0 0 14px 0; }
+  /* One short, spoken-length idea per line — deliberately terse so the
+     presenter delivers one beat, pauses, then the next, instead of
+     speed-reading a dense paragraph out loud. */
+  ul.beats { list-style: none; margin: 0 0 16px 0; padding: 0; max-width: 1140px; }
+  ul.beats li { font-size: 20px; line-height: 1.5; color: #33334d; margin-bottom: 12px; padding-left: 30px; position: relative; }
+  ul.beats li::before { content: "\2192"; position: absolute; left: 0; top: 0; color: #6b46c1; font-weight: 700; }
   .quote-block { font-size: 19px; line-height: 1.5; color: #16162a; font-weight: 500; border-left: 5px solid #6b46c1; padding-left: 20px; margin: 6px 0 20px; max-width: 1140px; }
   .footer-bar {
     position: absolute; bottom: 22px; left: 64px; right: 64px;
@@ -84,7 +90,11 @@
 <section class="slide">
   <div class="kicker">0:00 – 1:00 · Problem &amp; approach</div>
   <h1>Breaking Language Barriers</h1>
-  <p class="lead">Online workshops run across languages every day. When facilitator and learner don't share one, a lost learner usually stays quiet — by the time anyone notices, the moment to help has passed.</p>
+  <ul class="beats">
+    <li>Workshops run across languages every day.</li>
+    <li>When facilitator and learner don't share one, a lost learner stays quiet.</li>
+    <li>By the time anyone notices, the moment to help is gone.</li>
+  </ul>
   <div class="quote-block">We capture speech, translate it live, and have Claude track the goal, decisions, and blockers from the transcript — every insight linked back to the exact line it came from.</div>
   <div class="pipeline">
     <div class="pipe-box">Speech</div>
@@ -107,7 +117,11 @@
 <section class="slide">
   <div class="kicker">1:00 – 1:45 · Live demo</div>
   <h1>Facilitator dashboard</h1>
-  <p class="lead">The goal comes from setup. Decision and blocker cards weren't typed by anyone — pulled live by Claude from the transcript, each one linked back to the exact line it came from and rejected if it isn't.</p>
+  <ul class="beats">
+    <li>The goal comes from setup. Nothing else.</li>
+    <li>Decision and blocker cards? No one typed them.</li>
+    <li>Claude pulls them live from the transcript — and cites the line, or rejects itself.</li>
+  </ul>
   <div class="stack-col" style="margin-top: 10px;">
     <img src="assets/dashboard-goal.png" class="shot" style="max-width: 780px;">
     <img src="assets/dashboard-blocker.png" class="shot" style="max-width: 780px;">
@@ -120,7 +134,12 @@
   <h1>Join as a learner, ask a question, get a translated reply</h1>
   <div class="body-row">
     <div class="text-col">
-      <p class="lead">Scan a QR code, no account setup. Live audio/video, captions translated in real time with the original still visible. A learner's question lands on the facilitator's side already translated — the reply auto-translates back. This whole flow, chrome included, runs fully localized.</p>
+      <ul class="beats">
+        <li>Scan a QR code. No account, no setup.</li>
+        <li>Captions translate in real time — original still visible underneath.</li>
+        <li>A question arrives already translated. The reply translates back.</li>
+        <li>Every screen, every button — fully localized.</li>
+      </ul>
     </div>
     <div class="img-col"><img src="assets/learner-es.png" class="shot"></div>
   </div>
@@ -130,7 +149,12 @@
 <section class="slide">
   <div class="kicker">3:00 – 4:15 · Live demo</div>
   <h1>Accurate, accessible, and privacy-respecting by design</h1>
-  <p class="lead">The brief asks us to weigh response speed, accuracy, accessibility, and privacy — not just get a demo working. Every caption ships with a live confidence score so a shaky translation is visibly flagged rather than silently trusted. Every screen ships with adjustable text size, a high-contrast theme, and light/dark mode. Facilitators pick languages and a transcript retention window up front, with audio never recorded by default.</p>
+  <ul class="beats">
+    <li>The brief asks for speed, accuracy, accessibility, privacy — not just a demo.</li>
+    <li>Every caption carries a confidence score. Shaky translations get flagged, not trusted blindly.</li>
+    <li>Text size, high contrast, light or dark — every screen, every session.</li>
+    <li>Languages and retention are set up front. Audio is never recorded by default.</li>
+  </ul>
   <div class="three-shots" style="margin-bottom: 30px;">
     <figure>
       <img src="assets/caption-confidence.png" class="shot" style="max-height: 340px;">
