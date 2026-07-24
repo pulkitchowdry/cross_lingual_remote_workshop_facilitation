@@ -6,20 +6,6 @@ facilitator supporting a hands-on coding workshop run in a language they
 don't speak. Pair this with the screenshots in `docs/screenshots/` — every
 beat below names the exact file to have on screen.
 
-## Two-window setup
-
-No screen-jumping: open exactly two windows for the recording.
-
-1. **PDF slides** — `docs/slides/pitch-slides.pdf` (source: `pitch-slides.html`,
-   regenerate with `weasyprint docs/slides/pitch-slides.html
-   docs/slides/pitch-slides.pdf`). Covers the problem, architecture, every
-   demo beat's talking points, and the close — so you're never tempted to
-   flip to a third window.
-2. **Live demo webapp** — the facilitator dashboard / learner view described
-   below.
-
-Alt+Tab between these two only during the recording.
-
 ## Before you hit record
 
 1. `npm run db:seed` — loads the "Debugging a signup 500 error" fixture
@@ -54,11 +40,11 @@ you say it.
 
 **0:00–0:40 · Problem**
 - Show: Talking head, or the problem statement in `docs/problem_statement.md`.
-- Say: "Online workshops run across languages every day. When facilitator and learner don't share one, the facilitator can't tell who's following — and a lost learner usually stays quiet. By the time anyone notices, the moment to help has passed. We're solving that: real-time understanding between facilitators and learners, across languages, in a live session."
+- Say: "Online workshops run across languages every day. When a facilitator and a learner don't share one, the facilitator can't tell who's actually following — and a learner who's lost usually stays quiet instead of saying so. By the time anyone notices, the moment to help has already passed. That's the problem we're solving: helping facilitators and learners understand each other in real time, across languages, in a live learning session."
 
 **0:40–1:15 · Approach**
 - Show: Architecture diagram (below).
-- Say: "Our approach: capture speech, transcribe and translate it live, then have an AI layer read the growing transcript to track the goal, activity, decisions, and blockers — so the facilitator doesn't have to. Every insight links back to the exact transcript line it came from. Nothing is invented."
+- Say: "Our approach: capture speech, transcribe and translate it live, and then have an AI layer read the growing transcript to track the goal, the current activity, decisions, and blockers — instead of leaving that tracking to an already-busy facilitator. Every one of those AI-generated insights is linked back to the exact line of transcript it came from, so nothing is invented."
 
 **1:15–3:15 · Live demo**
 
@@ -68,7 +54,7 @@ exact screen to be on and the exact line to say — follow it almost word
 for word, it's written as an exact walkthrough, not a summary.
 
 1. **1:15–1:35** · Show: `docs/screenshots/dashboard.png` — point at the goal card, then decisions/blockers.
-   Say: "The facilitator dashboard. The goal comes from setup. These decision and blocker cards weren't typed by anyone — pulled live from the transcript, each linked to the exact line it came from."
+   Say: "Here's the facilitator dashboard. The goal comes straight from setup. These decision and blocker cards weren't typed by anyone — they were pulled live from the transcript, and each one links back to the exact line it came from."
 
    <details>
    <summary>Show/hide screenshot</summary>
@@ -78,7 +64,7 @@ for word, it's written as an exact walkthrough, not a summary.
    </details>
 
 2. **1:35–2:00** · Show: `docs/screenshots/phase0-facilitator-qr.png` → scan/open → `docs/screenshots/learner.png`
-   Say: "Now joining as a learner, mid-session, in a different language — just by scanning this QR code, no account setup. Here's their view: the facilitator's words, captioned and translated live, original still visible underneath."
+   Say: "Now let's join as a learner, mid-session, in a different language — just by scanning this QR code. No account setup. And here's their view: the facilitator's words, captioned and translated live, with the original still visible underneath."
 
    <details>
    <summary>Show/hide screenshot</summary>
@@ -88,7 +74,7 @@ for word, it's written as an exact walkthrough, not a summary.
    </details>
 
 3. **2:00–2:25** · Show: `docs/screenshots/dashboard-learner-questions.png`
-   Say: "The learner asks a question in their own language. It lands on the facilitator's side already translated. The facilitator replies here — auto-translated back to the learner."
+   Say: "The learner can ask a question in their own language. Watch it land on the facilitator's side — already translated. The facilitator replies here, and that reply is auto-translated back to the learner."
 
    <details>
    <summary>Show/hide screenshot</summary>
@@ -98,7 +84,7 @@ for word, it's written as an exact walkthrough, not a summary.
    </details>
 
 4. **2:25–2:50** · Show: `docs/screenshots/dashboard-quiet-escalation.png`, `docs/screenshots/learner-quiet-nudge.png`
-   Say: "The part that doesn't exist anywhere else: when a learner goes quiet too long, the facilitator gets nudged to check in — and the learner gets a gentle prompt too. Nobody has to notice the silence themselves."
+   Say: "This is the part that doesn't exist anywhere else: when a learner goes quiet for too long, the facilitator gets nudged to check in — and the learner gets a gentle, low-pressure prompt too. Nobody has to notice the silence themselves."
 
    <details>
    <summary>Show/hide screenshots</summary>
@@ -109,7 +95,7 @@ for word, it's written as an exact walkthrough, not a summary.
    </details>
 
 5. **2:50–3:05** · Show: `docs/screenshots/ai-glossary-before.png` → `docs/screenshots/ai-glossary-after.png`
-   Say: "Worth thirty seconds: translation doesn't mangle code. `validateEmail()` and `req.body.email` come through untouched, every time."
+   Say: "One more thing worth thirty seconds: translation doesn't mangle code. `validateEmail()` and `req.body.email` come through untouched, every time."
 
    <details>
    <summary>Show/hide screenshots</summary>
@@ -120,7 +106,7 @@ for word, it's written as an exact walkthrough, not a summary.
    </details>
 
 6. **3:05–3:15** · Show: `docs/screenshots/history.png`
-   Say: "A learner joining late doesn't scroll a wall of transcript — they get this grounded catch-up summary instead."
+   Say: "And if a learner joins even later, they don't scroll a wall of transcript — they get this grounded catch-up summary instead."
 
    <details>
    <summary>Show/hide screenshot</summary>
@@ -136,11 +122,11 @@ statement's suggested demo almost verbatim.
 
 **3:15–4:15 · Why this is hard**
 - Show: `src/lib/providers/insight.ts`, the `validateInsightDraft` function.
-- Say: "This looks simple, but it's a three-stage pipeline — speech-to-text, translation, AI summarization — and each stage can quietly lose accuracy. So we added a guardrail: before any AI insight reaches the dashboard, we check it only cites transcript lines from its own batch. Cite outside that, we reject it. That's what stops the AI from inventing a decision nobody made."
+- Say: "This looks simple, but it's a three-stage pipeline — speech-to-text, translation, then AI summarization — and each stage can quietly lose accuracy. So we added a guardrail: before any AI-generated insight reaches the dashboard, we check that it only cites transcript lines from the batch it was actually generated from. If it cites anything outside that batch, we reject it. That's what stops the AI from inventing a decision nobody actually made."
 
 **4:15–4:50 · Impact & feasibility**
 - Show: Dashboard + terminal running `npm run db:seed`.
-- Say: "A learner going quiet in a language the facilitator doesn't speak used to be invisible — now it's a card on the dashboard. It's a real prototype: real sessions, real Postgres storage, role-scoped join links. And it's feasible today — Deepgram, DeepL, and Claude are shipping APIs we can call right now."
+- Say: "This matters because a learner going quiet in a language the facilitator doesn't speak used to be invisible — now it's a card on the dashboard. It's a real prototype, not a slide: real sessions, real Postgres storage, role-scoped join links. And it's feasible today, because Deepgram, DeepL, and Claude are shipping APIs we can call right now, not research projects."
 
 **4:50–5:00 · Close**
 - Show: Talking head.
