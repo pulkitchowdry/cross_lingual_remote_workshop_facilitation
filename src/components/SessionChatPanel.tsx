@@ -2,6 +2,7 @@ type ChatMessage = {
   id: string;
   originalText: string;
   language: string;
+  kind?: string;
   sender: { displayName: string };
   translations: Array<{ targetLanguage: string; text: string }>;
 };
@@ -17,10 +18,12 @@ export function SessionChatPanel({
   messages,
   targetLanguage,
   sendAction,
+  allowQuestions = false,
 }: {
   messages: ChatMessage[];
   targetLanguage: string;
   sendAction: (formData: FormData) => void | Promise<void>;
+  allowQuestions?: boolean;
 }) {
   return (
     <aside className="flex min-h-[38rem] flex-col rounded-lg border border-border-subtle bg-surface-raised">
@@ -32,7 +35,14 @@ export function SessionChatPanel({
         {messages.length > 0 ? (
           messages.map((message) => (
             <article key={message.id} className="rounded-md border border-border-subtle bg-background p-3">
-              <p className="font-data text-xs font-medium text-accent">{message.sender.displayName}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-data text-xs font-medium text-accent">{message.sender.displayName}</p>
+                {message.kind === "QUESTION" && (
+                  <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent">
+                    Question
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-sm leading-relaxed">{translatedText(message, targetLanguage)}</p>
               {message.language !== targetLanguage && (
                 <p className="mt-2 text-xs italic text-muted-foreground" lang={message.language}>
@@ -56,9 +66,19 @@ export function SessionChatPanel({
           required
           placeholder="Write in your own language…"
         />
-        <button className="font-data w-fit rounded-md bg-accent px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-          Send
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          {allowQuestions ? (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" name="kind" value="QUESTION" className="h-3.5 w-3.5" />
+              Flag as a question for the facilitator
+            </label>
+          ) : (
+            <span />
+          )}
+          <button className="font-data w-fit rounded-md bg-accent px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
+            Send
+          </button>
+        </div>
       </form>
     </aside>
   );

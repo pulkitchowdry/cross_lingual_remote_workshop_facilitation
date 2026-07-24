@@ -14,6 +14,7 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
   if (typeof text !== "string" || !text.trim() || text.trim().length > 1_000) {
     throw new Error("Enter a message of up to 1,000 characters.");
   }
+  const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) redirect("/setup");
@@ -54,7 +55,7 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
       senderId,
       originalText: text.trim(),
       language: sourceLanguage,
-      kind: "CHAT",
+      kind,
       translations: {
         create: translations.filter(
           (translation): translation is NonNullable<typeof translation> => translation !== null,

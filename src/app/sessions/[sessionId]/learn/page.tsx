@@ -6,7 +6,6 @@ import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
-import { askFacilitator } from "@/app/sessions/[sessionId]/learn/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
 
 export default async function LearnerSessionPage({
@@ -24,14 +23,13 @@ export default async function LearnerSessionPage({
       session: {
         include: {
           transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-          messages: { where: { kind: "CHAT" }, include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
+          messages: { include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
         },
       },
       user: true,
     },
   });
   if (!participant) notFound();
-  const questionAction = askFacilitator.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
 
   return (
@@ -63,6 +61,7 @@ export default async function LearnerSessionPage({
               messages={[...participant.session.messages].reverse()}
               targetLanguage={participant.preferredLanguage}
               sendAction={sendChatAction}
+              allowQuestions
             />
           </div>
         </section>
@@ -101,31 +100,6 @@ export default async function LearnerSessionPage({
             </p>
           </Card>
         )}
-      </section>
-      <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Participation</p>
-          <h2 className="font-heading text-lg font-semibold">Ask the facilitator</h2>
-          <p className="text-sm text-muted-foreground">
-            Ask naturally in your selected language. The facilitator receives a translation when the translation provider is configured.
-          </p>
-        </div>
-        <form action={questionAction} className="flex flex-col gap-2">
-          <label className="flex flex-col gap-2 text-sm font-medium">
-            Your question
-            <textarea
-              className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-              name="question"
-              rows={3}
-              required
-              maxLength={1000}
-              placeholder="Type your question in your own language."
-            />
-          </label>
-          <button className="font-data w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-            Send question
-          </button>
-        </form>
       </section>
     </div>
   );
