@@ -15,7 +15,7 @@ The provider-abstraction pattern this document formalizes already exists in code
 | Boundary | File | Status |
 | --- | --- | --- |
 | `RoomProvider` | [`src/lib/providers/room.ts`](../src/lib/providers/room.ts) | Implemented — `LiveKitRoomProvider` issues short-lived, role-scoped JWTs |
-| `TranslationProvider` | [`src/lib/translation.ts`](../src/lib/translation.ts) | Implemented — Claude Haiku text translation |
+| `TranslationProvider` | [`src/lib/providers/translation.ts`](../src/lib/providers/translation.ts) | Implemented — Claude Haiku text translation |
 | `SpeechToTextProvider` | [`src/lib/providers/speech-to-text.ts`](../src/lib/providers/speech-to-text.ts) | Mocked — interface defined, no streaming adapter wired |
 | `InsightProvider` | [`src/lib/providers/insight.ts`](../src/lib/providers/insight.ts) | Mocked — used by the facilitator dashboard, not translation itself |
 
@@ -163,7 +163,7 @@ overlapping speech within one track.
 
 ## Part 4 — Chat and Q&A translation
 
-Already implemented for text (`translateText` in `src/lib/translation.ts`,
+Already implemented for text (`translateText` in `src/lib/providers/translation.ts`,
 wired through `SessionChatPanel.tsx`). This section only adds the pieces the
 issue asks about that aren't yet decided:
 

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
-import { translateText } from "@/lib/translation";
+import { translateText } from "@/lib/providers/translation";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 export async function startSession(sessionId: string) {
