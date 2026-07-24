@@ -38,10 +38,11 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
     sourceLanguage = participant.preferredLanguage as SupportedLanguage;
   }
 
+  const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const targetLanguages = [...new Set([session.sourceLanguage, ...session.learnerLanguages])] as SupportedLanguage[];
   const translations = await Promise.all(
     targetLanguages.map(async (targetLanguage) => {
-      const result = await translateText(text.trim(), sourceLanguage, targetLanguage);
+      const result = await translateText(text.trim(), sourceLanguage, targetLanguage, { allowCloudFallback });
       return result
         ? {
             targetLanguage,

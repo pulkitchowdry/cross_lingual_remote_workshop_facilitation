@@ -173,11 +173,12 @@ environment doesn't have, and the repo still hasn't picked a host for a
 persistent process (a small VM, Fly.io, Railway, etc.) — that choice is
 explicitly deferred to whoever deploys this.
 
-**Streaming STT choice:** Deepgram Nova-3 for the managed default (already named
-in `README.md`'s tech stack — diarization support matters for speaker
-identification) with `faster-whisper` as the self-hosted alternative behind the
-same `SpeechToTextProvider` interface, satisfying the issue's "self-hosted
-deployment" privacy requirement without a second interface.
+**Streaming STT choice:** `faster-whisper` (self-hosted, via `local-inference/`)
+is now the default, tried first behind `SpeechToTextProvider.openStream`; Deepgram
+Nova-3 (diarization support matters for speaker identification) is the automatic
+cloud fallback on local failure. See Part 5 for the chunked-buffering design this
+required (faster-whisper has no websocket streaming API of its own) and the
+per-session strict-privacy toggle that disables the fallback.
 
 **Caption delivery decision (answers the issue's caption questions directly):**
 
@@ -221,12 +222,10 @@ for sequential playback so overlapping captions don't talk over each other.
   the first wasn't worth it yet. The per-listener version is a straight
   Vercel Function, ships now, and can be swapped for the bot-participant
   design later without changing `TextToSpeechProvider`'s interface.
-- **Self-hosted option:** Piper or Coqui TTS behind the same
-  `TextToSpeechProvider` interface, for fully self-hosted deployments. Not
-  shipped — the managed (ElevenLabs) adapter shipped first since Piper needs a
-  self-hosted model server this repo doesn't run anywhere, mirroring the
-  `agent/` worker's "managed path first, self-hosted needs a hosting
-  decision" pattern.
+- **Self-hosted option:** Piper, behind the same `TextToSpeechProvider`
+  interface — **shipped** in `local-inference/` (Part 5) and now the default,
+  tried before ElevenLabs. ElevenLabs is the automatic cloud fallback on local
+  failure.
 - Voice output shipped *after* captions were hardened (streaming STT +
   DataChannel delivery, #56/#57/#58) — captions alone satisfied the "is
   translated audio required" open question for the MVP; audio is additive.
@@ -249,18 +248,63 @@ issue asks about that aren't yet decided:
   survive translation unchanged; emoji pass through untouched since they're
   non-translatable Unicode.
 
+## Part 5 — Self-hosted local-inference tier
+
+**Shipped:** a standalone FastAPI service, `local-inference/` (sibling to
+`agent/`, the repo's first Python component), running NLLB-600M-int8
+translation (via CTranslate2), `faster-whisper` STT, and Piper TTS entirely
+on-server. `TranslationProvider`/`SpeechToTextProvider`/`TextToSpeechProvider`
+each try this service first (when `LOCAL_INFERENCE_URL`+`LOCAL_INFERENCE_SECRET`
+are configured) and fall back to Claude/Deepgram/ElevenLabs automatically on
+any local failure — no call site changes were needed, only the provider
+implementations. See `local-inference/README.md` for the service itself and
+its Railway deployment.
+
+**Chunked STT, not true streaming.** `faster-whisper` has no websocket
+streaming API like Deepgram's. `LocalBufferingSpeechToTextStream`
+(`src/lib/providers/local-speech-buffer.ts`) buffers `openStream`'s incoming
+audio into ~2.5s windows and transcribes each window as a whole via
+`local-inference`'s plain REST `/stt/transcribe` endpoint, emitting only
+`isFinal: true` segments — no interim/partial captions from this tier. This
+is a deliberate MVP tradeoff (higher latency, far simpler) against true
+incremental streaming, which is a possible fast-follow behind the same
+`SpeechToTextProvider` interface.
+
+**Sticky fallback.** If a local STT window fails, the buffering class opens
+the cloud (Deepgram) stream once and routes all further audio there for the
+rest of that connection — it never flaps back to local mid-stream, which
+would risk duplicate or dropped segments.
+
+**Strict-privacy toggle.** `Session.translationMode` (`AUTO` default,
+`LOCAL_ONLY` opt-in at session creation) controls whether the automatic cloud
+fallback is allowed at all. Every provider call site loads the session's mode
+and passes `allowCloudFallback: session.translationMode !== "LOCAL_ONLY"`
+into the corresponding `translate`/`transcribeChunk`/`openStream`/`synthesize`
+call. Under `LOCAL_ONLY`, a local failure degrades straight to the existing
+"unavailable" outcomes (`null` for translation, a thrown error for STT/TTS)
+instead of ever calling a cloud API — the existing `common.translationUnavailable`
+UI state needed no changes to support this.
+
+**Known limitations:** Piper's Mandarin voice (`zh_CN-huayan-medium`) is
+noticeably weaker than its English/Spanish voices; CPU-only inference for all
+three models sharing one instance may not hit this doc's <1s STT/MT latency
+budgets (written against managed cloud APIs) — see
+`local-inference/README.md`'s "Known limitations" for the full list.
+
 ## Technology comparison (issue's "Translation Technology Options")
 
 | Stage | Self-hosted option | Managed option | Chosen default | Why |
 | --- | --- | --- | --- | --- |
-| STT | faster-whisper | Deepgram Nova-3 | Deepgram (managed) | Streaming interim/final segments and diarization out of the box; self-hosted faster-whisper is the privacy-mode fallback but needs GPU capacity planning |
-| MT | LibreTranslate / NLLB / Marian NMT | Claude, DeepL, Google, Microsoft | Claude (managed) | Already implemented (`translation.ts`); strong quality on English/Chinese/Spanish (this app's `SupportedLanguage` set) without per-language-pair model management. LibreTranslate is the self-hosted fallback when `CLAUDE_API_KEY` is intentionally unset |
-| TTS | Piper / Coqui (not shipped — needs a self-hosted model server) | ElevenLabs (**shipped**) | ElevenLabs (managed) | Ships as a plain Vercel Function today; Piper stays the lower-cost/self-hosted option behind the same `TextToSpeechProvider` interface once a self-hosted-model-server decision is made, same pattern as `agent/`'s deployment-target tradeoff |
+| STT | faster-whisper (**shipped**, `local-inference/`) | Deepgram Nova-3 | faster-whisper (self-hosted, primary) | Nothing leaves the server; Deepgram is the automatic cloud fallback when `local-inference` is unreachable, unless a session's strict-privacy mode disables that fallback (Part 5) |
+| MT | NLLB-200-distilled-600M/CT2-int8 (**shipped**, `local-inference/`) | Claude, DeepL, Google, Microsoft | NLLB (self-hosted, primary) | Runs entirely on-server via `ctranslate2`; Claude is the automatic cloud fallback on local failure, same policy as STT/TTS below |
+| TTS | Piper (**shipped**, `local-inference/`) | ElevenLabs (**shipped**) | Piper (self-hosted, primary) | Runs entirely on-server; ElevenLabs is the automatic cloud fallback on local failure. Piper's Mandarin voice is a known weaker spot (Part 5) |
 
-Every "managed" choice above is reachable purely by configuring an API key;
-every "self-hosted" choice needs zero external network calls once deployed —
-this is what makes "disable external translation providers" (an explicit privacy
-requirement in the issue) a deployment-time flag rather than a code change.
+Every provider tier above is reachable purely by configuring an API key/URL —
+`LOCAL_INFERENCE_URL`+`LOCAL_INFERENCE_SECRET` for the self-hosted tier,
+`CLAUDE_API_KEY`/`STT_API_KEY`/`TTS_API_KEY` for the cloud fallback tier. A
+session's `translationMode: LOCAL_ONLY` setting (Part 5) is what makes
+"disable external translation providers" (an explicit privacy requirement in
+the issue) a per-session toggle rather than a deployment-time-only choice.
 
 ## Performance and scalability targets
 
@@ -290,7 +334,7 @@ languages costs the same as a 20-learner room with 3 languages.
 | Central or distributed caption generation? | Centralized, one consumer per active speaker |
 | Translated audio as a separate LiveKit participant? | Yes, one bot per target language, not per listener |
 | Should users opt-in before receiving generated speech? | Yes, explicit per-learner preference, never default-on |
-| Self-hosted or hybrid default? | Hybrid default (managed STT/MT for demo quality), full self-hosted path available for every stage via the same provider interfaces |
+| Self-hosted or hybrid default? | Self-hosted by default (Part 5) — every translation/caption/voice request tries `local-inference/` first; managed providers (Claude/Deepgram/ElevenLabs) are an automatic fallback on local failure, disable-able per-session via `translationMode: LOCAL_ONLY` |
 | Should translated messages be stored permanently? | Same retention policy as the session's transcript, not permanent by default |
 | Should users view original text? | Always available, never overwritten |
 

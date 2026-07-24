@@ -19,10 +19,11 @@ export async function publishTranslatedCaption(
   session: Session,
   input: { speakerId: string | null; originalText: string; language: SupportedLanguage; startedAt: Date; endedAt: Date },
 ) {
+  const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations = await Promise.all(
     session.learnerLanguages.map(async (targetLanguage) => {
       const target = targetLanguage as SupportedLanguage;
-      const result = await translateText(input.originalText, input.language, target);
+      const result = await translateText(input.originalText, input.language, target, { allowCloudFallback });
       return result
         ? {
             targetLanguage: target,

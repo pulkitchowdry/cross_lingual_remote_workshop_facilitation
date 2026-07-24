@@ -30,6 +30,12 @@ enum InsightType {
   CONFUSION
 }
 
+/** AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5. */
+enum TranslationMode {
+  AUTO
+  LOCAL_ONLY
+}
+
 model User {
   id             String               @id @default(cuid())
   displayName    String
@@ -47,6 +53,7 @@ model Session {
   sourceLanguage  String
   learnerLanguages String[]
   retentionDays   Int                  @default(7)
+  translationMode TranslationMode      @default(AUTO)
   status          SessionStatus        @default(DRAFT)
   facilitatorId   String
   facilitator     User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])

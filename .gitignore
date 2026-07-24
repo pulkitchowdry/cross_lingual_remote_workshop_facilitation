@@ -4,6 +4,12 @@
 /node_modules
 /agent/node_modules
 /.pnp
+
+# local-inference (Python service)
+/local-inference/.venv/
+/local-inference/__pycache__/
+/local-inference/**/__pycache__/
+/local-inference/.pytest_cache/
 .pnp.*
 .yarn/*
 !.yarn/patches

@@ -18,9 +18,23 @@ const ENV_SPEC: EnvSpec[] = [
   { key: "LIVEKIT_API_SECRET", required: false, description: "LiveKit API secret" },
   { key: "CLAUDE_API_KEY", required: false, description: "Claude translation provider key" },
   { key: "CLAUDE_API_URL", required: false, description: "Claude API base URL" },
-  { key: "STT_API_KEY", required: false, description: "Speech-to-text provider key" },
-  { key: "TTS_API_KEY", required: false, description: "Text-to-speech provider key (opt-in translated audio)" },
+  { key: "STT_API_KEY", required: false, description: "Speech-to-text provider key (cloud fallback tier)" },
+  {
+    key: "TTS_API_KEY",
+    required: false,
+    description: "Text-to-speech provider key (opt-in translated audio, cloud fallback tier)",
+  },
   { key: "INSIGHT_MODEL_API_KEY", required: false, description: "Structured-insight LLM provider key" },
+  {
+    key: "LOCAL_INFERENCE_URL",
+    required: false,
+    description: "Base URL of the self-hosted local-inference service (NLLB translation / faster-whisper STT / Piper TTS)",
+  },
+  {
+    key: "LOCAL_INFERENCE_SECRET",
+    required: false,
+    description: "Shared secret authorizing this app's calls to the local-inference service",
+  },
   {
     key: "CAPTION_AGENT_SECRET",
     required: false,
@@ -83,5 +97,6 @@ export function providerAvailability(source: Record<string, string | undefined> 
     speechToText: Boolean(source.STT_API_KEY),
     textToSpeech: Boolean(source.TTS_API_KEY),
     insightModel: Boolean(source.INSIGHT_MODEL_API_KEY),
+    localInference: Boolean(source.LOCAL_INFERENCE_URL && source.LOCAL_INFERENCE_SECRET),
   };
 }
