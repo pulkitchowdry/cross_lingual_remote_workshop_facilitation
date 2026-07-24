@@ -24,31 +24,41 @@ export async function translateText(
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) return null;
 
-  const response = await fetch(process.env.CLAUDE_API_URL ?? "https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_TRANSLATION_MODEL,
-      max_tokens: 1024,
-      system:
-        `You are a real-time translation engine for a live workshop caption pipeline. ` +
-        `Translate the user's message from ${languageName[sourceLanguage]} to ${languageName[targetLanguage]}. ` +
-        `Reply with only the translated text, preserving tone and formatting. Do not add commentary, quotes, or explanations.`,
-      messages: [{ role: "user", content: text }],
-    }),
-    cache: "no-store",
-  });
+  // A hung or errored translation for one learner language must not sink the whole
+  // batch — publishTranslatedCaption/sendChatMessage run this per-language inside
+  // Promise.all, so a thrown network/timeout error here would fail every other
+  // language's translation too. Degrade to "no translation" instead, same as an
+  // explicit non-OK response.
+  try {
+    const response = await fetch(process.env.CLAUDE_API_URL ?? "https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_TRANSLATION_MODEL,
+        max_tokens: 1024,
+        system:
+          `You are a real-time translation engine for a live workshop caption pipeline. ` +
+          `Translate the user's message from ${languageName[sourceLanguage]} to ${languageName[targetLanguage]}. ` +
+          `Reply with only the translated text, preserving tone and formatting. Do not add commentary, quotes, or explanations.`,
+        messages: [{ role: "user", content: text }],
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
 
-  if (!response.ok) return null;
-  const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
-  const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
-  if (!translated) return null;
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
+    if (!translated) return null;
 
-  return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
+    return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -2,7 +2,6 @@
 
 import { useSyncExternalStore } from "react";
 import {
-  FONT_SIZE_LABEL,
   isContrastMode,
   isFontSize,
   nextFontSize,
@@ -10,6 +9,8 @@ import {
   type ContrastMode,
   type FontSize,
 } from "@/lib/accessibility-preferences";
+import { getDictionary } from "@/lib/i18n";
+import { useUiLanguage } from "@/lib/use-ui-language";
 
 const PREFERENCE_CHANGE_EVENT = "accessibility-preference-change";
 
@@ -55,6 +56,7 @@ function persist(key: string, value: string) {
 export function AccessibilityPanel() {
   const fontSize = useSyncExternalStore(subscribe, getFontSizeSnapshot, getServerFontSize);
   const contrast = useSyncExternalStore(subscribe, getContrastSnapshot, getServerContrast);
+  const dict = getDictionary(useUiLanguage()).a11y;
 
   function cycleFontSize() {
     const next = nextFontSize(fontSize);
@@ -75,7 +77,7 @@ export function AccessibilityPanel() {
       <button
         type="button"
         onClick={cycleFontSize}
-        aria-label={`Text size: ${FONT_SIZE_LABEL[fontSize]}. Activate to change.`}
+        aria-label={dict.textSizeAriaLabel(dict.fontSizeLabel[fontSize])}
         className="font-data flex items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
       >
         Aa
@@ -84,7 +86,7 @@ export function AccessibilityPanel() {
         type="button"
         onClick={toggleContrast}
         aria-pressed={contrast === "high"}
-        aria-label={`High contrast mode: ${contrast === "high" ? "on" : "off"}. Activate to toggle.`}
+        aria-label={dict.contrastAriaLabel(contrast)}
         className="font-data flex items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
       >
         <span
@@ -92,7 +94,7 @@ export function AccessibilityPanel() {
           style={{ background: contrast === "high" ? "var(--accent)" : "var(--muted-foreground)" }}
           aria-hidden="true"
         />
-        Contrast
+        {dict.contrastLabel}
       </button>
     </div>
   );

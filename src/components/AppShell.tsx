@@ -4,16 +4,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
-
-const NAV_LINKS = [{ href: "/setup", label: "New session" }] as const;
+import { getDictionary } from "@/lib/i18n";
+import { useUiLanguage } from "@/lib/use-ui-language";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const lang = useUiLanguage();
+  const dict = getDictionary(lang);
+  const navLinks = [{ href: "/setup", label: dict.shell.newSession }] as const;
 
   return (
     <div className="flex min-h-full flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:uppercase focus:tracking-wider focus:text-accent-foreground"
+      >
+        {dict.shell.skipToContent}
+      </a>
       <header className="border-b border-border-subtle bg-surface">
-        <nav className="mx-auto flex max-w-5xl items-center gap-8 px-6 py-4">
+        <nav className="mx-auto flex max-w-[1600px] items-center gap-8 px-6 py-4">
           <span className="flex items-center gap-2">
             <span
               className="h-2 w-2 shrink-0 animate-live-pulse rounded-full bg-accent"
@@ -24,7 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </span>
           <ul className="flex gap-6">
-            {NAV_LINKS.map((link) => {
+            {navLinks.map((link) => {
               const active = pathname?.startsWith(link.href);
               return (
                 <li key={link.href}>
@@ -48,7 +57,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
+      <main id="main-content" className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-8">
+        {children}
+      </main>
     </div>
   );
 }

@@ -136,6 +136,7 @@ class DeepgramSpeechToTextProvider implements SpeechToTextProvider {
       },
       body: new Blob([new Uint8Array(input.audio)]),
       cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { getDictionary } from "@/lib/i18n";
+import { useUiLanguage } from "@/lib/use-ui-language";
 
 type Theme = "dark" | "light";
 
@@ -21,6 +23,7 @@ function getServerSnapshot(): Theme {
 
 export function ThemeToggle() {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const dict = getDictionary(useUiLanguage()).a11y;
 
   function toggle() {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -37,7 +40,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      aria-label={dict.themeAriaLabel(theme === "dark" ? "light" : "dark")}
       className="font-data flex items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
     >
       <span
@@ -45,7 +48,7 @@ export function ThemeToggle() {
         style={{ background: theme === "dark" ? "var(--accent)" : "var(--tick-high)" }}
         aria-hidden="true"
       />
-      {theme === "dark" ? "Dark" : "Light"}
+      {theme === "dark" ? dict.themeDark : dict.themeLight}
     </button>
   );
 }

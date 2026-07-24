@@ -1,11 +1,13 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { SessionStatus } from "@/generated/prisma/client";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
+import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 export async function startSession(sessionId: string) {
@@ -152,4 +154,31 @@ export async function publishCaption(sessionId: string, formData: FormData) {
     startedAt: now,
     endedAt: now,
   });
+}
+
+/** Invalidates the learner invite link immediately — a leaked or no-longer-needed link stops working right away, rather than waiting out its expiry. */
+export async function revokeLearnerInvite(sessionId: string) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+
+  await prisma.joinLink.updateMany({
+    where: { sessionId, role: ParticipantRole.LEARNER, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  revalidatePath(`/sessions/${sessionId}/facilitator`);
+}
+
+/** Ends this browser's facilitator access early: clears the cookie and revokes the underlying join link, so a stolen/leftover cookie can't be reused. */
+export async function logoutFacilitator(sessionId: string) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(facilitatorCookieName(sessionId))?.value;
+  if (token) {
+    await prisma.joinLink.updateMany({
+      where: { sessionId, role: ParticipantRole.FACILITATOR, tokenHash: hashToken(token) },
+      data: { revokedAt: new Date() },
+    });
+  }
+  cookieStore.delete(facilitatorCookieName(sessionId));
+  redirect("/setup");
 }

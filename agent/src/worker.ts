@@ -50,18 +50,37 @@ class CaptionAgentClient {
   }
 
   async publishCaption(input: { sessionId: string; originalText: string; startedAt: Date; endedAt: Date }): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/captions/agent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-caption-agent-secret": this.secret },
-      body: JSON.stringify({
-        sessionId: input.sessionId,
-        originalText: input.originalText,
-        startedAt: input.startedAt.toISOString(),
-        endedAt: input.endedAt.toISOString(),
-      }),
+    const body = JSON.stringify({
+      sessionId: input.sessionId,
+      originalText: input.originalText,
+      startedAt: input.startedAt.toISOString(),
+      endedAt: input.endedAt.toISOString(),
     });
-    if (!response.ok) {
-      console.error(`[caption-agent] Publish failed with status ${response.status} for session ${input.sessionId}.`);
+    const attempts = 3;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await fetch(`${this.baseUrl}/api/captions/agent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-caption-agent-secret": this.secret },
+          body,
+        });
+        if (response.ok) return;
+        if (attempt === attempts) {
+          console.error(
+            `[caption-agent] Publish failed with status ${response.status} for session ${input.sessionId} after ${attempts} attempts — segment lost.`,
+          );
+          return;
+        }
+      } catch (error) {
+        if (attempt === attempts) {
+          console.error(
+            `[caption-agent] Publish threw for session ${input.sessionId} after ${attempts} attempts — segment lost.`,
+            error,
+          );
+          return;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 300));
     }
   }
 }
@@ -90,12 +109,13 @@ async function streamFacilitatorAudio(
     encoding: { format: "linear16", sampleRate: STREAM_SAMPLE_RATE, channels: STREAM_CHANNELS },
     onSegment: (event) => {
       if (!event.isFinal) return;
+      // Capture and advance synchronously — see the matching comment in
+      // src/app/api/captions/stream/route.ts for why reassigning inside a
+      // post-publish `.finally()` races on back-to-back final segments.
+      const startedAt = segmentStartedAt;
       const endedAt = new Date();
-      void client
-        .publishCaption({ sessionId, originalText: event.text, startedAt: segmentStartedAt, endedAt })
-        .finally(() => {
-          segmentStartedAt = new Date();
-        });
+      segmentStartedAt = endedAt;
+      void client.publishCaption({ sessionId, originalText: event.text, startedAt, endedAt });
     },
     onError: (error) => console.error(`[caption-agent] Deepgram stream error for ${sessionId}:`, error),
   });

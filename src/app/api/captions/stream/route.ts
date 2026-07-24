@@ -37,33 +37,61 @@ export async function GET(request: NextRequest) {
 
   const sourceLanguage = session.sourceLanguage as SupportedLanguage;
 
-  return experimental_upgradeWebSocket((ws) => {
-    let segmentStartedAt = new Date();
+  try {
+    return await experimental_upgradeWebSocket((ws) => {
+      let segmentStartedAt = new Date();
 
-    const sttStream = speechToTextProvider.openStream!({
-      expectedLanguage: sourceLanguage,
-      onSegment: (event) => {
-        if (!event.isFinal) return;
-        const endedAt = new Date();
-        void publishTranslatedCaption(session, {
-          speakerId: "Facilitator",
-          originalText: event.text,
-          language: sourceLanguage,
-          startedAt: segmentStartedAt,
-          endedAt,
-        }).finally(() => {
-          segmentStartedAt = new Date();
-        });
-      },
-      onError: (error) => {
-        ws.send(JSON.stringify({ type: "error", message: error.message }));
-      },
-    });
+      const sttStream = speechToTextProvider.openStream!({
+        expectedLanguage: sourceLanguage,
+        onSegment: (event) => {
+          if (!event.isFinal) return;
+          // Capture and advance the timestamp synchronously, in the same tick the
+          // event arrives — not after the async publish below resolves. Two `is_final`
+          // events close together would otherwise both read the same stale
+          // `segmentStartedAt`, since the previous reassignment hadn't run yet.
+          const startedAt = segmentStartedAt;
+          const endedAt = new Date();
+          segmentStartedAt = endedAt;
+          void (async () => {
+            // Re-check status per segment, not just once at connect — the facilitator
+            // may click "End session" while this socket is still open (mirrors the
+            // per-call re-check in /api/captions/agent's POST handler).
+            const current = await prisma.session.findUnique({
+              where: { id: session.id },
+              select: { status: true },
+            });
+            if (!current || current.status !== SessionStatus.LIVE) return;
+            await publishTranslatedCaption(session, {
+              speakerId: "Facilitator",
+              originalText: event.text,
+              language: sourceLanguage,
+              startedAt,
+              endedAt,
+            });
+          })();
+        },
+        onError: (error) => {
+          ws.send(JSON.stringify({ type: "error", message: error.message }));
+        },
+      });
 
-    ws.on("message", (data) => {
-      sttStream.sendAudio(new Uint8Array(data as Buffer));
+      ws.on("message", (data) => {
+        sttStream.sendAudio(new Uint8Array(data as Buffer));
+      });
+      ws.on("close", () => sttStream.close());
+      ws.on("error", () => sttStream.close());
     });
-    ws.on("close", () => sttStream.close());
-    ws.on("error", () => sttStream.close());
-  });
+  } catch {
+    // `experimental_upgradeWebSocket` throws when the current runtime has no WebSocket
+    // upgrade support (e.g. plain `next dev` — only actual Vercel Fluid Compute, or
+    // `vercel dev`, populates the request context it needs). Fail as a clean HTTP
+    // response instead of leaving the client's WebSocket handshake hanging.
+    return Response.json(
+      {
+        error:
+          "Live mic streaming isn't available in this environment. It requires a Vercel deployment (or `vercel dev`) — `next dev` alone can't upgrade this connection. Use the typed caption box instead.",
+      },
+      { status: 503 },
+    );
+  }
 }

@@ -110,6 +110,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - `npm test` — unit tests (Vitest): session-security tokens, environment validation, the insight citation guardrail + response parsing, accessibility preference validation, retention-deadline math, and the speech-to-text/text-to-speech provider mock/error paths.
 - `npm run test:e2e` — Playwright smoke test covering the facilitator create-session flow and the opaque learner join link (starts its own dev server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
+- **The mic-streaming live caption path (`/api/captions/stream`, "Start live captions from mic") cannot be exercised under plain `npm run dev`.** It uses `experimental_upgradeWebSocket` from `@vercel/functions`, which throws unless the request context exposes `upgradeWebSocket` — only real Vercel Fluid Compute (a deployment, or `vercel dev`) populates that. Under `next dev` the route now fails fast with a clean 503 instead of hanging the handshake; the facilitator dashboard's typed-caption box is the local-dev equivalent for that pipeline. The LiveKit room itself (audio/video, DataChannel captions) and the typed-caption/chat/translation paths all work under plain `next dev` — this limitation is specific to the raw WebSocket upgrade.
 
 ## Server-only provider interfaces
 

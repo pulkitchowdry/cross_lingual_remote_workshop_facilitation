@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/Button";
 import { notFound } from "next/navigation";
 import { ParticipantRole } from "@/generated/prisma/client";
@@ -5,9 +6,23 @@ import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 
-export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
+export const metadata: Metadata = { title: "Join session" };
+
+export default async function JoinPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ lang?: string }>;
+}) {
   const { token } = await params;
+  const { lang: langParam } = await searchParams;
+  const lang = resolveLanguage(langParam);
+  const dict = getDictionary(lang);
   const invite = await prisma.joinLink.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { session: true },
@@ -36,19 +51,21 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
-      <div>
-        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          You&apos;re invited to learn
-        </p>
-        <h1 className="font-heading text-2xl font-semibold">{invite.session.title}</h1>
-        <p className="text-sm text-muted-foreground">
-          Choose how you&apos;d like to follow the session. Your preferred language controls translated captions and replies.
-        </p>
+      <SyncUiLanguage lang={lang} />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {dict.join.invitedTo}
+          </p>
+          <h1 className="font-heading text-2xl font-semibold">{invite.session.title}</h1>
+          <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
+        </div>
+        <LanguageSwitcher current={lang} basePath={`/join/${token}`} />
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
         <input type="hidden" name="token" value={token} />
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Your name
+          {dict.join.yourName}
           <input
             className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
             name="displayName"
@@ -58,7 +75,7 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Preferred language
+          {dict.join.preferredLanguage}
           <select
             className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
             name="preferredLanguage"
@@ -66,18 +83,16 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
           >
             {learnerLanguageOptions.map((language) => (
               <option key={language.value} value={language.value}>
-                {language.label}
+                {dict.languageNames[language.value]}
               </option>
             ))}
           </select>
         </label>
         <label className="flex items-start gap-3 text-sm text-muted-foreground">
           <input className="mt-1" type="checkbox" name="consent" required />
-          <span>
-            I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default.
-          </span>
+          <span>{dict.join.consent}</span>
         </label>
-        <Button type="submit">Join session</Button>
+        <Button type="submit">{dict.join.submit}</Button>
       </form>
     </div>
   );
