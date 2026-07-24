@@ -1,3 +1,4 @@
+import { WebSocket } from "ws";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 export interface TranscriptSegmentDraft {
@@ -9,6 +10,17 @@ export interface TranscriptSegmentDraft {
   isFinal: boolean;
 }
 
+export interface StreamingTranscriptEvent {
+  text: string;
+  isFinal: boolean;
+}
+
+/** A live transcription session: push audio in, get transcript events out. */
+export interface SpeechToTextStream {
+  sendAudio(chunk: Uint8Array): void;
+  close(): void;
+}
+
 /**
  * Server-only boundary for streaming speech-to-text. Call sites must depend
  * on `SpeechToTextProvider`, never on a vendor SDK directly, so the STT
@@ -18,9 +30,7 @@ export interface SpeechToTextProvider {
   readonly isConfigured: boolean;
   /**
    * Transcribes a single already-recorded audio chunk into a final segment.
-   * A streaming adapter would additionally expose interim segments; this
-   * method models the minimum the transcript pipeline needs: durable final
-   * segments per chunk.
+   * Used for one-shot chunk transcription (e.g. a full pre-recorded clip).
    */
   transcribeChunk(input: {
     audio: Uint8Array;
@@ -28,6 +38,17 @@ export interface SpeechToTextProvider {
     expectedLanguage: SupportedLanguage;
     speakerId: string | null;
   }): Promise<TranscriptSegmentDraft>;
+  /**
+   * Opens a live streaming transcription session for real-time interim/final
+   * transcripts, matching the doc's "true low-latency streaming STT" design.
+   * Optional — only implemented by providers with a real streaming API; the
+   * mock provider omits it.
+   */
+  openStream?(input: {
+    expectedLanguage: SupportedLanguage;
+    onSegment: (event: StreamingTranscriptEvent) => void;
+    onError: (error: Error) => void;
+  }): SpeechToTextStream;
 }
 
 /**
@@ -126,6 +147,85 @@ class DeepgramSpeechToTextProvider implements SpeechToTextProvider {
       endedAt,
       isFinal: true,
     };
+  }
+
+  openStream(input: {
+    expectedLanguage: SupportedLanguage;
+    onSegment: (event: StreamingTranscriptEvent) => void;
+    onError: (error: Error) => void;
+  }): SpeechToTextStream {
+    const apiKey = process.env.STT_API_KEY;
+    if (!apiKey) {
+      throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
+    }
+    return new DeepgramStreamingSession(apiKey, input.expectedLanguage, input.onSegment, input.onError);
+  }
+}
+
+/** Minimal slice of Deepgram's live-streaming `Results` message shape. */
+interface DeepgramStreamingMessage {
+  type?: string;
+  is_final?: boolean;
+  channel?: {
+    alternatives?: Array<{ transcript?: string }>;
+  };
+}
+
+/**
+ * Parses one Deepgram websocket message into a transcript event, or `null`
+ * for messages that aren't a transcript (e.g. `Metadata`, `UtteranceEnd`) or
+ * carry no text (interim silence). Extracted as a pure function so the
+ * websocket wiring around it doesn't need a live connection to test.
+ */
+export function parseDeepgramStreamingMessage(raw: string): StreamingTranscriptEvent | null {
+  let message: DeepgramStreamingMessage;
+  try {
+    message = JSON.parse(raw) as DeepgramStreamingMessage;
+  } catch {
+    return null;
+  }
+  if (message.type !== "Results") return null;
+
+  const text = message.channel?.alternatives?.[0]?.transcript?.trim();
+  if (!text) return null;
+
+  return { text, isFinal: Boolean(message.is_final) };
+}
+
+class DeepgramStreamingSession implements SpeechToTextStream {
+  private readonly socket: WebSocket;
+
+  constructor(
+    apiKey: string,
+    expectedLanguage: SupportedLanguage,
+    onSegment: (event: StreamingTranscriptEvent) => void,
+    onError: (error: Error) => void,
+  ) {
+    const params = new URLSearchParams({
+      model: DEEPGRAM_MODEL,
+      language: expectedLanguage,
+      smart_format: "true",
+      punctuate: "true",
+      interim_results: "true",
+    });
+    this.socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, {
+      headers: { Authorization: `Token ${apiKey}` },
+    });
+    this.socket.on("message", (data) => {
+      const event = parseDeepgramStreamingMessage(data.toString());
+      if (event) onSegment(event);
+    });
+    this.socket.on("error", (error) => onError(error instanceof Error ? error : new Error(String(error))));
+  }
+
+  sendAudio(chunk: Uint8Array): void {
+    if (this.socket.readyState === WebSocket.OPEN) this.socket.send(chunk);
+  }
+
+  close(): void {
+    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+      this.socket.close();
+    }
   }
 }
 
