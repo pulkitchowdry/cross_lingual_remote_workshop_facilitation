@@ -26,6 +26,11 @@ const ENV_SPEC: EnvSpec[] = [
     required: false,
     description: "Shared secret authorizing the standalone agent/ worker's /api/captions/agent calls",
   },
+  {
+    key: "CRON_SECRET",
+    required: false,
+    description: "Shared secret authorizing Vercel Cron's /api/retention/cleanup calls",
+  },
 ];
 
 export interface EnvValidationResult {

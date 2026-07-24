@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -18,6 +19,9 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) redirect("/setup");
+  if (session.status !== SessionStatus.LIVE) {
+    throw new Error("This session is not live — messages can only be sent while it is in progress.");
+  }
 
   let senderId: string;
   let sourceLanguage: SupportedLanguage;

@@ -36,14 +36,16 @@ export function SessionChatPanel({
           messages.map((message) => (
             <article key={message.id} className="rounded-md border border-border-subtle bg-background p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="font-data text-xs font-medium text-accent">{message.sender.displayName}</p>
+                <p className="font-data text-xs font-medium text-[var(--accent-text)]">{message.sender.displayName}</p>
                 {message.kind === "QUESTION" && (
-                  <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent">
+                  <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
                     Question
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-sm leading-relaxed">{translatedText(message, targetLanguage)}</p>
+              <p className="mt-1 text-sm leading-relaxed" lang={targetLanguage}>
+                {translatedText(message, targetLanguage)}
+              </p>
               {message.language !== targetLanguage && (
                 <p className="mt-2 text-xs italic text-muted-foreground" lang={message.language}>
                   {message.originalText}

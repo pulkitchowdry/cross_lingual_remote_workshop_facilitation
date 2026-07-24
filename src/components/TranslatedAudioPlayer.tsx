@@ -32,7 +32,22 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     }
     playingRef.current = true;
     audio.src = `/api/captions/${nextId}/audio?lang=${encodeURIComponent(preferredLanguage)}`;
-    void audio.play().catch(() => setError("Translated audio playback was blocked by the browser."));
+    void audio.play().catch(() => {
+      // A rejected play() (autoplay block, decode error, aborted load) never
+      // fires onEnded/onError, so without this the queue would silently wedge
+      // forever on the first failure while the checkbox still reads "on".
+      setError("Translated audio playback was blocked by the browser.");
+      playingRef.current = false;
+      playNext();
+    });
+  };
+
+  const handlePlaybackError = () => {
+    // <audio onError> covers every failed load (404/502/503 from the audio
+    // route, network error) — surface it instead of silently treating a
+    // failed segment the same as one that finished normally.
+    setError("Some translated audio couldn't be loaded and was skipped.");
+    playNext();
   };
 
   useEffect(() => {
@@ -51,9 +66,9 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
         <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
         Play translated audio for new captions
       </label>
-      <audio ref={audioRef} onEnded={playNext} onError={playNext} className="hidden" />
+      <audio ref={audioRef} onEnded={playNext} onError={handlePlaybackError} className="hidden" />
       {error && (
-        <p className="text-xs" style={{ color: "var(--tick-low)" }}>
+        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {error}
         </p>
       )}

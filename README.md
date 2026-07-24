@@ -4,7 +4,7 @@ A prototype built for the **"Breaking Language Barriers"** hackathon challenge: 
 
 Our demo scenario: a remote facilitator supporting a hands-on workshop run in a language they don't speak.
 
-See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement and [`docs/approaches.md`](docs/approaches.md) for the design rationale. Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md). For the detailed, privacy-first translation pipeline design (speech translation, captions, TTS, chat/Q&A, provider comparisons), see [`docs/TRANSLATION_ARCHITECTURE.md`](docs/TRANSLATION_ARCHITECTURE.md). For the facilitator-auth-provider and PostgreSQL-hosting decision, see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md).
+See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement and [`docs/approaches.md`](docs/approaches.md) for the design rationale. Recording the pitch video? See the slide deck at [`docs/slides/pitch-slides.pdf`](docs/slides/pitch-slides.pdf). For the detailed, privacy-first translation pipeline design (speech translation, captions, TTS, chat/Q&A, provider comparisons), see [`docs/TRANSLATION_ARCHITECTURE.md`](docs/TRANSLATION_ARCHITECTURE.md). For the facilitator-auth-provider and PostgreSQL-hosting decision, see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md).
 
 ## Architecture
 
@@ -33,7 +33,7 @@ flowchart LR
 - **Translation & understanding:** Claude API (prompt-cached over the growing transcript)
 - **Real-time transport:** LiveKit + WebSockets
 - **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
-- **Facilitator authentication:** Clerk (learner join links stay on the existing cookie/token flow)
+- **Facilitator authentication:** opaque cookie/token flow (`session-security.ts`) for both facilitator and learner today; migrating the facilitator side to Clerk is a decided-but-not-yet-implemented follow-up (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
 - **Hosting:** Vercel
 
 ## Getting Started
@@ -67,7 +67,7 @@ The app needs four services configured before it runs end to end: **PostgreSQL**
    ```
 
    ```env
-   LIVEKIT_URL="http://localhost:7882"
+   LIVEKIT_URL="http://localhost:7880"
    LIVEKIT_API_KEY="devkey"
    LIVEKIT_API_SECRET="secret"
    ```
@@ -108,7 +108,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 ## Testing
 
-- `npm test` — unit tests (Vitest) for session-security tokens, environment validation, and the insight citation guardrail.
+- `npm test` — unit tests (Vitest): session-security tokens, environment validation, the insight citation guardrail + response parsing, accessibility preference validation, retention-deadline math, and the speech-to-text/text-to-speech provider mock/error paths.
 - `npm run test:e2e` — Playwright smoke test covering the facilitator create-session flow and the opaque learner join link (starts its own dev server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
 
 ## Server-only provider interfaces
@@ -118,22 +118,26 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 - `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room credentials and pushes DataChannel signals (`notifyCaptionsChanged`).
 - `TranslationProvider` (`translation.ts`) — Claude-backed today.
 - `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream` and the `agent/` worker) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
-- `InsightProvider` (`insight.ts`) — mock (returns no insights) until `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
+- `InsightProvider` (`insight.ts`) — Claude-backed once `INSIGHT_MODEL_API_KEY` is set (analyzes the recent transcript for ACTIVITY/DECISION/BLOCKER/CONFUSION after each caption, via `waitUntil` so it never blocks the live caption path); returns no insights otherwise. `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
 - `TextToSpeechProvider` (`text-to-speech.ts`) — ElevenLabs adapter once `TTS_API_KEY` is set; mock (returns no audio) otherwise. Opt-in only — see `docs/TRANSLATION_ARCHITECTURE.md` Part 3.
 
 `agent/` is a standalone LiveKit Agents worker (its own `package.json`, not a dependency of this app) that subscribes to the facilitator's audio track server-side, so captions work without the browser mic control. See `agent/README.md`.
 
 ## Screenshots
 
-Full facilitator → learner → facilitator loop; more shots (light mode, polls, glossary before/after, etc.) are in `docs/PITCH.md`.
+Full facilitator → learner → facilitator loop; more shots (light mode, accessibility settings, etc.) are in `docs/screenshots/` and the pitch deck at `docs/slides/pitch-slides.pdf`.
 
 | Session setup | Facilitator dashboard |
 | --- | --- |
 | ![Setup](docs/screenshots/setup.png) | ![Facilitator dashboard](docs/screenshots/dashboard.png) |
 
-| Learner view | Session history |
+| Learner view | Facilitator dashboard — live, Claude-generated blocker |
 | --- | --- |
-| ![Learner view](docs/screenshots/learner.png) | ![History](docs/screenshots/history.png) |
+| ![Learner view](docs/screenshots/learner.png) | ![Live AI-detected blocker](docs/screenshots/uat2/facilitator-live-ai-blocker-real-claude.png) |
+
+| Accessibility settings (font size + high contrast) | Learner view — session ended |
+| --- | --- |
+| ![Accessibility settings](docs/screenshots/uat2/accessibility-large-text-high-contrast.png) | ![Session ended](docs/screenshots/uat2/learner-session-ended-fixed.png) |
 
 ## Project Structure
 
