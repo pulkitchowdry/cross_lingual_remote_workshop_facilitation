@@ -60,4 +60,9 @@ describe("providerAvailability", () => {
     expect(providerAvailability({}).claude).toBe(false);
     expect(providerAvailability({ CLAUDE_API_KEY: "key" }).claude).toBe(true);
   });
+
+  it("reports text-to-speech availability from a single key", () => {
+    expect(providerAvailability({}).textToSpeech).toBe(false);
+    expect(providerAvailability({ TTS_API_KEY: "key" }).textToSpeech).toBe(true);
+  });
 });
