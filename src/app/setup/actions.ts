@@ -51,6 +51,12 @@ export async function createSession(formData: FormData) {
 
   const facilitatorToken = createOpaqueToken();
   const learnerToken = createOpaqueToken();
+  // Tie both join links' lifetime to the facilitator's own retention choice: once the
+  // transcript is due for deletion, a leaked/forgotten link should stop working too,
+  // rather than staying valid indefinitely (see docs/problem_statement.md's privacy
+  // requirement — a link with no expiry is a standing access risk for the life of the
+  // Session row).
+  const linkExpiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
 
   const session = await prisma.$transaction(async (transaction) => {
     const facilitator = await transaction.user.create({
@@ -79,10 +85,12 @@ export async function createSession(formData: FormData) {
               tokenHash: hashToken(facilitatorToken),
               maxUses: 1,
               useCount: 1,
+              expiresAt: linkExpiresAt,
             },
             {
               role: ParticipantRole.LEARNER,
               tokenHash: hashToken(learnerToken),
+              expiresAt: linkExpiresAt,
             },
           ],
         },

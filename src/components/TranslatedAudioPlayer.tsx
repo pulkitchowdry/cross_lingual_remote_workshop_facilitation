@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getDictionary, resolveLanguage } from "@/lib/i18n";
 
 interface CaptionForPlayback {
   id: string;
@@ -16,6 +17,7 @@ interface CaptionForPlayback {
  * other.
  */
 export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segments: CaptionForPlayback[]; preferredLanguage: string }) {
+  const dict = getDictionary(resolveLanguage(preferredLanguage)).learner;
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -36,7 +38,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       // A rejected play() (autoplay block, decode error, aborted load) never
       // fires onEnded/onError, so without this the queue would silently wedge
       // forever on the first failure while the checkbox still reads "on".
-      setError("Translated audio playback was blocked by the browser.");
+      setError(dict.audioBlocked);
       playingRef.current = false;
       playNext();
     });
@@ -46,7 +48,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     // <audio onError> covers every failed load (404/502/503 from the audio
     // route, network error) — surface it instead of silently treating a
     // failed segment the same as one that finished normally.
-    setError("Some translated audio couldn't be loaded and was skipped.");
+    setError(dict.audioSkipped);
     playNext();
   };
 
@@ -64,7 +66,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     <div className="flex items-center gap-2">
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
         <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        Play translated audio for new captions
+        {dict.playTranslatedAudio}
       </label>
       <audio ref={audioRef} onEnded={playNext} onError={handlePlaybackError} className="hidden" />
       {error && (

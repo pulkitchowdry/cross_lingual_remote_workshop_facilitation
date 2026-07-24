@@ -8,12 +8,13 @@ import {
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
-  TrackLoop,
   useDataChannel,
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
+import { getDictionary } from "@/lib/i18n";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
  * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
@@ -41,9 +42,7 @@ function WorkshopVideoStage() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-hidden p-3">
         <GridLayout tracks={tracks} className="h-full">
-          <TrackLoop tracks={tracks}>
-            <ParticipantTile />
-          </TrackLoop>
+          <ParticipantTile />
         </GridLayout>
       </div>
       <div className="border-t border-border-subtle p-2">
@@ -53,7 +52,8 @@ function WorkshopVideoStage() {
   );
 }
 
-export function LiveSessionRoom({ sessionId, role }: { sessionId: string; role: Role }) {
+export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; role: Role; lang: SupportedLanguage }) {
+  const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,23 +67,24 @@ export function LiveSessionRoom({ sessionId, role }: { sessionId: string; role: 
           body: JSON.stringify({ sessionId, role }),
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Unable to join the media room.");
+        if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
         if (!cancelled) setCredentials(payload);
       } catch (reason) {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Unable to join the media room.");
+        if (!cancelled) setError(reason instanceof Error ? reason.message : dict.unableToJoin);
       }
     }
     void loadCredentials();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, sessionId]);
 
   if (error) {
     return <p className="text-sm" style={{ color: "var(--tick-low)" }}>{error}</p>;
   }
   if (!credentials) {
-    return <p className="text-sm text-muted-foreground">Connecting your secure audio/video room…</p>;
+    return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
   }
 
   return (
@@ -93,7 +94,7 @@ export function LiveSessionRoom({ sessionId, role }: { sessionId: string; role: 
         serverUrl={credentials.serverUrl}
         connect
         audio
-        video
+        video={false}
         data-lk-theme="default"
       >
         <WorkshopVideoStage />

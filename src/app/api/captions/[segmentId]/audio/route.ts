@@ -45,7 +45,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "No text available in the requested language." }, { status: 404 });
   }
 
-  const speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage);
+  let speech;
+  try {
+    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage);
+  } catch {
+    return Response.json({ error: "Speech synthesis failed." }, { status: 502 });
+  }
   if (!speech) {
     return Response.json({ error: "Speech synthesis returned no audio." }, { status: 502 });
   }

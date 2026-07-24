@@ -1,85 +1,85 @@
 import { Button } from "@/components/ui/Button";
 import { createSession } from "@/app/setup/actions";
-import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { getDictionary } from "@/lib/i18n";
 
-export function SetupForm() {
+export function SetupForm({ lang }: { lang: SupportedLanguage }) {
+  const dict = getDictionary(lang);
+  const languageNames = dict.languageNames;
+
   return (
     <form className="flex max-w-xl flex-col gap-4" action={createSession}>
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Your name
+        {dict.setup.yourName}
         <input
           className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="facilitatorName"
           required
           maxLength={80}
-          placeholder="e.g. Priya, workshop facilitator"
+          placeholder={dict.setup.yourNamePlaceholder}
         />
       </label>
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Session title
+        {dict.setup.sessionTitle}
         <input
           className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="title"
           required
           maxLength={120}
-          placeholder="e.g. REST endpoint workshop"
+          placeholder={dict.setup.sessionTitlePlaceholder}
         />
       </label>
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Workshop goal
+        {dict.setup.workshopGoal}
         <textarea
           className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           rows={4}
           required
           name="goal"
           maxLength={1000}
-          placeholder="e.g. Implement a working REST endpoint for user signup, including input validation."
+          placeholder={dict.setup.workshopGoalPlaceholder}
         />
       </label>
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Facilitator&apos;s language
+        {dict.setup.facilitatorLanguage}
         <select
           className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="sourceLanguage"
-          defaultValue="en"
+          defaultValue={lang}
         >
           {SUPPORTED_LANGUAGES.map((language) => (
             <option key={language.value} value={language.value}>
-              {language.label}
+              {languageNames[language.value]}
             </option>
           ))}
         </select>
       </label>
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">Learner languages</legend>
-        <p className="text-sm text-muted-foreground">
-          Learners choose one of these when they join. Start with the languages you can support.
-        </p>
+        <legend className="text-sm font-medium">{dict.setup.learnerLanguages}</legend>
+        <p className="text-sm text-muted-foreground">{dict.setup.learnerLanguagesHint}</p>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {SUPPORTED_LANGUAGES.map((language) => (
             <label key={language.value} className="flex items-center gap-2 text-sm">
               <input name="learnerLanguages" type="checkbox" value={language.value} defaultChecked />
-              {language.label}
+              {languageNames[language.value]}
             </label>
           ))}
         </div>
       </fieldset>
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Transcript retention
+        {dict.setup.retention}
         <select
           className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="retentionDays"
           defaultValue="7"
         >
-          <option value="1">Delete after 1 day</option>
-          <option value="7">Delete after 7 days</option>
-          <option value="30">Delete after 30 days</option>
+          <option value="1">{dict.setup.retentionDay}</option>
+          <option value="7">{dict.setup.retentionWeek}</option>
+          <option value="30">{dict.setup.retentionMonth}</option>
         </select>
       </label>
-      <p className="text-sm text-muted-foreground">
-        You&apos;ll receive a private learner link after creating the session. Live audio is not recorded by default.
-      </p>
-      <Button type="submit">Create session</Button>
+      <p className="text-sm text-muted-foreground">{dict.setup.privacyNote}</p>
+      <Button type="submit">{dict.setup.submit}</Button>
     </form>
   );
 }

@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
@@ -11,13 +13,18 @@ import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import {
   endSession,
   loadDemoScenario,
+  logoutFacilitator,
   publishCaption,
+  revokeLearnerInvite,
   startSession,
 } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
+
+export const metadata: Metadata = { title: "Facilitator dashboard" };
 
 export default async function FacilitatorSessionPage({
   params,
@@ -38,9 +45,18 @@ export default async function FacilitatorSessionPage({
         include: { sender: true, translations: true },
         orderBy: { sentAt: "desc" },
       },
+      joinLinks: { where: { role: ParticipantRole.LEARNER } },
     },
   });
   if (!session) notFound();
+
+  const lang = resolveLanguage(session.sourceLanguage);
+  const dict = getDictionary(lang).facilitator;
+  const statusLabel = {
+    [SessionStatus.DRAFT]: dict.statusDraft,
+    [SessionStatus.LIVE]: dict.statusLive,
+    [SessionStatus.ENDED]: dict.statusEnded,
+  }[session.status];
 
   const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
@@ -55,62 +71,70 @@ export default async function FacilitatorSessionPage({
   const endAction = endSession.bind(null, sessionId);
   const demoAction = loadDemoScenario.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
+  const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
+  const logoutAction = logoutFacilitator.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
+  const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
 
   return (
     <div className="flex flex-col gap-6">
+      <SyncUiLanguage lang={lang} />
       {session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Session created
+          {dict.sessionCreated}
         </p>
         <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
-        <p className="text-sm text-muted-foreground">
-          Invite learners first, then start live captions and the intervention dashboard.
-        </p>
+        <p className="text-sm text-muted-foreground">{dict.subtitle}</p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" aria-live="polite">
         <span
           className="font-data rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider"
           style={{ color: session.status === SessionStatus.LIVE ? "var(--tick-high)" : "var(--muted-foreground)" }}
         >
-          {session.status.toLowerCase()}
+          {statusLabel}
         </span>
         {session.status === SessionStatus.DRAFT && (
           <form action={startAction}>
             <button className="font-data rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-              Start session
+              {dict.startSession}
             </button>
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
           <form action={endAction}>
             <button className="font-data rounded-md border border-border-strong px-5 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-              End session
+              {dict.endSession}
             </button>
           </form>
         )}
+        <form action={logoutAction}>
+          <button className="font-data rounded-md border border-border-subtle px-5 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
+            {dict.logOut}
+          </button>
+        </form>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card eyebrow="Workshop goal">{session.goal}</Card>
-        <Card eyebrow="Learners joined">
+        <Card eyebrow={dict.workshopGoalCard}>{session.goal}</Card>
+        <Card eyebrow={dict.learnersJoinedCard}>
           <span className="font-heading text-3xl font-semibold">{session.participants.length}</span>
-          <p className="mt-1 text-sm text-muted-foreground">Learners have completed consent and joined.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{dict.learnersJoinedHint}</p>
         </Card>
       </div>
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
           <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Workshop room</p>
-            <h2 className="font-heading text-lg font-semibold">Live audio and video</h2>
+            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</p>
+            <h2 className="font-heading text-lg font-semibold">{dict.liveAudioVideo}</h2>
+            <p className="text-sm text-muted-foreground">{dict.micCameraHint}</p>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="flex flex-col gap-3">
-              <LiveSessionRoom sessionId={session.id} role="facilitator" />
+              <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} />
               <form action={publishCaptionAction} className="flex gap-2">
-                <label className="sr-only" htmlFor="facilitator-caption">Type a caption for learners</label>
+                <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
                 <textarea
                   id="facilitator-caption"
                   className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
@@ -118,13 +142,13 @@ export default async function FacilitatorSessionPage({
                   rows={1}
                   required
                   maxLength={3000}
-                  placeholder="Type a caption for learners in their selected language…"
+                  placeholder={dict.captionPlaceholder}
                 />
                 <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                  Publish
+                  {dict.publish}
                 </button>
               </form>
-              {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} />}
+              {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} lang={lang} />}
             </div>
             <SessionChatPanel
               messages={chatMessages}
@@ -137,13 +161,13 @@ export default async function FacilitatorSessionPage({
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Act now</p>
-            <h2 className="font-heading text-lg font-semibold">Evidence-backed intervention queue</h2>
+            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</p>
+            <h2 className="font-heading text-lg font-semibold">{dict.interventionQueue}</h2>
           </div>
           {session.transcript.length === 0 && (
             <form action={demoAction}>
               <button className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                Load demo scenario
+                {dict.loadDemo}
               </button>
             </form>
           )}
@@ -156,14 +180,14 @@ export default async function FacilitatorSessionPage({
               const translation = evidence?.translations.find((item) => item.targetLanguage === session.sourceLanguage);
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
-                : (translation?.text ?? "Translation unavailable.");
+                : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
               const evidenceLang = evidenceIsSourceLanguage
                 ? evidence?.language
                 : translation
                   ? session.sourceLanguage
                   : "en";
               return (
-                <Card key={blocker.id} eyebrow="Blocker" accent="var(--tick-low)">
+                <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
                   {evidence && (
                     <p
@@ -173,34 +197,31 @@ export default async function FacilitatorSessionPage({
                       “{evidenceText}”
                     </p>
                   )}
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>Suggested action: ask the group to test whether `validateEmail()` throws.</span>
-                  </div>
                 </Card>
               );
             })}
           </div>
         ) : session.transcript.length === 0 ? (
-          <Card eyebrow="No intervention needed yet">
-            <p className="text-muted-foreground">Load the demo scenario to test the grounded intervention experience.</p>
+          <Card eyebrow={dict.noInterventionYet}>
+            <p className="text-muted-foreground">{dict.noInterventionHintEmpty}</p>
           </Card>
         ) : (
-          <Card eyebrow="No intervention needed yet">
-            <p className="text-muted-foreground">The group&apos;s discussion looks on track — no blockers detected yet.</p>
+          <Card eyebrow={dict.noInterventionYet}>
+            <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
         )}
       </section>
       <section className="flex flex-col gap-3" aria-live="polite">
         <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Live transcript</p>
-          <h2 className="font-heading text-lg font-semibold">What the group is saying</h2>
+          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</p>
+          <h2 className="font-heading text-lg font-semibold">{dict.whatGroupSaying}</h2>
         </div>
         {session.transcript.length > 0 ? (
           <div className="flex flex-col gap-3">
             {session.transcript.map((segment) => {
               const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
               return (
-                <Card key={segment.id} title={segment.speakerId ?? "Speaker"} meta={segment.language.toUpperCase()}>
+                <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
                   <p className="italic text-muted-foreground" lang={segment.language}>
                     {segment.originalText}
                   </p>
@@ -214,46 +235,50 @@ export default async function FacilitatorSessionPage({
             })}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Captions will arrive here when the session is live.</p>
+          <p className="text-sm text-muted-foreground">{dict.transcriptEmpty}</p>
         )}
       </section>
-      <Card eyebrow="Learner invitation" title="Share this private link">
-        {learnerLink ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            {learnerLinkQrCode && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                alt="QR code for the learner invitation link"
-                className="h-24 w-24 rounded-md border border-border-strong bg-white p-1"
-                height={96}
-                src={learnerLinkQrCode}
-                width={96}
-              />
-            )}
-            <div className="flex flex-1 flex-col gap-2">
-              <p className="text-muted-foreground">
-                Learners will choose a language and consent before entering the session. Scan the QR code or share the
-                link below.
-              </p>
-              <input
-                aria-label="Learner invitation link"
-                className="w-full rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
-                readOnly
-                value={learnerLink}
-              />
+      <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>
+        {learnerInviteRevoked ? (
+          <p className="text-muted-foreground">{dict.linkRevokedMsg}</p>
+        ) : learnerLink ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              {learnerLinkQrCode && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt={dict.qrAlt}
+                  className="h-24 w-24 rounded-md border border-border-strong bg-white p-1"
+                  height={96}
+                  src={learnerLinkQrCode}
+                  width={96}
+                />
+              )}
+              <div className="flex flex-1 flex-col gap-2">
+                <p className="text-muted-foreground">{dict.linkInstructions}</p>
+                <input
+                  aria-label={dict.learnerLinkAriaLabel}
+                  className="w-full rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
+                  readOnly
+                  value={learnerLink}
+                />
+              </div>
             </div>
+            <form action={revokeInviteAction}>
+              <button className="font-data w-fit rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-low)] hover:text-[var(--tick-low)]">
+                {dict.revokeInvite}
+              </button>
+            </form>
           </div>
         ) : (
-          <p className="text-muted-foreground">
-            This browser no longer has the original learner link. Create a replacement invitation before sharing the session.
-          </p>
+          <p className="text-muted-foreground">{dict.linkMissingMsg}</p>
         )}
       </Card>
-      <Card eyebrow="What&apos;s next" title="Live learning workspace">
+      <Card eyebrow={dict.whatsNext} title={dict.liveWorkspace}>
         <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
-          <li>Start the session and connect live captions.</li>
-          <li>Show translated captions in each learner&apos;s chosen language.</li>
-          <li>Enable the evidence-backed intervention queue for the facilitator.</li>
+          <li>{dict.step1}</li>
+          <li>{dict.step2}</li>
+          <li>{dict.step3}</li>
         </ol>
       </Card>
     </div>

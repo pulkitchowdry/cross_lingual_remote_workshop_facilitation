@@ -67,6 +67,7 @@ class ElevenLabsTextToSpeechProvider implements TextToSpeechProvider {
       },
       body: JSON.stringify({ text, model_id: ELEVENLABS_MODEL }),
       cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {
