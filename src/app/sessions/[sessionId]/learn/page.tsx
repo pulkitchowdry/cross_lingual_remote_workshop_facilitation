@@ -74,7 +74,9 @@ export default async function LearnerSessionPage({
           <h2 className="font-heading text-lg font-semibold">
             {participant.session.status === SessionStatus.LIVE
               ? "Follow the explanation in your language"
-              : "Waiting for the facilitator to start"}
+              : participant.session.status === SessionStatus.ENDED
+                ? "Session ended"
+                : "Waiting for the facilitator to start"}
           </h2>
         </div>
         {textToSpeechProvider.isConfigured && (
@@ -98,10 +100,14 @@ export default async function LearnerSessionPage({
               const primaryText = isOwnLanguage
                 ? segment.originalText
                 : (translation?.text ?? "Translation unavailable.");
+              // "Translation unavailable." is a fixed English UI string, not a translation —
+              // tag it "en" rather than the learner's preferred language.
+              const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
               return (
                 <Card key={segment.id} title={segment.speakerId ?? "Speaker"} meta={segment.language.toUpperCase()}>
                   <p
                     className="text-base leading-relaxed"
+                    lang={primaryLang}
                     style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
                   >
                     {primaryText}

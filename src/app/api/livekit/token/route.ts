@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { roomProvider, type RoomRole } from "@/lib/providers/room";
@@ -19,6 +20,9 @@ export async function POST(request: NextRequest) {
 
   const session = await prisma.session.findUnique({ where: { id: body.sessionId } });
   if (!session) return Response.json({ error: "Session not found." }, { status: 404 });
+  if (session.status !== SessionStatus.LIVE) {
+    return Response.json({ error: "Session is not live." }, { status: 409 });
+  }
 
   let identity: string;
   let name: string;

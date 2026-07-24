@@ -53,9 +53,17 @@ class LiveKitRoomProvider implements RoomProvider {
     token.addGrant({
       roomJoin: true,
       room: `workshop-${sessionId}`,
+      // Both roles publish/subscribe audio+video symmetrically by design —
+      // LiveSessionRoom is a full bidirectional room so facilitators and
+      // learners can talk during peer discussion / group work, not a
+      // facilitator-broadcast-only room. DataChannel publishing is
+      // deliberately withheld from every participant: only the server
+      // (notifyCaptionsChanged, via RoomServiceClient) ever sends data —
+      // no client-side code publishes to the DataChannel, so granting
+      // participants that ability would be unused attack surface.
       canPublish: true,
       canSubscribe: true,
-      canPublishData: true,
+      canPublishData: false,
     });
 
     return { serverUrl, token: await token.toJwt() };

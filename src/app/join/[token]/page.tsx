@@ -23,6 +23,17 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
     notFound();
   }
 
+  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
+    invite.session.learnerLanguages.includes(language.value),
+  );
+  // The facilitator's own language is only a meaningful default when it's
+  // actually one of the enabled learner languages — otherwise fall back to
+  // the first enabled option explicitly, rather than relying on the browser
+  // to silently pick something when defaultValue matches no <option>.
+  const defaultLanguage = learnerLanguageOptions.some((language) => language.value === invite.session.sourceLanguage)
+    ? invite.session.sourceLanguage
+    : learnerLanguageOptions[0]?.value;
+
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <div>
@@ -51,9 +62,9 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
           <select
             className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
             name="preferredLanguage"
-            defaultValue={invite.session.sourceLanguage}
+            defaultValue={defaultLanguage}
           >
-            {SUPPORTED_LANGUAGES.filter((language) => invite.session.learnerLanguages.includes(language.value)).map((language) => (
+            {learnerLanguageOptions.map((language) => (
               <option key={language.value} value={language.value}>
                 {language.label}
               </option>

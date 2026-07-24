@@ -77,7 +77,7 @@ export function LiveCaptionStream({ sessionId }: { sessionId: string }) {
         {isStreaming ? "Stop live captions" : "Start live captions from mic"}
       </button>
       {error && (
-        <p className="text-xs" style={{ color: "var(--tick-low)" }}>
+        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {error}
         </p>
       )}

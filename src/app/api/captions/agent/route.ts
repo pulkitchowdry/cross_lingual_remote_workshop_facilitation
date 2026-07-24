@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
+import { secureCompare } from "@/lib/session-security";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -19,8 +20,9 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  */
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CAPTION_AGENT_SECRET;
-  if (!expected) return false;
-  return request.headers.get("x-caption-agent-secret") === expected;
+  const provided = request.headers.get("x-caption-agent-secret");
+  if (!expected || !provided) return false;
+  return secureCompare(provided, expected);
 }
 
 /** Lets the worker check whether a session is live and what language to request from Deepgram. */

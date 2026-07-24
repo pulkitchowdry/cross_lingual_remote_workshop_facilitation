@@ -134,7 +134,7 @@ export default async function FacilitatorSessionPage({
           </div>
         </section>
       )}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Act now</p>
@@ -157,11 +157,19 @@ export default async function FacilitatorSessionPage({
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
                 : (translation?.text ?? "Translation unavailable.");
+              const evidenceLang = evidenceIsSourceLanguage
+                ? evidence?.language
+                : translation
+                  ? session.sourceLanguage
+                  : "en";
               return (
                 <Card key={blocker.id} eyebrow="Blocker" accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
                   {evidence && (
-                    <p className="mt-2 rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground">
+                    <p
+                      className="mt-2 rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
+                      lang={evidenceLang}
+                    >
                       “{evidenceText}”
                     </p>
                   )}
@@ -172,13 +180,17 @@ export default async function FacilitatorSessionPage({
               );
             })}
           </div>
-        ) : (
+        ) : session.transcript.length === 0 ? (
           <Card eyebrow="No intervention needed yet">
             <p className="text-muted-foreground">Load the demo scenario to test the grounded intervention experience.</p>
           </Card>
+        ) : (
+          <Card eyebrow="No intervention needed yet">
+            <p className="text-muted-foreground">The group&apos;s discussion looks on track — no blockers detected yet.</p>
+          </Card>
         )}
       </section>
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3" aria-live="polite">
         <div>
           <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Live transcript</p>
           <h2 className="font-heading text-lg font-semibold">What the group is saying</h2>
@@ -189,8 +201,14 @@ export default async function FacilitatorSessionPage({
               const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
               return (
                 <Card key={segment.id} title={segment.speakerId ?? "Speaker"} meta={segment.language.toUpperCase()}>
-                  <p className="italic text-muted-foreground">{segment.originalText}</p>
-                  {translation && <p className="mt-2">{translation.text}</p>}
+                  <p className="italic text-muted-foreground" lang={segment.language}>
+                    {segment.originalText}
+                  </p>
+                  {translation && (
+                    <p className="mt-2" lang={session.sourceLanguage}>
+                      {translation.text}
+                    </p>
+                  )}
                 </Card>
               );
             })}

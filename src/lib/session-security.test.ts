@@ -5,6 +5,7 @@ import {
   hashToken,
   learnerCookieName,
   learnerInviteCookieName,
+  secureCompare,
 } from "./session-security";
 
 describe("createOpaqueToken", () => {
@@ -40,5 +41,23 @@ describe("cookie name helpers", () => {
   it("scope each cookie name to its session so cookies cannot cross sessions", () => {
     expect(facilitatorCookieName("session-1")).not.toBe(facilitatorCookieName("session-2"));
     expect(learnerCookieName("session-1")).not.toBe(learnerInviteCookieName("session-1"));
+  });
+});
+
+describe("secureCompare", () => {
+  it("returns true for identical strings", () => {
+    expect(secureCompare("shared-secret", "shared-secret")).toBe(true);
+  });
+
+  it("returns false for different strings of the same length", () => {
+    expect(secureCompare("shared-secreT", "shared-secret")).toBe(false);
+  });
+
+  it("returns false for strings of different lengths, without throwing", () => {
+    expect(secureCompare("short", "much-longer-string")).toBe(false);
+  });
+
+  it("returns false against an empty string", () => {
+    expect(secureCompare("", "shared-secret")).toBe(false);
   });
 });

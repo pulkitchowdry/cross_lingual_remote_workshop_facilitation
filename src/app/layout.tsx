@@ -23,16 +23,27 @@ const dataFont = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Workshop Copilot",
   description:
-    "Cross-lingual remote workshop facilitation prototype — facilitator dashboard, learner view, and session history.",
+    "Cross-lingual remote workshop facilitation prototype — facilitator dashboard and learner view with live translated captions.",
 };
 
-// Runs before paint so a returning visitor's stored theme applies with no flash.
-// Dark is the default whenever nothing is stored yet.
+// Runs before paint so a returning visitor's stored theme and accessibility
+// preferences apply with no flash. Dark / normal text / standard contrast are
+// the defaults whenever nothing is stored yet.
 const THEME_INIT_SCRIPT = `
 try {
   var stored = localStorage.getItem("theme");
   var theme = stored === "light" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", theme);
+
+  var fontSize = localStorage.getItem("accessibility-font-size");
+  if (fontSize === "large" || fontSize === "x-large") {
+    document.documentElement.setAttribute("data-font-size", fontSize);
+  }
+
+  var contrast = localStorage.getItem("accessibility-contrast");
+  if (contrast === "high") {
+    document.documentElement.setAttribute("data-contrast", "high");
+  }
 } catch (e) {}
 `;
 

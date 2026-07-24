@@ -2,6 +2,17 @@
 
 ## Solution Design Document
 
+> **Delivered vs. planned.** This document is the full solution-design brainstorm and predates several implementation
+> decisions — it does not reflect what currently ships. The actual prototype (see the root `README.md` for its real
+> architecture and provider list) implements: live multilingual captions, real-time speech translation, multilingual
+> chat with question-flagging, the evidence-backed intervention queue (Module 3, now backed by a real Claude call —
+> see `src/lib/providers/insight.ts`), an accessibility settings panel (font size + high contrast), and enforced
+> transcript retention. Several modules below — session glossary upload, simplify-explanation, AI glossary, live
+> polls, quiet-participant detection, AI raise-hand suggestion, live whiteboard translation, off-track group
+> detection, sign-language avatar, on-device processing — were either built and later removed during the "one working
+> session flow" simplification (see commit `31cc243`) or were never implemented; treat everything below as design
+> intent, not a feature inventory of the current app.
+
 # High-Level System Flow
 
 ```

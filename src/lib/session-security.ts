@@ -1,7 +1,15 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 export function createOpaqueToken() {
   return randomBytes(32).toString("base64url");
+}
+
+/** Constant-time string comparison for shared secrets (Bearer/header tokens), to avoid leaking match length via response timing. */
+export function secureCompare(a: string, b: string): boolean {
+  const bufferA = Buffer.from(a);
+  const bufferB = Buffer.from(b);
+  if (bufferA.length !== bufferB.length) return false;
+  return timingSafeEqual(bufferA, bufferB);
 }
 
 export function hashToken(token: string) {

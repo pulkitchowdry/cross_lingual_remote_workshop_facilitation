@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 const NAV_LINKS = [{ href: "/setup", label: "New session" }] as const;
@@ -41,7 +42,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </ul>
-          <ThemeToggle />
+          <div className="ml-auto flex items-center gap-2">
+            <AccessibilityPanel />
+            <ThemeToggle />
+          </div>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>

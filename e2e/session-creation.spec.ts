@@ -32,6 +32,10 @@ test("facilitator can create a session and receives an opaque learner link", asy
   await expect(learnerLinkInput).toBeVisible();
   const learnerLink = await learnerLinkInput.inputValue();
 
-  expect(learnerLink).toMatch(/^\/join\/[A-Za-z0-9_-]+$/);
-  expect(learnerLink).not.toContain(page.url().split("/sessions/")[1]?.split("/")[0] ?? "__no-session-id__");
+  // The field displays a full shareable URL (facilitator/page.tsx prefixes it
+  // with the app's base URL), not a bare relative path — only the pathname's
+  // shape and opacity matter here.
+  const learnerLinkPath = new URL(learnerLink).pathname;
+  expect(learnerLinkPath).toMatch(/^\/join\/[A-Za-z0-9_-]+$/);
+  expect(learnerLinkPath).not.toContain(page.url().split("/sessions/")[1]?.split("/")[0] ?? "__no-session-id__");
 });

@@ -1,7 +1,10 @@
 import { revalidatePath } from "next/cache";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/db";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
+import { generateSessionInsights } from "@/lib/insights";
+import { insightProvider } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -50,4 +53,8 @@ export async function publishTranslatedCaption(
   revalidatePath(`/sessions/${session.id}/facilitator`);
   revalidatePath(`/sessions/${session.id}/learn`);
   await roomProvider.notifyCaptionsChanged(session.id);
+
+  if (insightProvider.isConfigured) {
+    waitUntil(generateSessionInsights(session));
+  }
 }
