@@ -55,8 +55,7 @@ export default async function FacilitatorSessionPage({
   const publishCaptionAction = publishCaption.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
-  const learnerQuestions = session.messages.filter((message) => message.kind === "QUESTION");
-  const chatMessages = session.messages.filter((message) => message.kind === "CHAT").reverse();
+  const chatMessages = [...session.messages].reverse();
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,37 +105,30 @@ export default async function FacilitatorSessionPage({
             <h2 className="font-heading text-lg font-semibold">Live audio and video</h2>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <LiveSessionRoom sessionId={session.id} role="facilitator" />
+            <div className="flex flex-col gap-3">
+              <LiveSessionRoom sessionId={session.id} role="facilitator" />
+              <form action={publishCaptionAction} className="flex gap-2">
+                <label className="sr-only" htmlFor="facilitator-caption">Type a caption for learners</label>
+                <textarea
+                  id="facilitator-caption"
+                  className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  name="captionText"
+                  rows={1}
+                  required
+                  maxLength={3000}
+                  placeholder="Type a caption for learners in their selected language…"
+                />
+                <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
+                  Publish
+                </button>
+              </form>
+            </div>
             <SessionChatPanel
               messages={chatMessages}
               targetLanguage={session.sourceLanguage}
               sendAction={sendChatAction}
             />
           </div>
-        </section>
-      )}
-      {session.status === SessionStatus.LIVE && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Caption relay</p>
-            <h2 className="font-heading text-lg font-semibold">Publish a translated caption</h2>
-            <p className="text-sm text-muted-foreground">
-              Use this for typed facilitation now; the upcoming speech-to-text adapter will publish to this same stream.
-            </p>
-          </div>
-          <form action={publishCaptionAction} className="flex max-w-3xl flex-col gap-2">
-            <textarea
-              className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-              name="captionText"
-              rows={3}
-              required
-              maxLength={3000}
-              placeholder="Type the explanation you want learners to receive in their selected language."
-            />
-            <button className="font-data w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-              Publish caption
-            </button>
-          </form>
         </section>
       )}
       <section className="flex flex-col gap-3">
@@ -177,31 +169,6 @@ export default async function FacilitatorSessionPage({
           <Card eyebrow="No intervention needed yet">
             <p className="text-muted-foreground">Load the demo scenario to test the grounded intervention experience.</p>
           </Card>
-        )}
-      </section>
-      <section className="flex flex-col gap-3">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">Learner questions</p>
-          <h2 className="font-heading text-lg font-semibold">Questions needing a response</h2>
-        </div>
-        {learnerQuestions.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {learnerQuestions.map((message) => {
-              const translation = message.translations.find(
-                (item) => item.targetLanguage === session.sourceLanguage,
-              );
-              return (
-                <Card key={message.id} title={message.sender.displayName} meta={message.language.toUpperCase()} accent="var(--accent)">
-                  <p>{translation?.text ?? "Translation unavailable — review the original question below."}</p>
-                  <p className="mt-2 text-xs italic text-muted-foreground" lang={message.language}>
-                    {message.originalText}
-                  </p>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No learner questions yet.</p>
         )}
       </section>
       <section className="flex flex-col gap-3">

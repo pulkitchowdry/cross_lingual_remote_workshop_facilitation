@@ -4,12 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-const NAV_LINKS = [
-  { href: "/setup", label: "Setup" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/learner", label: "Learner View" },
-  { href: "/history", label: "History" },
-] as const;
+const NAV_LINKS = [{ href: "/setup", label: "New session" }] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
