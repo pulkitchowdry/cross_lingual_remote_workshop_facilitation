@@ -114,7 +114,7 @@ Use provider adapters rather than coupling application code to any vendor:
   WebSocket service if video is explicitly out of scope for MVP.
 - **Speech-to-text:** a streaming STT adapter (for example Deepgram or Soniox)
   that returns interim/final segments, language, timestamps, and speaker IDs.
-- **Translation:** a text translation adapter (DeepL first for demo language
+- **Translation:** a text translation adapter (Claude first for demo language
   coverage; fallback provider later). Keep a provider response's confidence or
   quality signal separate from the UI's high/medium/low bucket.
 - **Understanding:** a structured-output LLM call run on final transcript

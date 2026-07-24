@@ -20,8 +20,8 @@ describe("validateEnv", () => {
   });
 
   it("lists configured optional keys without requiring them", () => {
-    const result = validateEnv({ DATABASE_URL: "postgresql://localhost/db", DEEPL_API_KEY: "key" });
-    expect(result.configuredOptional).toContain("DEEPL_API_KEY");
+    const result = validateEnv({ DATABASE_URL: "postgresql://localhost/db", CLAUDE_API_KEY: "key" });
+    expect(result.configuredOptional).toContain("CLAUDE_API_KEY");
   });
 });
 
@@ -47,8 +47,8 @@ describe("providerAvailability", () => {
     ).toBe(true);
   });
 
-  it("reports deepL availability from a single key", () => {
-    expect(providerAvailability({}).deepL).toBe(false);
-    expect(providerAvailability({ DEEPL_API_KEY: "key" }).deepL).toBe(true);
+  it("reports claude translation availability from a single key", () => {
+    expect(providerAvailability({}).claude).toBe(false);
+    expect(providerAvailability({ CLAUDE_API_KEY: "key" }).claude).toBe(true);
   });
 });

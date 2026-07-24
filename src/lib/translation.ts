@@ -2,21 +2,17 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 
 export interface TranslationResult {
   text: string;
-  provider: "deepl";
+  provider: "claude";
   qualitySignal: "provider-confirmed";
 }
 
-const deepLSourceCode: Record<SupportedLanguage, string> = {
-  en: "EN",
-  zh: "ZH",
-  es: "ES",
+const languageName: Record<SupportedLanguage, string> = {
+  en: "English",
+  zh: "Chinese",
+  es: "Spanish",
 };
 
-const deepLTargetCode: Record<SupportedLanguage, string> = {
-  en: "EN-US",
-  zh: "ZH",
-  es: "ES",
-};
+const CLAUDE_TRANSLATION_MODEL = "claude-haiku-4-5-20251001";
 
 export async function translateText(
   text: string,
@@ -25,31 +21,34 @@ export async function translateText(
 ): Promise<TranslationResult | null> {
   if (sourceLanguage === targetLanguage) return null;
 
-  const apiKey = process.env.DEEPL_API_KEY;
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) return null;
 
-  const response = await fetch(process.env.DEEPL_API_URL ?? "https://api-free.deepl.com/v2/translate", {
+  const response = await fetch(process.env.CLAUDE_API_URL ?? "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `DeepL-Auth-Key ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      text: [text],
-      source_lang: deepLSourceCode[sourceLanguage],
-      target_lang: deepLTargetCode[targetLanguage],
-      preserve_formatting: true,
-      model_type: "prefer_quality_optimized",
+      model: CLAUDE_TRANSLATION_MODEL,
+      max_tokens: 1024,
+      system:
+        `You are a real-time translation engine for a live workshop caption pipeline. ` +
+        `Translate the user's message from ${languageName[sourceLanguage]} to ${languageName[targetLanguage]}. ` +
+        `Reply with only the translated text, preserving tone and formatting. Do not add commentary, quotes, or explanations.`,
+      messages: [{ role: "user", content: text }],
     }),
     cache: "no-store",
   });
 
   if (!response.ok) return null;
-  const payload = (await response.json()) as { translations?: Array<{ text?: string }> };
-  const translated = payload.translations?.[0]?.text;
+  const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+  const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
   if (!translated) return null;
 
-  return { text: translated, provider: "deepl", qualitySignal: "provider-confirmed" };
+  return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
 }
 
 /**
@@ -68,7 +67,7 @@ export interface TranslationProvider {
 
 export const translationProvider: TranslationProvider = {
   get isConfigured() {
-    return Boolean(process.env.DEEPL_API_KEY);
+    return Boolean(process.env.CLAUDE_API_KEY);
   },
   translate: translateText,
 };
