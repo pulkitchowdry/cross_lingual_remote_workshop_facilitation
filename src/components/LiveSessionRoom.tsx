@@ -45,8 +45,11 @@ function WorkshopVideoStage() {
           <ParticipantTile />
         </GridLayout>
       </div>
-      <div className="border-t border-border-subtle p-2">
-        <ControlBar controls={{ microphone: true, camera: true, chat: false, screenShare: true, leave: true }} />
+      <div className="overflow-x-auto border-t border-border-subtle p-2">
+        <ControlBar
+          variation="minimal"
+          controls={{ microphone: true, camera: true, chat: false, screenShare: true, leave: true }}
+        />
       </div>
     </div>
   );
