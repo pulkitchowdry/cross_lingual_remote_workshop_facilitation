@@ -16,8 +16,8 @@ const ENV_SPEC: EnvSpec[] = [
   { key: "LIVEKIT_URL", required: false, description: "LiveKit room service URL" },
   { key: "LIVEKIT_API_KEY", required: false, description: "LiveKit API key" },
   { key: "LIVEKIT_API_SECRET", required: false, description: "LiveKit API secret" },
-  { key: "DEEPL_API_KEY", required: false, description: "DeepL translation provider key" },
-  { key: "DEEPL_API_URL", required: false, description: "DeepL API base URL" },
+  { key: "CLAUDE_API_KEY", required: false, description: "Claude translation provider key" },
+  { key: "CLAUDE_API_URL", required: false, description: "Claude API base URL" },
   { key: "STT_API_KEY", required: false, description: "Speech-to-text provider key" },
   { key: "INSIGHT_MODEL_API_KEY", required: false, description: "Structured-insight LLM provider key" },
 ];
@@ -68,7 +68,7 @@ export function assertRequiredEnv(source: Record<string, string | undefined> = p
 export function providerAvailability(source: Record<string, string | undefined> = process.env) {
   return {
     liveKit: Boolean(source.LIVEKIT_URL && source.LIVEKIT_API_KEY && source.LIVEKIT_API_SECRET),
-    deepL: Boolean(source.DEEPL_API_KEY),
+    claude: Boolean(source.CLAUDE_API_KEY),
     speechToText: Boolean(source.STT_API_KEY),
     insightModel: Boolean(source.INSIGHT_MODEL_API_KEY),
   };

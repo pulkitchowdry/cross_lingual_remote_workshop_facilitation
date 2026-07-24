@@ -4,10 +4,7 @@ A prototype built for the **"Breaking Language Barriers"** hackathon challenge: 
 
 Our demo scenario: a remote facilitator supporting a hands-on workshop run in a language they don't speak.
 
-See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement, our interpretation, target users, and success criteria, and [`docs/approaches.md`](docs/approaches.md) for market validation, the shared pipeline design, and the five candidate approaches under consideration.
-
-Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md) for a 5-minute
-script, shot list, and the architecture diagram below.
+See [`docs/problem_statement.md`](docs/problem_statement.md) for the official challenge statement and [`docs/approaches.md`](docs/approaches.md) for the design rationale. Recording the pitch video? See [`docs/PITCH.md`](docs/PITCH.md).
 
 ## Architecture
 
@@ -15,7 +12,7 @@ script, shot list, and the architecture diagram below.
 flowchart LR
     subgraph Live[Live session]
         Mic["Facilitator / learner speech"] --> STT["Speech-to-text\n(Deepgram Nova-3, diarized)"]
-        STT --> MT["Translation\n(DeepL)"]
+        STT --> MT["Translation\n(Claude API)"]
     end
 
     MT --> Captions["Live translated captions\n(learner view)"]
@@ -33,14 +30,14 @@ flowchart LR
 
 - **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
 - **Speech-to-text:** Deepgram Nova-3 (multi-speaker diarization)
-- **Translation:** DeepL API
-- **Understanding/summarization:** Claude API, with prompt caching over the growing transcript
-- **Real-time transport:** WebSockets
+- **Translation & understanding:** Claude API (prompt-cached over the growing transcript)
+- **Real-time transport:** LiveKit + WebSockets
+- **Database:** PostgreSQL via Prisma
 - **Hosting:** Vercel
 
 ## Getting Started
 
-The app uses Prisma with PostgreSQL for session/message storage (see `prisma/schema.prisma`).
+The app needs four services configured before it runs end to end: **PostgreSQL** (session/message storage), **LiveKit** (real-time audio rooms), **Deepgram** (speech-to-text), and **Claude** (translation + understanding). Everything degrades gracefully — the app runs with only `DATABASE_URL` set, and each feature turns on once its key is added.
 
 1. Install dependencies:
 
@@ -48,142 +45,91 @@ The app uses Prisma with PostgreSQL for session/message storage (see `prisma/sch
    npm install
    ```
 
-2. Create a `.env.local` with a `DATABASE_URL` pointing at a PostgreSQL database, e.g. for a local Postgres instance:
+2. **PostgreSQL** — create a local database and role:
 
    ```bash
-   # create a database and role once:
-   psql -h localhost -U postgres -c "CREATE ROLE workshop LOGIN PASSWORD 'workshop';"
-   psql -h localhost -U postgres -c "CREATE DATABASE workshop_copilot OWNER workshop;"
+   sudo apt update && sudo apt install postgresql postgresql-contrib   # if not already installed
+   sudo -u postgres psql -c "CREATE ROLE workshop LOGIN PASSWORD 'workshop';"
+   sudo -u postgres psql -c "CREATE DATABASE workshop_copilot OWNER workshop;"
    ```
 
+   Then create `.env.local` (see `.env.example` for the full list of variables):
+
    ```env
-   # .env.local
    DATABASE_URL="postgresql://workshop:workshop@localhost:5432/workshop_copilot?schema=public"
    ```
 
-   See `.env.example` for the full list of environment variables (LiveKit, DeepL, etc.).
+3. **LiveKit** — run a local dev server, then add its credentials to `.env.local`:
 
-3. Apply migrations and generate the Prisma client:
+   ```bash
+   livekit-server --dev
+   ```
+
+   ```env
+   LIVEKIT_URL="http://localhost:7882"
+   LIVEKIT_API_KEY="devkey"
+   LIVEKIT_API_SECRET="secret"
+   ```
+
+4. **Deepgram** — get an API key from [console.deepgram.com](https://console.deepgram.com/) and add it:
+
+   ```env
+   STT_API_KEY="your-deepgram-key"
+   ```
+
+5. **Claude** — get an API key from [console.anthropic.com](https://console.anthropic.com/settings/keys) and add it (used for both translation and the facilitator-dashboard insight layer):
+
+   ```env
+   CLAUDE_API_KEY="your-claude-key"
+   INSIGHT_MODEL_API_KEY="your-claude-key"
+   ```
+
+6. Apply migrations and generate the Prisma client:
 
    ```bash
    npx prisma migrate deploy
    npx prisma generate
    ```
 
-4. (Optional) Seed a demo session with a facilitator and a ready learner join link:
+7. (Optional) Seed a demo session with a facilitator and a ready learner join link:
 
    ```bash
    npm run db:seed
    ```
 
-5. Run the dev server:
+8. Run the dev server:
 
    ```bash
    npm run dev
    ```
-6. Run livekit locally:
 
-  Add the below env variables for local environment
-  
-  ```bash
-  livekit-server --dev
-  ```
-7. Run Prisma locally:
-  In case there is an error related to Prisma from Next.js then verify if prisma db is running locally
-  ```bash
-  # Install postgresql if not present
-  sudo apt update
-  sudo apt install postgresql postgresql-contrib
-
-  # Login as postgresql and create the database
-  sudo -u postgres psql
-
-  CREATE ROLE workshop LOGIN PASSWORD 'workshop';
-  CREATE DATABASE workshop_copilot OWNER workshop;
-  GRANT ALL PRIVILEGES ON DATABASE workshop_copilot TO workshop;
-  ALTER ROLE workshop CREATEDB;
-  \q
-
-  # Update .env.local to have below url
-  DATABASE_URL="postgresql://workshop:workshop@localhost:5432/workshop_copilot"
-
-  npx prisma migrate dev
-  # Enter name as init if its for the first time that you are running this
-
-  npx prisma generate
-  npx prisma dev
-  ```
-
-Open [http://localhost:3000](http://localhost:3000) to view the app. Edit `src/app/page.tsx` to get started — the page auto-updates as you edit.
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 ## Testing
 
-- `npm test` — unit tests (Vitest) for session-security tokens, environment
-  validation, and the insight citation guardrail.
-- `npm run test:e2e` — Playwright smoke test covering the facilitator
-  create-session flow and the opaque learner join link (starts its own dev
-  server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
+- `npm test` — unit tests (Vitest) for session-security tokens, environment validation, and the insight citation guardrail.
+- `npm run test:e2e` — Playwright smoke test covering the facilitator create-session flow and the opaque learner join link (starts its own dev server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
 
 ## Server-only provider interfaces
 
-`src/lib/providers/` and `src/lib/translation.ts` define typed boundaries so
-application code never depends on a vendor SDK directly:
+`src/lib/providers/` and `src/lib/translation.ts` define typed boundaries so application code never depends on a vendor SDK directly:
 
-- `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room
-  credentials.
-- `TranslationProvider` (`translation.ts`) — DeepL-backed today.
-- `SpeechToTextProvider` (`speech-to-text.ts`) — mock until `STT_API_KEY` is
-  configured and a streaming adapter (e.g. Deepgram/Soniox) is wired in.
-- `InsightProvider` (`insight.ts`) — mock (returns no insights) until
-  `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any
-  insight that cites a transcript segment outside the batch it was derived
-  from, per `docs/PLAN.md`'s evidence-grounding requirement.
+- `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room credentials.
+- `TranslationProvider` (`translation.ts`) — Claude-backed today.
+- `SpeechToTextProvider` (`speech-to-text.ts`) — mock until `STT_API_KEY` is configured and a streaming adapter (Deepgram) is wired in.
+- `InsightProvider` (`insight.ts`) — mock (returns no insights) until `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
 
 ## Screenshots
 
-Ten highlights covering the full facilitator → learner → facilitator loop;
-the rest of `docs/screenshots/` (light mode, poll/raise-hand pairs, glossary
-before/after, etc.) is covered shot-by-shot in `docs/PITCH.md`.
+Full facilitator → learner → facilitator loop; more shots (light mode, polls, glossary before/after, etc.) are in `docs/PITCH.md`.
 
-**Session setup**
+| Session setup | Facilitator dashboard |
+| --- | --- |
+| ![Setup](docs/screenshots/setup.png) | ![Facilitator dashboard](docs/screenshots/dashboard.png) |
 
-![Setup](docs/screenshots/setup.png)
-
-**Facilitator learner invitation — QR code + opaque link**
-
-![Facilitator page showing the learner invitation QR code](docs/screenshots/phase0-facilitator-qr.png)
-
-**Facilitator dashboard** — goal, current activity, decisions, and blockers extracted from the live transcript, plus learner questions and a reply box that auto-translates.
-
-![Facilitator dashboard](docs/screenshots/dashboard.png)
-
-**Live caption ticker — facilitator dashboard**
-
-![Live caption ticker, dashboard](docs/screenshots/live-caption-ticker-dashboard.png)
-
-**Learner view** — facilitator messages translated into the learner's language, with the original preserved.
-
-![Learner view](docs/screenshots/learner.png)
-
-**Dashboard with learner questions**
-
-![Dashboard with learner questions](docs/screenshots/dashboard-learner-questions.png)
-
-**Quiet-learner escalation** — the facilitator is nudged when a learner has gone quiet.
-
-![Dashboard quiet-learner escalation](docs/screenshots/dashboard-quiet-escalation.png)
-
-**Technical glossary protection** — code, commands, and named terms survive translation unchanged.
-
-![AI glossary, after protection](docs/screenshots/ai-glossary-after.png)
-
-**Polls** — quick comprehension checks, translated for every learner.
-
-![Dashboard poll](docs/screenshots/dashboard-poll.png)
-
-**Session history** — a grounded catch-up summary for a learner who joined late.
-
-![History](docs/screenshots/history.png)
+| Learner view | Session history |
+| --- | --- |
+| ![Learner view](docs/screenshots/learner.png) | ![History](docs/screenshots/history.png) |
 
 ## Project Structure
 
@@ -196,4 +142,4 @@ src/app/                Next.js App Router pages and layouts
 
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Deepgram Docs](https://developers.deepgram.com/)
-- [DeepL API Docs](https://developers.deepl.com/)
+- [Anthropic (Claude) API Docs](https://docs.anthropic.com/)
