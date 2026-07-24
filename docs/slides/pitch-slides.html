@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Breaking Language Barriers — Pitch Slides</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a2e;
+  }
+  section.slide {
+    width: 1280px;
+    height: 720px;
+    padding: 56px 64px;
+    page-break-after: always;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+  }
+  section.slide:last-child { page-break-after: auto; }
+  .kicker {
+    font-size: 18px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #6b46c1;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 44px;
+    margin: 0 0 18px 0;
+    line-height: 1.15;
+    color: #16162a;
+  }
+  h2 { font-size: 30px; margin: 0 0 14px 0; color: #16162a; }
+  p.lead { font-size: 22px; line-height: 1.45; color: #33334d; max-width: 980px; }
+  ul.points { font-size: 21px; line-height: 1.55; color: #33334d; padding-left: 28px; margin: 10px 0; }
+  ul.points li { margin-bottom: 8px; }
+  .body-row { display: flex; flex: 1; gap: 36px; align-items: center; }
+  .body-row .text-col { flex: 1; }
+  .body-row .img-col { flex: 1.2; display: flex; align-items: center; justify-content: center; }
+  .body-row img { max-width: 100%; max-height: 480px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.18); border: 1px solid #e6e6f0; }
+  .body-row img.wide { max-height: 440px; }
+  .two-shots { display: flex; gap: 24px; align-items: center; justify-content: center; flex: 1; }
+  .two-shots img { max-height: 420px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.18); border: 1px solid #e6e6f0; }
+  .footer-bar {
+    position: absolute; bottom: 24px; left: 64px; right: 64px;
+    display: flex; justify-content: space-between; font-size: 14px; color: #9a9ab0;
+  }
+  .arch-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .arch-wrap img { max-width: 100%; max-height: 520px; }
+  .title-slide { justify-content: center; align-items: flex-start; background: linear-gradient(135deg,#f4f0ff 0%, #ffffff 60%); }
+  .title-slide h1 { font-size: 58px; }
+  .title-slide p.lead { font-size: 24px; }
+  .badge-row { display: flex; gap: 14px; margin-top: 28px; }
+  .badge { background:#efe8ff; color:#5b21b6; padding:8px 16px; border-radius:20px; font-size:16px; font-weight:600; }
+  .quote-block { font-size: 26px; line-height: 1.5; color: #16162a; font-weight: 500; border-left: 6px solid #6b46c1; padding-left: 24px; margin: 14px 0; }
+  .criteria-grid { display:flex; gap:24px; flex:1; align-items:stretch; }
+  .criteria-card { flex:1; background:#f7f5ff; border-radius:12px; padding:26px; border:1px solid #e6e0fb; }
+  .criteria-card h3 { margin:0 0 10px 0; color:#5b21b6; font-size:20px; }
+  .criteria-card p { font-size:18px; line-height:1.5; color:#33334d; margin:0; }
+  .close-slide { justify-content: center; align-items: center; text-align: center; background:#16162a; color:#fff; }
+  .close-slide h1 { color:#fff; }
+  .close-slide p.lead { color:#d7d3f5; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<section class="slide title-slide">
+  <div class="kicker">Hackathon Pitch — 5 minutes</div>
+  <h1>Breaking Language Barriers</h1>
+  <p class="lead">Live translation plus grounded understanding, so no one gets left behind in a workshop run in a language they don't speak.</p>
+  <div class="badge-row">
+    <div class="badge">Deepgram STT</div>
+    <div class="badge">DeepL Translation</div>
+    <div class="badge">Claude Understanding Layer</div>
+    <div class="badge">Postgres-backed</div>
+  </div>
+  <div class="footer-bar"><span>Cross-Lingual Remote Workshop Facilitation</span><span>1 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">0:00 – 0:40 · Problem</div>
+  <h1>Silence is invisible across a language gap</h1>
+  <ul class="points">
+    <li>Online workshops run across languages every day.</li>
+    <li>When facilitator and learner don't share one, the facilitator can't tell who's following.</li>
+    <li>A lost learner usually stays quiet — by the time anyone notices, the moment to help has passed.</li>
+  </ul>
+  <p class="quote-block">We're solving real-time understanding between facilitators and learners, across languages, in a live session.</p>
+  <div class="footer-bar"><span>Problem</span><span>2 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">0:40 – 1:15 · Approach</div>
+  <h1>Capture → Translate → Understand — with citations</h1>
+  <div class="arch-wrap"><img src="architecture.svg" alt="Architecture diagram"></div>
+  <div class="footer-bar"><span>Architecture</span><span>3 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">1:15 – 1:35 · Live demo</div>
+  <h1>Facilitator dashboard</h1>
+  <div class="body-row">
+    <div class="text-col">
+      <p class="lead">The goal comes from setup. Decision and blocker cards weren't typed by anyone — pulled live from the transcript, each linked to the exact line it came from.</p>
+    </div>
+    <div class="img-col"><img src="../screenshots/dashboard.png" alt="Facilitator dashboard"></div>
+  </div>
+  <div class="footer-bar"><span>Live demo · goal / decisions / blockers</span><span>4 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">1:35 – 2:25 · Live demo</div>
+  <h1>Join as a learner, get a translated reply</h1>
+  <div class="two-shots">
+    <img src="../screenshots/learner.png" alt="Learner view with translated captions">
+    <img src="../screenshots/dashboard-learner-questions.png" alt="Facilitator side showing translated learner question">
+  </div>
+  <p class="lead" style="margin-top:18px;">Scan a QR code, no account setup. Captions translated live, original still visible. Learner questions land on the facilitator's side already translated — replies auto-translate back.</p>
+  <div class="footer-bar"><span>Live demo · learner join &amp; Q&amp;A round-trip</span><span>5 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">2:25 – 3:05 · Live demo</div>
+  <h1>Quiet-learner nudges &amp; code-aware translation</h1>
+  <div class="two-shots">
+    <img src="../screenshots/dashboard-quiet-escalation.png" alt="Facilitator dashboard quiet-learner escalation" class="wide">
+    <img src="../screenshots/learner-quiet-nudge.png" alt="Learner-side quiet nudge prompt" class="wide">
+  </div>
+  <p class="lead" style="margin-top:18px;">When a learner goes quiet too long, the facilitator gets nudged — and the learner gets a gentle prompt too. And translation never mangles code: <code>validateEmail()</code> and <code>req.body.email</code> pass through untouched.</p>
+  <div class="footer-bar"><span>Live demo · quiet-participant detection</span><span>6 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">3:05 – 3:15 · Live demo</div>
+  <h1>Catch-up summary for late joiners</h1>
+  <div class="body-row">
+    <div class="text-col">
+      <p class="lead">A learner joining late doesn't scroll a wall of transcript — they get a grounded catch-up summary instead, citing the same transcript lines the dashboard cards do.</p>
+    </div>
+    <div class="img-col"><img src="../screenshots/history.png" alt="Session history catch-up summary"></div>
+  </div>
+  <div class="footer-bar"><span>Live demo · session history</span><span>7 / 9</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">3:15 – 4:50 · Why it's hard, impact &amp; feasibility</div>
+  <h1>Grounded by design, real today</h1>
+  <div class="criteria-grid">
+    <div class="criteria-card">
+      <h3>Impact</h3>
+      <p>A learner going quiet in a language the facilitator doesn't speak used to be invisible — now it's a card on the dashboard.</p>
+    </div>
+    <div class="criteria-card">
+      <h3>Prototype quality</h3>
+      <p>Real Postgres-backed sessions with role-scoped, opaque learner join tokens — not a slide.</p>
+    </div>
+    <div class="criteria-card">
+      <h3>Innovation &amp; feasibility</h3>
+      <p><code>validateInsightDraft</code> rejects any AI insight citing outside its own transcript batch. Deepgram, DeepL, and Claude are shipping APIs we can call today.</p>
+    </div>
+  </div>
+  <div class="footer-bar"><span>Guardrail: src/lib/providers/insight.ts</span><span>8 / 9</span></div>
+</section>
+
+<section class="slide close-slide">
+  <h1>Thank you</h1>
+  <p class="lead">Breaking Language Barriers — live translation plus grounded understanding, so no one gets left behind in their own workshop.</p>
+  <div class="footer-bar" style="color:#8f8ab8;"><span>Cross-Lingual Remote Workshop Facilitation</span><span>9 / 9</span></div>
+</section>
+
+</body>
+</html>
