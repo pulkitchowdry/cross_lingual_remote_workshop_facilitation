@@ -16,7 +16,7 @@ The provider-abstraction pattern this document formalizes already exists in code
 | --- | --- | --- |
 | `RoomProvider` | [`src/lib/providers/room.ts`](../src/lib/providers/room.ts) | Implemented — `LiveKitRoomProvider` issues short-lived, role-scoped JWTs |
 | `TranslationProvider` | [`src/lib/providers/translation.ts`](../src/lib/providers/translation.ts) | Implemented — Claude Haiku text translation |
-| `SpeechToTextProvider` | [`src/lib/providers/speech-to-text.ts`](../src/lib/providers/speech-to-text.ts) | Mocked — interface defined, no streaming adapter wired |
+| `SpeechToTextProvider` | [`src/lib/providers/speech-to-text.ts`](../src/lib/providers/speech-to-text.ts) | Implemented — Deepgram Nova-3 per-chunk adapter; mock fallback when `STT_API_KEY` is unset |
 | `InsightProvider` | [`src/lib/providers/insight.ts`](../src/lib/providers/insight.ts) | Mocked — used by the facilitator dashboard, not translation itself |
 
 Callers already depend only on these interfaces, never on `livekit-server-sdk` or
@@ -121,6 +121,20 @@ GPU/API load proportional to active speakers, not room size.
   30 — this is the concrete scalability lever for cost and latency.
 
 ## Part 2 — Live captions (STT integration)
+
+**Shipped so far:** `SpeechToTextProvider` now has a real Deepgram Nova-3 adapter
+(`DeepgramSpeechToTextProvider` in `speech-to-text.ts`), and the facilitator page
+has a `LiveCaptionMic` control that records mic audio in ~5s chunks
+(`MediaRecorder`) and posts each chunk to a new `transcribeAndPublishCaption`
+server action, which transcribes, translates per learner language, and persists
+a `TranscriptSegment` — the same pipeline `publishCaption` already used for typed
+captions. This satisfies `transcribeChunk`'s "already-recorded chunk" contract
+using Deepgram's prerecorded `/listen` endpoint rather than its websocket
+streaming API, and delivery to viewers still goes through the existing
+`revalidatePath`-driven page refresh, **not** LiveKit DataChannels yet — the
+DataChannel transport and true low-latency streaming STT described below remain
+follow-up work, along with server-side track subscription (Part 1) so captions
+work without the facilitator's own mic UI.
 
 **Streaming STT choice:** Deepgram Nova-3 for the managed default (already named
 in `README.md`'s tech stack — diarization support matters for speaker

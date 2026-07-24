@@ -3,17 +3,20 @@ import { Card } from "@/components/ui/Card";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { LiveCaptionMic } from "@/components/LiveCaptionMic";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import {
   endSession,
   loadDemoScenario,
   publishCaption,
   startSession,
+  transcribeAndPublishCaption,
 } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
 
@@ -53,6 +56,7 @@ export default async function FacilitatorSessionPage({
   const endAction = endSession.bind(null, sessionId);
   const demoAction = loadDemoScenario.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
+  const transcribeAction = transcribeAndPublishCaption.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
@@ -122,6 +126,7 @@ export default async function FacilitatorSessionPage({
                   Publish
                 </button>
               </form>
+              {speechToTextProvider.isConfigured && <LiveCaptionMic transcribeAction={transcribeAction} />}
             </div>
             <SessionChatPanel
               messages={chatMessages}

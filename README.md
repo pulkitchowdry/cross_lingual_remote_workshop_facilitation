@@ -116,7 +116,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room credentials.
 - `TranslationProvider` (`translation.ts`) — Claude-backed today.
-- `SpeechToTextProvider` (`speech-to-text.ts`) — mock until `STT_API_KEY` is configured and a streaming adapter (Deepgram) is wired in.
+- `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter (per-chunk `/listen` calls) once `STT_API_KEY` is set; mock otherwise. Chunked, not a persistent stream — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 - `InsightProvider` (`insight.ts`) — mock (returns no insights) until `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
 
 ## Screenshots
