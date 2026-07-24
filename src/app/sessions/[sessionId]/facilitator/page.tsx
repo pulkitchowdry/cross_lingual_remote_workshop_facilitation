@@ -152,13 +152,17 @@ export default async function FacilitatorSessionPage({
           <div className="flex flex-col gap-3">
             {activeBlockers.map((blocker) => {
               const evidence = blocker.evidence[0]?.transcriptSegment;
+              const evidenceIsSourceLanguage = evidence?.language === session.sourceLanguage;
               const translation = evidence?.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+              const evidenceText = evidenceIsSourceLanguage
+                ? evidence?.originalText
+                : (translation?.text ?? "Translation unavailable.");
               return (
                 <Card key={blocker.id} eyebrow="Blocker" accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
                   {evidence && (
                     <p className="mt-2 rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground">
-                      “{translation?.text ?? evidence.originalText}”
+                      “{evidenceText}”
                     </p>
                   )}
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
