@@ -91,13 +91,22 @@ export default async function LearnerSessionPage({
         {participant.session.transcript.length > 0 ? (
           <div className="flex flex-col gap-3">
             {participant.session.transcript.map((segment) => {
+              const isOwnLanguage = segment.language === participant.preferredLanguage;
               const translation = segment.translations.find(
                 (item) => item.targetLanguage === participant.preferredLanguage,
               );
+              const primaryText = isOwnLanguage
+                ? segment.originalText
+                : (translation?.text ?? "Translation unavailable.");
               return (
                 <Card key={segment.id} title={segment.speakerId ?? "Speaker"} meta={segment.language.toUpperCase()}>
-                  <p className="text-base leading-relaxed">{translation?.text ?? segment.originalText}</p>
-                  {translation && (
+                  <p
+                    className="text-base leading-relaxed"
+                    style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
+                  >
+                    {primaryText}
+                  </p>
+                  {!isOwnLanguage && (
                     <p className="mt-2 text-xs italic text-muted-foreground" lang={segment.language}>
                       {segment.originalText}
                     </p>
