@@ -48,6 +48,13 @@ export interface SpeechToTextProvider {
     expectedLanguage: SupportedLanguage;
     onSegment: (event: StreamingTranscriptEvent) => void;
     onError: (error: Error) => void;
+    /**
+     * Explicit PCM framing for callers that send raw, uncontainerized audio
+     * (e.g. the LiveKit Agents worker, which resamples track audio to a known
+     * rate/channel count). Omit for containerized audio (e.g. a browser's
+     * WebM/Opus `MediaRecorder` chunks), which Deepgram auto-detects.
+     */
+    encoding?: { format: "linear16"; sampleRate: number; channels: number };
   }): SpeechToTextStream;
 }
 
@@ -153,12 +160,13 @@ class DeepgramSpeechToTextProvider implements SpeechToTextProvider {
     expectedLanguage: SupportedLanguage;
     onSegment: (event: StreamingTranscriptEvent) => void;
     onError: (error: Error) => void;
+    encoding?: { format: "linear16"; sampleRate: number; channels: number };
   }): SpeechToTextStream {
     const apiKey = process.env.STT_API_KEY;
     if (!apiKey) {
       throw new Error("Deepgram is not configured: STT_API_KEY is missing.");
     }
-    return new DeepgramStreamingSession(apiKey, input.expectedLanguage, input.onSegment, input.onError);
+    return new DeepgramStreamingSession(apiKey, input.expectedLanguage, input.onSegment, input.onError, input.encoding);
   }
 }
 
@@ -200,6 +208,7 @@ class DeepgramStreamingSession implements SpeechToTextStream {
     expectedLanguage: SupportedLanguage,
     onSegment: (event: StreamingTranscriptEvent) => void,
     onError: (error: Error) => void,
+    encoding?: { format: "linear16"; sampleRate: number; channels: number },
   ) {
     const params = new URLSearchParams({
       model: DEEPGRAM_MODEL,
@@ -208,6 +217,11 @@ class DeepgramStreamingSession implements SpeechToTextStream {
       punctuate: "true",
       interim_results: "true",
     });
+    if (encoding) {
+      params.set("encoding", encoding.format);
+      params.set("sample_rate", String(encoding.sampleRate));
+      params.set("channels", String(encoding.channels));
+    }
     this.socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, {
       headers: { Authorization: `Token ${apiKey}` },
     });

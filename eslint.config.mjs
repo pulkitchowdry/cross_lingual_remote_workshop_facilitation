@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone LiveKit Agents worker — its own package.json/tsconfig, not part of the Next.js app.
+    "agent/**",
   ]),
 ]);
 

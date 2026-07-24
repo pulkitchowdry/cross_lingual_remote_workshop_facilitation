@@ -116,8 +116,10 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room credentials and pushes DataChannel signals (`notifyCaptionsChanged`).
 - `TranslationProvider` (`translation.ts`) — Claude-backed today.
-- `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream`) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
+- `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream` and the `agent/` worker) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 - `InsightProvider` (`insight.ts`) — mock (returns no insights) until `INSIGHT_MODEL_API_KEY` is configured; `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
+
+`agent/` is a standalone LiveKit Agents worker (its own `package.json`, not a dependency of this app) that subscribes to the facilitator's audio track server-side, so captions work without the browser mic control. See `agent/README.md`.
 
 ## Screenshots
 
