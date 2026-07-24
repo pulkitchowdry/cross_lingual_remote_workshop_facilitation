@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import type { SupportedLanguage } from "@/lib/session-contracts";
-import { translateText } from "@/lib/translation";
+import { translateText } from "@/lib/providers/translation";
 
 type ChatRole = "facilitator" | "learner";
 

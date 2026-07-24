@@ -53,8 +53,9 @@ export async function translateText(
 
 /**
  * Server-only boundary matching `SpeechToTextProvider`/`InsightProvider`/
- * `RoomProvider` in `src/lib/providers/`, kept here (rather than moved) so
- * existing `translateText` call sites are unaffected.
+ * `RoomProvider`. Application code should depend on `TranslationProvider`,
+ * never on the Claude API directly, so the translation vendor can change
+ * without touching call sites.
  */
 export interface TranslationProvider {
   readonly isConfigured: boolean;
