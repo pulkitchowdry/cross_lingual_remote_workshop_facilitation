@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CarouselLayout,
   ControlBar,
+  FocusLayout,
+  FocusLayoutContainer,
   GridLayout,
   LiveKitRoom,
   ParticipantTile,
@@ -35,20 +38,40 @@ interface RoomCredentials {
   token: string;
 }
 
-function WorkshopVideoStage() {
-  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
+/**
+ * Only the facilitator's ControlBar exposes the screen-share toggle — the
+ * room stays bidirectional for audio/video (see room.ts), but screen sharing
+ * is a facilitator-to-group broadcast, not a peer-to-peer one, so learners
+ * don't get the control.
+ */
+function WorkshopVideoStage({ role }: { role: Role }) {
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
+  const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
+  const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-hidden p-3">
-        <GridLayout tracks={tracks} className="h-full">
-          <ParticipantTile />
-        </GridLayout>
+        {screenShareTrack ? (
+          <FocusLayoutContainer className="h-full">
+            <FocusLayout trackRef={screenShareTrack} />
+            <CarouselLayout tracks={cameraTracks}>
+              <ParticipantTile />
+            </CarouselLayout>
+          </FocusLayoutContainer>
+        ) : (
+          <GridLayout tracks={cameraTracks} className="h-full">
+            <ParticipantTile />
+          </GridLayout>
+        )}
       </div>
       <div className="overflow-x-auto border-t border-border-subtle p-2">
         <ControlBar
           variation="minimal"
-          controls={{ microphone: true, camera: true, chat: false, screenShare: true, leave: true }}
+          controls={{ microphone: true, camera: true, chat: false, screenShare: role === "facilitator", leave: true }}
         />
       </div>
     </div>
@@ -96,11 +119,11 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         token={credentials.token}
         serverUrl={credentials.serverUrl}
         connect
-        audio
-        video={false}
+        audio={false}
+        video
         data-lk-theme="default"
       >
-        <WorkshopVideoStage />
+        <WorkshopVideoStage role={role} />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

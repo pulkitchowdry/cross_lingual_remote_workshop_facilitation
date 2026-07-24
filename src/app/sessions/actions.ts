@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { translateText } from "@/lib/providers/translation";
 
 type ChatRole = "facilitator" | "learner";
@@ -39,7 +39,7 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
   }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
-  const targetLanguages = [...new Set([session.sourceLanguage, ...session.learnerLanguages])] as SupportedLanguage[];
+  const targetLanguages = SUPPORTED_LANGUAGES.map((language) => language.value);
   const translations = await Promise.all(
     targetLanguages.map(async (targetLanguage) => {
       const result = await translateText(text.trim(), sourceLanguage, targetLanguage, { allowCloudFallback });

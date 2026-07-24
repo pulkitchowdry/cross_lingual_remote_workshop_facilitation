@@ -36,8 +36,8 @@ export async function joinSession(formData: FormData) {
   }
 
   const session = await prisma.session.findUnique({ where: { id: joinLink.sessionId } });
-  if (!session || !session.learnerLanguages.includes(preferredLanguage)) {
-    throw new Error("This language is not enabled for the session.");
+  if (!session) {
+    throw new Error("This session is no longer available.");
   }
 
   const participant = await prisma.$transaction(async (transaction) => {

@@ -1,14 +1,17 @@
 import { Button } from "@/components/ui/Button";
 import { createSession } from "@/app/setup/actions";
-import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
 
 export function SetupForm({ lang }: { lang: SupportedLanguage }) {
   const dict = getDictionary(lang);
-  const languageNames = dict.languageNames;
 
   return (
     <form className="flex max-w-xl flex-col gap-4" action={createSession}>
+      {/* The facilitator's language is whatever they've already toggled the
+          UI to (see the LanguageSwitcher above this form) — no need to ask
+          them to pick it again in a separate field. */}
+      <input type="hidden" name="sourceLanguage" value={lang} />
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.yourName}
         <input
@@ -40,32 +43,6 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
           placeholder={dict.setup.workshopGoalPlaceholder}
         />
       </label>
-      <label className="flex flex-col gap-2 text-sm font-medium">
-        {dict.setup.facilitatorLanguage}
-        <select
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          name="sourceLanguage"
-          defaultValue={lang}
-        >
-          {SUPPORTED_LANGUAGES.map((language) => (
-            <option key={language.value} value={language.value}>
-              {languageNames[language.value]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{dict.setup.learnerLanguages}</legend>
-        <p className="text-sm text-muted-foreground">{dict.setup.learnerLanguagesHint}</p>
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {SUPPORTED_LANGUAGES.map((language) => (
-            <label key={language.value} className="flex items-center gap-2 text-sm">
-              <input name="learnerLanguages" type="checkbox" value={language.value} defaultChecked />
-              {languageNames[language.value]}
-            </label>
-          ))}
-        </div>
-      </fieldset>
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.retention}
         <select

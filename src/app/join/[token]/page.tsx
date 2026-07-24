@@ -5,7 +5,6 @@ import { ParticipantRole } from "@/generated/prisma/client";
 import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/session-security";
-import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
@@ -38,17 +37,6 @@ export default async function JoinPage({
     notFound();
   }
 
-  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
-    invite.session.learnerLanguages.includes(language.value),
-  );
-  // The facilitator's own language is only a meaningful default when it's
-  // actually one of the enabled learner languages — otherwise fall back to
-  // the first enabled option explicitly, rather than relying on the browser
-  // to silently pick something when defaultValue matches no <option>.
-  const defaultLanguage = learnerLanguageOptions.some((language) => language.value === invite.session.sourceLanguage)
-    ? invite.session.sourceLanguage
-    : learnerLanguageOptions[0]?.value;
-
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <SyncUiLanguage lang={lang} />
@@ -64,6 +52,10 @@ export default async function JoinPage({
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
         <input type="hidden" name="token" value={token} />
+        {/* The learner's preferred language is whatever they've already
+            toggled the UI to (see the LanguageSwitcher above this form) — no
+            need to ask them to pick it again in a separate field. */}
+        <input type="hidden" name="preferredLanguage" value={lang} />
         <label className="flex flex-col gap-2 text-sm font-medium">
           {dict.join.yourName}
           <input
@@ -73,20 +65,6 @@ export default async function JoinPage({
             maxLength={80}
             autoComplete="name"
           />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {dict.join.preferredLanguage}
-          <select
-            className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            name="preferredLanguage"
-            defaultValue={defaultLanguage}
-          >
-            {learnerLanguageOptions.map((language) => (
-              <option key={language.value} value={language.value}>
-                {dict.languageNames[language.value]}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="flex items-start gap-3 text-sm text-muted-foreground">
           <input className="mt-1" type="checkbox" name="consent" required />
