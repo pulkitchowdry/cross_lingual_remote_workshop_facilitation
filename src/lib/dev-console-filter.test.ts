@@ -28,6 +28,18 @@ describe("wrapConsoleError", () => {
     expect(debug).toHaveBeenCalledTimes(1);
   });
 
+  it("redirects the known-benign LiveKit updatePages() reconciliation error to debug instead of error", () => {
+    const original = vi.fn();
+    const debug = vi.fn();
+    const wrapped = wrapConsoleError(original, debug);
+    const error = new Error("Element not part of the array: facilitator:abc_camera_placeholder not in learner:xyz_camera_TR_1");
+
+    wrapped("Error while running updatePages(): ", error);
+
+    expect(original).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledWith("[filtered]", "Error while running updatePages(): ", error);
+  });
+
   it("passes every other error through to the original console.error unchanged", () => {
     const original = vi.fn();
     const debug = vi.fn();

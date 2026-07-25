@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -54,6 +55,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
   }
 
+  const session = await prisma.session.findUnique({
+    where: { id: segment.sessionId },
+    select: { status: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true, translationMode: true },
+  });
+  // Unlike every other route/page serving session content, this one had no retention
+  // check at all — an authorized facilitator/learner could keep re-synthesizing (and
+  // this process's own in-memory cache kept serving) a segment's audio indefinitely
+  // past the session's own "delete after N days" privacy choice, as long as the
+  // cleanup cron just hadn't physically deleted the row yet.
+  if (!session || isSessionRetentionExpired(session)) {
+    return Response.json({ error: "This session's data is no longer available." }, { status: 404 });
+  }
+
   const cacheKey = `${segmentId}:${language}`;
   const cached = audioCache.get(cacheKey);
   if (cached) {
@@ -70,18 +84,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "No text available in the requested language." }, { status: 404 });
   }
 
-  const session = await prisma.session.findUnique({
-    where: { id: segment.sessionId },
-    select: { translationMode: true },
-  });
-
   let speech;
   try {
     speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage, {
-      // Fail closed (no cloud fallback) if `session` is unexpectedly gone —
-      // e.g. the retention-cleanup cron deleted it between this route's two
-      // queries — rather than defaulting a privacy gate to permissive.
-      allowCloudFallback: session !== null && session.translationMode !== "LOCAL_ONLY",
+      allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
     });
   } catch (error) {
     console.error("textToSpeechProvider.synthesize failed", error);

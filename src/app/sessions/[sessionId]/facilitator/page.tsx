@@ -15,10 +15,12 @@ import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { insightProvider } from "@/lib/providers/insight";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   endSession,
   publishCaption,
@@ -49,7 +51,7 @@ export default async function FacilitatorSessionPage({
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const [session, activeBlockers] = await Promise.all([
+  const [session, activeActionItems] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
@@ -80,13 +82,16 @@ export default async function FacilitatorSessionPage({
     }),
     // Queried directly, not sliced from the `insights` include above — that include is
     // capped at INSIGHT_HISTORY_LIMIT (50) most-recent insights of ANY type, so an
-    // older unresolved BLOCKER silently fell out of "Act now" as soon as 50 newer
-    // insights of any kind (activity/decision/confusion included) accumulated, even
-    // though it was never resolved. Active blockers are rare enough by nature (the
+    // older unresolved BLOCKER/CONFUSION silently fell out of "Act now" as soon as 50
+    // newer insights of any kind (activity/decision included) accumulated, even though
+    // it was never resolved. Active action items are rare enough by nature (the
     // facilitator is expected to resolve them) that fetching every one, unbounded, is
-    // the correct read here.
+    // the correct read here. BLOCKER and CONFUSION both belong in "Act now" — an
+    // unresolved problem and a sign of misunderstanding are both things the
+    // facilitator should notice and respond to live, unlike ACTIVITY/DECISION (see
+    // "Current lesson" below), which are informational context, not action items.
     prisma.insight.findMany({
-      where: { sessionId, type: "BLOCKER", status: "ACTIVE" },
+      where: { sessionId, type: { in: ["BLOCKER", "CONFUSION"] }, status: "ACTIVE" },
       include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
       orderBy: { createdAt: "desc" },
     }),
@@ -166,16 +171,22 @@ export default async function FacilitatorSessionPage({
       <div className="flex flex-wrap items-center gap-3" aria-live="polite">
         {session.status === SessionStatus.DRAFT && (
           <form action={startAction}>
-            <button className="font-data rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
+            <button className="font-data rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
               {dict.startSession}
             </button>
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
           <form action={endAction}>
-            <button className="font-data rounded-md border border-border-strong px-5 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-              {dict.endSession}
-            </button>
+            <ConfirmSubmitButton
+              label={dict.endSession}
+              pendingLabel={dict.endSession}
+              title={dict.confirmEndSessionTitle}
+              body={dict.confirmEndSessionBody}
+              confirmLabel={getDictionary(lang).common.confirm}
+              cancelLabel={getDictionary(lang).common.cancel}
+              variant="danger"
+            />
           </form>
         )}
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
@@ -223,12 +234,12 @@ export default async function FacilitatorSessionPage({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
         </div>
-        {activeBlockers.length > 0 ? (
+        {activeActionItems.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {activeBlockers.map((blocker) => {
-              const evidence = blocker.evidence[0]?.transcriptSegment;
+            {activeActionItems.map((item) => {
+              const evidence = item.evidence[0]?.transcriptSegment;
               const evidenceIsSourceLanguage = evidence?.language === session.sourceLanguage;
-              const translation = evidence?.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+              const translation = evidence?.translations.find((t) => t.targetLanguage === session.sourceLanguage);
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
                 : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
@@ -236,10 +247,19 @@ export default async function FacilitatorSessionPage({
               // is itself localized to `lang`, not fixed English copy — tag it `lang`,
               // not "en".
               const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
-              const resolveAction = resolveInsight.bind(null, sessionId, blocker.id);
+              const resolveAction = resolveInsight.bind(null, sessionId, item.id);
+              // CONFUSION reads as a signal to check comprehension, not a hard blocker to
+              // fix — same card shape and resolve action (a facilitator "handling" either
+              // means the same thing here: they noticed and responded), different label/
+              // accent so the two aren't visually indistinguishable in the same queue.
+              const isConfusion = item.type === "CONFUSION";
               return (
-                <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
-                  <p>{blocker.summary}</p>
+                <Card
+                  key={item.id}
+                  eyebrow={isConfusion ? dict.confusion : dict.blocker}
+                  accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
+                >
+                  <p>{item.summary}</p>
                   {evidence && (
                     <p
                       className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
@@ -261,11 +281,47 @@ export default async function FacilitatorSessionPage({
           <Card eyebrow={dict.waitingToStart}>
             <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
           </Card>
+        ) : !insightProvider.isConfigured ? (
+          // Distinct from "looks on track" below — that phrasing asserts insight
+          // detection actually ran and found nothing, which would be actively
+          // misleading when it never ran at all (no INSIGHT_MODEL_API_KEY set).
+          <Card eyebrow={dict.noInterventionYet}>
+            <p className="text-muted-foreground">{dict.insightsNotConfigured}</p>
+          </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>
             <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
         )}
+      </section>
+      <section className="flex flex-col gap-3" aria-live="polite">
+        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.currentLesson}</h2>
+        {(() => {
+          // Pulled from the already-fetched `session.insights` (ordered newest-first,
+          // capped at INSIGHT_HISTORY_LIMIT) rather than a separate query — ACTIVITY/
+          // DECISION are a running informational log for context, not action items
+          // needing their own unbounded "never miss an old unresolved one" query the
+          // way "Act now" above needs (there's nothing to resolve here). Capped further
+          // to the 5 most recent so this section stays a glance-able summary, not a
+          // second full transcript.
+          const recentContext = session.insights.filter((item) => item.type === "ACTIVITY" || item.type === "DECISION").slice(0, 5);
+          if (recentContext.length === 0) {
+            return (
+              <Card>
+                <p className="text-muted-foreground">{dict.noRecentActivity}</p>
+              </Card>
+            );
+          }
+          return (
+            <div className="flex flex-col gap-3">
+              {recentContext.map((item) => (
+                <Card key={item.id} eyebrow={item.type === "DECISION" ? dict.decision : dict.activity}>
+                  <p>{item.summary}</p>
+                </Card>
+              ))}
+            </div>
+          );
+        })()}
       </section>
       <section className="flex flex-col gap-3" aria-live="polite">
         <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
@@ -323,9 +379,15 @@ export default async function FacilitatorSessionPage({
               </div>
             </div>
             <form action={revokeInviteAction}>
-              <button className="font-data w-fit rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-low)] hover:text-[var(--tick-low)]">
-                {dict.revokeInvite}
-              </button>
+              <ConfirmSubmitButton
+                label={dict.revokeInvite}
+                pendingLabel={dict.revokeInvite}
+                title={dict.confirmRevokeInviteTitle}
+                body={dict.confirmRevokeInviteBody}
+                confirmLabel={getDictionary(lang).common.confirm}
+                cancelLabel={getDictionary(lang).common.cancel}
+                variant="danger"
+              />
             </form>
           </div>
         ) : (

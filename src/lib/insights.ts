@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { insightProvider, validateInsightDraft } from "@/lib/providers/insight";
+import { insightProvider, validateInsightDraft, type InsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -97,9 +97,7 @@ export async function generateSessionInsights(session: Session): Promise<void> {
         });
 
         const knownSegmentIds = new Set(recentSegments.map((segment) => segment.id));
-        const newDrafts = drafts.filter(
-          (draft) => validateInsightDraft(draft, knownSegmentIds) && !isDuplicateSummary(draft.summary, alreadyNoted),
-        );
+        const newDrafts = selectNewDrafts(drafts, knownSegmentIds, alreadyNoted);
         if (newDrafts.length === 0) return;
 
         for (const draft of newDrafts) {
@@ -116,10 +114,6 @@ export async function generateSessionInsights(session: Session): Promise<void> {
               },
             },
           });
-          // Newer drafts in the same batch must not duplicate an insight this loop just
-          // created, even though the model saw it as "new" (it was derived from the same
-          // `alreadyNoted` snapshot taken before this transaction wrote anything).
-          alreadyNoted.push(draft.summary);
         }
 
         revalidatePath(`/sessions/${session.id}/facilitator`);
@@ -137,6 +131,33 @@ export async function generateSessionInsights(session: Session): Promise<void> {
     // provider errors) could actually surface.
     console.error("generateSessionInsights failed", error);
   }
+}
+
+/**
+ * Filters a batch of drafts down to the genuinely new, valid ones — extracted as its
+ * own pure function so this logic is testable without mocking Prisma/the insight
+ * provider. Sequential, not a single `.filter()` pass: a single Claude response can
+ * itself contain two near-duplicate drafts (e.g. rephrasing the same blocker twice
+ * across two segments in the same batch), which filtering only against the
+ * pre-existing `alreadyNoted` snapshot never catches, since neither draft duplicates
+ * anything that existed *before* this call. Folding each accepted draft's summary
+ * into the running `notedSoFar` list immediately is what makes a later draft in the
+ * same batch correctly see an earlier one it duplicates.
+ */
+export function selectNewDrafts(
+  drafts: InsightDraft[],
+  knownSegmentIds: ReadonlySet<string>,
+  alreadyNoted: readonly string[],
+): InsightDraft[] {
+  const notedSoFar = [...alreadyNoted];
+  const newDrafts: InsightDraft[] = [];
+  for (const draft of drafts) {
+    if (!validateInsightDraft(draft, knownSegmentIds)) continue;
+    if (isDuplicateSummary(draft.summary, notedSoFar)) continue;
+    newDrafts.push(draft);
+    notedSoFar.push(draft.summary);
+  }
+  return newDrafts;
 }
 
 /**

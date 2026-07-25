@@ -18,7 +18,7 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { DisconnectReason, Track } from "livekit-client";
+import { DisconnectReason, Track, type MediaDeviceFailure } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
 import "@/lib/media-devices";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -275,12 +275,19 @@ export function LiveSessionRoom({
   // closes over nothing else) is what lets WorkshopVideoStage's own `useCallback`s stay
   // stable too, which is what actually avoids the infinite-render loop described below —
   // an inline arrow function here would defeat that regardless of memoizing downstream.
+  // Set when a per-device capture failure (denied permission, no such device, device
+  // held by another app) is recovered from by turning that one device off instead of
+  // treating the whole room as unrecoverable — see handleMediaDeviceFailure below.
+  // Cleared once the participant successfully turns the same device back on (a retry
+  // that works, e.g. after granting permission in the browser's own UI).
+  const [deviceWarning, setDeviceWarning] = useState<string | null>(null);
   const handlePublishStateChange = useCallback((patch: Partial<PublishState>) => {
     setPublishState((prev) => ({ ...prev, ...patch }));
     // The facilitator manually restarting their share is the one signal that clears
     // the interruption notice below — not a timeout, since there's no way to know in
     // advance how long they'll take to notice and click the button again.
     if (patch.screen) setScreenShareInterrupted(false);
+    if (patch.video || patch.audio) setDeviceWarning(null);
   }, []);
   // Set the instant the user clicks Leave (see WorkshopVideoStage's onLeave), before
   // `room.disconnect()` itself runs — distinct from a network-triggered disconnect,
@@ -306,7 +313,36 @@ export function LiveSessionRoom({
     [dict.disconnectedDuplicate, dict.disconnectedOther],
   );
   const handleRoomError = useCallback(() => setFatalError(dict.unableToJoin), [dict.unableToJoin]);
-  const handleMediaDeviceFailure = useCallback(() => setFatalError(dict.mediaDeviceError), [dict.mediaDeviceError]);
+  // `publishState` defaults to auto-publishing the camera (`video: true`) on every
+  // connect/reconnect, so a denied permission, a machine with no webcam (very
+  // plausible on an unfamiliar or locked-down device), or the camera already held by
+  // another app is a realistic, recoverable failure — not a reason to tear down the
+  // whole room. `failure`/`kind` (from the SDK's own MediaDeviceFailure classification)
+  // tell us exactly which device the capture attempt was for; for a camera or
+  // microphone specifically, turn just that device off (so the next
+  // render/reconnect stops re-requesting it) and show a dismissible warning instead
+  // of the unrecoverable full-room error — the participant can still join
+  // audio/video-off, and the fatalError branch's "Rejoin" button wouldn't have fixed
+  // this anyway, since it doesn't reset the browser's already-made permission
+  // decision either. Any other failure kind (or
+  // none reported) has no known-safe per-device recovery, so it still falls back to
+  // the original terminal path.
+  const handleMediaDeviceFailure = useCallback(
+    (_failure?: MediaDeviceFailure, kind?: MediaDeviceKind) => {
+      if (kind === "videoinput") {
+        setPublishState((prev) => ({ ...prev, video: false }));
+        setDeviceWarning(dict.cameraUnavailable);
+        return;
+      }
+      if (kind === "audioinput") {
+        setPublishState((prev) => ({ ...prev, audio: false }));
+        setDeviceWarning(dict.microphoneUnavailable);
+        return;
+      }
+      setFatalError(dict.mediaDeviceError);
+    },
+    [dict.cameraUnavailable, dict.microphoneUnavailable, dict.mediaDeviceError],
+  );
 
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
@@ -374,6 +410,17 @@ export function LiveSessionRoom({
   useEffect(() => {
     fetchCredentialsRef.current = fetchCredentials;
   }, [fetchCredentials]);
+  // The fatalError screen's one recourse used to be `window.location.reload()` — a
+  // full page navigation. That's a heavier hammer than needed (and slower to recover
+  // from) for a terminal disconnect/room error that a fresh token can often just fix
+  // outright: clearing `fatalError` re-enables the background-refresh effect above,
+  // and re-fetching credentials here gets a new token applied via <LiveKitRoom>'s
+  // `key` remounting it, the same mechanism the background refresh itself already
+  // relies on — no full reload needed for what's fundamentally the same recovery.
+  const handleRejoin = useCallback(() => {
+    setFatalError(null);
+    void fetchCredentials({ background: false });
+  }, [fetchCredentials]);
 
   useEffect(() => {
     // Fetches from an external system (the token endpoint) on mount/role change — the
@@ -392,7 +439,12 @@ export function LiveSessionRoom({
   // a clean reconnect using it — livekit-client's own automatic reconnect logic
   // doesn't pick up a token handed to it via a changed prop while already connected.
   useEffect(() => {
-    if (!credentials) return;
+    // A terminal `fatalError` means <LiveKitRoom> isn't mounted (see the render
+    // branch below) and won't be again until the "Rejoin" button explicitly clears
+    // it — this effect's whole purpose is applying a fresh token to that mounted
+    // room, so there's nothing for a background refresh to do, and every tick would
+    // otherwise just be a wasted authenticated hit to /api/livekit/token forever.
+    if (!credentials || fatalError) return;
     const maybeRefresh = (background: boolean) => {
       if (hasLeftRef.current) return;
       if (Date.now() - lastFetchedAtRef.current < MIN_REFRESH_GAP_MS) return;
@@ -420,7 +472,7 @@ export function LiveSessionRoom({
       // identity or the component unmounts, wastefully hitting the token endpoint.
       if (backgroundRetryTimeoutRef.current !== null) clearTimeout(backgroundRetryTimeoutRef.current);
     };
-  }, [credentials, fetchCredentials]);
+  }, [credentials, fatalError, fetchCredentials]);
 
   if (error) {
     return <p className="text-sm" style={{ color: "var(--tick-low)" }}>{error}</p>;
@@ -433,10 +485,10 @@ export function LiveSessionRoom({
         </p>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={handleRejoin}
           className="rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
         >
-          {dict.reload}
+          {dict.rejoin}
         </button>
       </div>
     );
@@ -457,6 +509,11 @@ export function LiveSessionRoom({
       {screenShareInterrupted && (
         <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {dict.screenShareInterrupted}
+        </p>
+      )}
+      {deviceWarning && (
+        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+          {deviceWarning}
         </p>
       )}
       <LiveKitRoom

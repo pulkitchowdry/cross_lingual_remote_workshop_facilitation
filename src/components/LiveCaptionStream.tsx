@@ -41,6 +41,13 @@ export function LiveCaptionStream({
   const stoppedByUserRef = useRef(false);
   /** Whether the current socket ever reached `OPEN` — see caption-socket-client.ts's "opaque" case. */
   const hasOpenedRef = useRef(false);
+  // The full, untruncated error text from a server `{ type: "error", message }` data
+  // frame (captions-socket.ts's onError sends this before closing) — the close frame
+  // that follows immediately after carries the *same* message, but truncated to 123
+  // bytes (WebSocket's close-reason limit; see captions-socket.ts's closeWithReason).
+  // `onclose` below prefers this over the truncated `event.reason` when both exist for
+  // the same connection, so a message cut off mid-sentence never clobbers the clear one.
+  const lastServerMessageRef = useRef<string | null>(null);
 
   const stop = useCallback(() => {
     stoppedByUserRef.current = true;
@@ -70,6 +77,7 @@ export function LiveCaptionStream({
     setError(null);
     stoppedByUserRef.current = false;
     hasOpenedRef.current = false;
+    lastServerMessageRef.current = null;
     setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -84,7 +92,11 @@ export function LiveCaptionStream({
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
-          if (payload.type === "error") setError(payload.message ?? dict.sttError);
+          if (payload.type === "error") {
+            const message = payload.message ?? dict.sttError;
+            lastServerMessageRef.current = message;
+            setError(message);
+          }
         } catch {
           // Non-JSON messages are ignored; the server only sends error signals.
         }
@@ -105,7 +117,21 @@ export function LiveCaptionStream({
       socket.onclose = (event) => {
         if (!stoppedByUserRef.current && event.code !== CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
           const failure = classifyCaptionSocketClose(event, hasOpenedRef.current);
-          setError(failure.kind === "server-reason" ? failure.reason : failure.kind === "opaque" ? dict.connectionBlocked : dict.connectionFailed);
+          // `event.reason` is capped at 123 bytes (the WebSocket close-frame limit —
+          // see captions-socket.ts's closeWithReason) and can be a mid-sentence
+          // truncation of the fuller message `onmessage` already set moments earlier
+          // for the same connection (the server sends the full text as a data frame
+          // before closing) — prefer that when it's there. Falls back to the
+          // (possibly truncated) `event.reason` for a close with no preceding data
+          // frame, e.g. "Not authorized"/"session not live" from server.ts's
+          // pre-handshake rejections, which never went through onmessage at all.
+          setError(
+            failure.kind === "server-reason"
+              ? (lastServerMessageRef.current ?? failure.reason)
+              : failure.kind === "opaque"
+                ? dict.connectionBlocked
+                : dict.connectionFailed,
+          );
         }
         stop();
       };

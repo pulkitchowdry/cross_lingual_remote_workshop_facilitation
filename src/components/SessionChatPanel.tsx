@@ -41,7 +41,11 @@ export function SessionChatPanel({
   const [state, formAction] = useActionState<FormActionResult, FormData>(sendAction, { error: null });
 
   return (
-    <aside className="flex min-h-[38rem] flex-col rounded-lg border border-border-subtle bg-surface-raised">
+    // Matches LiveSessionRoom's own clamp so the two line up side by side — a fixed
+    // height (not just `min-h`) is what actually bounds the messages list below so it
+    // scrolls internally as messages pile up, instead of the whole panel (and the page
+    // under it) growing taller without limit.
+    <aside className="flex h-[clamp(26rem,75vh,54rem)] flex-col rounded-lg border border-border-subtle bg-surface-raised">
       <div className="border-b border-border-subtle px-4 py-3">
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.translatedChat}</p>
       </div>
