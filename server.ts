@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { parse } from "node:url";
+import { parse, fileURLToPath } from "node:url";
 import { loadEnvConfig } from "@next/env";
 
 // Must run before any module that reads `process.env` at import time (e.g.
@@ -29,6 +29,7 @@ async function main() {
   const { SessionStatus } = await import("@/generated/prisma/client");
   const { facilitatorCookieName } = await import("@/lib/session-security");
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
+  const { AgentServer, ServerOptions, initializeLogger } = await import("@livekit/agents");
 
   const dev = process.env.NODE_ENV !== "production";
   const port = Number(process.env.PORT) || 3000;
@@ -92,6 +93,57 @@ async function main() {
   server.listen(port, () => {
     console.log(`> Ready on port ${port} (${dev ? "development" : "production"})`);
   });
+
+  await startCaptionAgent({ AgentServer, ServerOptions, initializeLogger, dev });
+}
+
+/**
+ * Registers the LiveKit Agents worker that subscribes to the facilitator's
+ * audio track server-side (`src/lib/caption-agent.ts`), in the same process
+ * as the Next.js app — this needs a persistent process rather than a
+ * request-scoped one, which `server.ts` already is. Job dispatches spawn
+ * their own subprocess (LiveKit Agents' own isolation model, preserving the
+ * `tsx` loader via `execArgv` so the forked process can still load a `.ts`
+ * entry file), but there's only one deployable service/`package.json` for
+ * the whole app now. No-ops if LiveKit or STT credentials aren't
+ * configured, so local dev without those env vars still starts cleanly.
+ */
+async function startCaptionAgent({
+  AgentServer,
+  ServerOptions,
+  initializeLogger,
+  dev,
+}: {
+  AgentServer: typeof import("@livekit/agents").AgentServer;
+  ServerOptions: typeof import("@livekit/agents").ServerOptions;
+  initializeLogger: typeof import("@livekit/agents").initializeLogger;
+  dev: boolean;
+}) {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, STT_API_KEY } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !STT_API_KEY) {
+    console.warn("[caption-agent] LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET/STT_API_KEY not fully set; caption agent worker not started.");
+    return;
+  }
+
+  initializeLogger({ pretty: dev, level: dev ? "debug" : "info" });
+  const agentPath = fileURLToPath(new URL("./src/lib/caption-agent.ts", import.meta.url));
+  const server = new AgentServer(
+    new ServerOptions({
+      agent: agentPath,
+      // LIVEKIT_URL is given to browsers too (RoomProvider.issueCredential
+      // hands it to the LiveKit client verbatim), so in Docker Compose it's
+      // set to a host-reachable address; this worker instead runs inside the
+      // container and needs the Compose-internal LiveKit hostname.
+      // LIVEKIT_AGENT_URL overrides just this connection when the two differ
+      // (see docker-compose.yml); falls back to LIVEKIT_URL otherwise.
+      wsURL: process.env.LIVEKIT_AGENT_URL || LIVEKIT_URL,
+      apiKey: LIVEKIT_API_KEY,
+      apiSecret: LIVEKIT_API_SECRET,
+      production: !dev,
+      logLevel: dev ? "debug" : "info",
+    }),
+  );
+  server.run().catch((error) => console.error("[caption-agent] worker stopped:", error));
 }
 
 main();

@@ -8,12 +8,14 @@
 # ${VAR} substitutions below), so one file covers `npm run dev` and
 # `docker compose up` alike.
 #
-# LIVEKIT_URL is intentionally set to different values for `web` and `agent`:
-# `web`'s value is handed to the *browser* (RoomProvider.issueCredential
+# `web` runs both the Next.js app and the in-process LiveKit caption agent
+# worker (src/lib/caption-agent.ts) now — there's no separate `agent`
+# service. LIVEKIT_URL and LIVEKIT_AGENT_URL are intentionally different:
+# LIVEKIT_URL is handed to the *browser* (RoomProvider.issueCredential
 # returns it verbatim as the LiveKit client's connect URL), so it must be
 # reachable from the host, not just from inside the Compose network — hence
-# `localhost`. `agent` only ever calls it from inside the Compose network, so
-# it uses the internal service hostname.
+# `localhost`. LIVEKIT_AGENT_URL is only used by the in-container worker to
+# reach the `livekit` service, so it uses the internal service hostname.
 
 services:
   postgres:
@@ -71,11 +73,14 @@ services:
         condition: service_healthy
       local-inference:
         condition: service_started
+      livekit:
+        condition: service_started
     environment:
       # Always postgres:5432 (Compose-internal hostname:port, not the
       # published host port above) — see the comment on postgres's `ports`.
       DATABASE_URL: postgresql://${POSTGRES_USER:-workshop}:${POSTGRES_PASSWORD:-workshop}@postgres:5432/${POSTGRES_DB:-workshop_copilot}?schema=public
       LIVEKIT_URL: ${LIVEKIT_URL:-http://localhost:7880}
+      LIVEKIT_AGENT_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
       STT_API_KEY: ${STT_API_KEY:-}
@@ -87,25 +92,9 @@ services:
       TTS_API_KEY: ${TTS_API_KEY:-}
       LOCAL_INFERENCE_URL: http://local-inference:8080
       LOCAL_INFERENCE_SECRET: ${LOCAL_INFERENCE_SECRET:-devsecret}
-      CAPTION_AGENT_SECRET: ${CAPTION_AGENT_SECRET:-devsecret}
       CRON_SECRET: ${CRON_SECRET:-}
     ports:
       - "3000:3000"
-
-  agent:
-    build:
-      context: . # not ./agent — see agent/Dockerfile's top comment
-      dockerfile: agent/Dockerfile
-    depends_on:
-      - web
-      - livekit
-    environment:
-      LIVEKIT_URL: http://livekit:7880
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
-      STT_API_KEY: ${STT_API_KEY:-}
-      APP_BASE_URL: http://web:3000
-      CAPTION_AGENT_SECRET: ${CAPTION_AGENT_SECRET:-devsecret}
 
 volumes:
   postgres-data:

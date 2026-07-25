@@ -15,14 +15,15 @@ This is the first Python component in the repo. It needs a long-lived process
 holding three CPU models (NLLB-600M-int8, faster-whisper-small, three Piper
 voices — roughly 1-1.5GB combined) in memory and a different runtime (Python,
 not Node), so it deploys as its own Railway service rather than as part of
-the main app's service, the same way the `agent/` worker's persistent LiveKit
-connection does. It lives in its own directory
-with its own dependency tree (`ctranslate2`, `faster-whisper`, `piper-tts`,
-`transformers` — none of which belong in the Next.js app's install) and talks
-to the Next.js app over plain authenticated HTTP, the same shared-secret
-pattern `agent/` uses for `/api/captions/agent`, just in the opposite call
-direction (the Next.js app calls out to this service, rather than a worker
-calling into the app).
+the main app's service. Unlike the LiveKit caption worker
+(`src/lib/caption-agent.ts`, which was merged into the main Next.js
+app/process since both are Node and the split wasn't worth the ops overhead
+for a hackathon project), this service genuinely can't merge: different
+language runtime, different dependency tree (`ctranslate2`, `faster-whisper`,
+`piper-tts`, `transformers` — none of which belong in the Next.js app's
+install). It lives in its own directory and talks to the Next.js app over
+plain authenticated HTTP (shared-secret, `LOCAL_INFERENCE_SECRET`), in the
+opposite call direction (the Next.js app calls out to this service).
 
 ## Endpoints
 
@@ -107,10 +108,10 @@ download, no dependency on Hugging Face being reachable at startup.
   No specific Railway CPU/plan sizing is prescribed here — a cost/ops decision
   left to whoever deploys this.
 - **Not verified end-to-end in this environment** — no Railway project or
-  Hugging Face network access was available while building this, mirroring
-  `agent/README.md`'s own "not verified end-to-end" disclaimer. Before relying
-  on this in production: build the image, run it, and confirm all three
-  routes and `/health` behave as documented above with real model weights.
+  Hugging Face network access was available while building this. Before
+  relying on this in production: build the image, run it, and confirm all
+  three routes and `/health` behave as documented above with real model
+  weights.
 
 ## Running tests
 

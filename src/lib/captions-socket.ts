@@ -29,7 +29,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
       void (async () => {
         // Re-check status per segment, not just once at connect — the facilitator
         // may click "End session" while this socket is still open (mirrors the
-        // per-call re-check in /api/captions/agent's POST handler).
+        // per-segment re-check in src/lib/caption-agent.ts).
         const current = await prisma.session.findUnique({
           where: { id: session.id },
           select: { status: true },
