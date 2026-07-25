@@ -69,12 +69,18 @@ services:
     build:
       context: .
     depends_on:
+      # local-inference and livekit are deliberately NOT listed here even
+      # though web talks to both — both are optional/degradable (see
+      # src/lib/env.ts's providerAvailability and this file's own comment
+      # above), and `depends_on` controls more than start order: naming a
+      # service here means `docker compose up postgres web` (docs/DEPLOYMENT.md's
+      # "start a subset" example) would still create and build local-inference
+      # too, defeating the point of that example (skipping its slow
+      # model-downloading build). Full `docker compose up` with no args starts
+      # every service in this file regardless of depends_on, so this only
+      # affects selective/subset starts.
       postgres:
         condition: service_healthy
-      local-inference:
-        condition: service_started
-      livekit:
-        condition: service_started
     environment:
       # Always postgres:5432 (Compose-internal hostname:port, not the
       # published host port above) — see the comment on postgres's `ports`.
