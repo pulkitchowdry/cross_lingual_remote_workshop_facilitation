@@ -18,7 +18,6 @@ import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import {
   endSession,
-  loadDemoScenario,
   logoutFacilitator,
   publishCaption,
   revokeLearnerInvite,
@@ -87,7 +86,6 @@ export default async function FacilitatorSessionPage({
   }
   const startAction = startSession.bind(null, sessionId);
   const endAction = endSession.bind(null, sessionId);
-  const demoAction = loadDemoScenario.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const logoutAction = logoutFacilitator.bind(null, sessionId);
@@ -192,13 +190,6 @@ export default async function FacilitatorSessionPage({
             <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</p>
             <h2 className="font-heading text-lg font-semibold">{dict.interventionQueue}</h2>
           </div>
-          {session.status === SessionStatus.LIVE && session.transcript.length === 0 && (
-            <form action={demoAction}>
-              <button className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                {dict.loadDemo}
-              </button>
-            </form>
-          )}
         </div>
         {activeBlockers.length > 0 ? (
           <div className="flex flex-col gap-3">
@@ -231,7 +222,7 @@ export default async function FacilitatorSessionPage({
           </div>
         ) : session.transcript.length === 0 ? (
           <Card eyebrow={dict.noInterventionYet}>
-            <p className="text-muted-foreground">{dict.noInterventionHintEmpty}</p>
+            <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>

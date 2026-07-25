@@ -56,11 +56,21 @@ async function main() {
 
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
+  // Next's own dev tooling (HMR, the React DevTools bridge, etc.) upgrades
+  // WebSocket connections too — most visibly `/_next/webpack-hmr`. Destroying
+  // those sockets (the old behavior here) makes Next's dev client believe the
+  // dev server is unreachable and fall back to `window.location.reload()`,
+  // which then repeats every time the socket is killed again: a reload loop
+  // that never gives any client-side effect (LiveSessionRoom's credential
+  // fetch, SessionAutoRefresh's polling) a chance to finish. Delegate anything
+  // that isn't our own caption stream to Next's upgrade handler instead of
+  // destroying it.
+  const nextUpgradeHandler = app.getUpgradeHandler();
 
   server.on("upgrade", async (req, socket, head) => {
     const { pathname, query } = parse(req.url ?? "", true);
     if (pathname !== "/api/captions/stream") {
-      socket.destroy();
+      nextUpgradeHandler(req, socket, head);
       return;
     }
 
