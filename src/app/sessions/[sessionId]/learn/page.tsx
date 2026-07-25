@@ -53,7 +53,7 @@ export default async function LearnerSessionPage({
   const learnerDict = dict.learner;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
       {participant.session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
       <div>
@@ -111,7 +111,7 @@ export default async function LearnerSessionPage({
           />
         )}
         {participant.session.transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
             {participant.session.transcript.map((segment) => {
               const isOwnLanguage = segment.language === participant.preferredLanguage;
               const translation = segment.translations.find(
