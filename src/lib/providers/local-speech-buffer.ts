@@ -48,6 +48,17 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   private flushTimer: ReturnType<typeof setInterval> | null;
   private fallbackStream: SpeechToTextStream | null = null;
   private closed = false;
+  private flushing = false;
+  /**
+   * Browser `MediaRecorder` writes the WebM/Matroska container header (EBML +
+   * Segment info + Tracks) only into the very first emitted chunk of a
+   * continuous recording; every later chunk is a headerless Cluster that
+   * can't be decoded on its own. Captured once from the first window and
+   * prepended to every later window so each POST to local-inference is an
+   * independently decodable file. `null` until the first window has been
+   * seen; an empty array if no Cluster boundary was found (best effort).
+   */
+  private webmHeader: Uint8Array | null = null;
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
@@ -75,7 +86,11 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   }
 
   private async flush(): Promise<void> {
-    if (this.fallbackStream || this.buffer.length === 0) return;
+    // A single in-flight flush at a time — `localTranscribe` can take longer than
+    // WINDOW_MS, and letting a second window's flush start before the first
+    // resolves would fire overlapping local-inference requests for the same stream.
+    if (this.flushing || this.fallbackStream || this.buffer.length === 0) return;
+    this.flushing = true;
     const chunks = this.buffer;
     this.buffer = [];
 
@@ -84,18 +99,27 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       const { text } = await localTranscribe(bytes, mimeType, this.options.expectedLanguage);
       if (text.trim()) this.options.onSegment({ text: text.trim(), isFinal: true });
     } catch (error) {
-      this.switchToFallback(error);
+      this.switchToFallback(error, chunks);
+    } finally {
+      this.flushing = false;
     }
   }
 
-  /** Wraps raw PCM (from the LiveKit agent worker) in a WAV header so ffmpeg can decode it server-side; browser MediaRecorder chunks are already containerized (webm/opus). */
+  /** Wraps raw PCM (from the LiveKit agent worker) in a WAV header so ffmpeg can decode it server-side. */
   private encodeWindow(audio: Uint8Array): { bytes: Uint8Array; mimeType: string } {
     const encoding = this.options.encoding;
-    if (!encoding) return { bytes: audio, mimeType: "audio/webm" };
-    return { bytes: wrapPcm16AsWav(audio, encoding.sampleRate, encoding.channels), mimeType: "audio/wav" };
+    if (encoding) {
+      return { bytes: wrapPcm16AsWav(audio, encoding.sampleRate, encoding.channels), mimeType: "audio/wav" };
+    }
+    if (this.webmHeader === null) {
+      const clusterStart = findWebmClusterStart(audio);
+      this.webmHeader = clusterStart >= 0 ? audio.slice(0, clusterStart) : new Uint8Array(0);
+      return { bytes: audio, mimeType: "audio/webm" };
+    }
+    return { bytes: concat([this.webmHeader, audio]), mimeType: "audio/webm" };
   }
 
-  private switchToFallback(error: unknown): void {
+  private switchToFallback(error: unknown, failedWindow: Uint8Array[] = []): void {
     if (this.fallbackStream || this.closed) return;
 
     if (!this.options.allowCloudFallback) {
@@ -115,8 +139,32 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       this.fallbackStream = this.options.openCloudFallback();
     } catch (fallbackError) {
       this.options.onError(fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)));
+      return;
     }
+    // Forward the audio that just failed locally, plus anything that arrived
+    // via `sendAudio` while that local call was still pending (it landed back
+    // in `this.buffer` since `fallbackStream` wasn't set yet) — otherwise both
+    // are silently dropped at the exact moment of failover.
+    const recovered = concat([...failedWindow, ...this.buffer]);
+    this.buffer = [];
+    if (recovered.byteLength > 0) this.fallbackStream.sendAudio(recovered);
   }
+}
+
+const WEBM_CLUSTER_ID = [0x1f, 0x43, 0xb6, 0x75];
+
+/**
+ * Byte offset of the first Matroska/WebM Cluster element ID in `bytes`, or -1
+ * if none is found. A compliant muxer always writes EBML header + Segment
+ * info + Tracks before the first Cluster, so everything before this offset is
+ * the container header needed to make a later, headerless Cluster-only chunk
+ * independently decodable.
+ */
+function findWebmClusterStart(bytes: Uint8Array): number {
+  for (let index = 0; index <= bytes.length - WEBM_CLUSTER_ID.length; index += 1) {
+    if (WEBM_CLUSTER_ID.every((byte, offset) => bytes[index + offset] === byte)) return index;
+  }
+  return -1;
 }
 
 function concat(chunks: Uint8Array[]): Uint8Array {
