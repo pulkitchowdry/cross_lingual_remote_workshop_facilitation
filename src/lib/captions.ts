@@ -1,5 +1,4 @@
 import { revalidatePath } from "next/cache";
-import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/db";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
@@ -55,6 +54,11 @@ export async function publishTranslatedCaption(
   await roomProvider.notifyCaptionsChanged(session.id);
 
   if (insightProvider.isConfigured) {
-    waitUntil(generateSessionInsights(session));
+    // Fire-and-forget: unlike a Vercel Function, this process stays alive
+    // after the response is sent, so there's no need for a `waitUntil`-style
+    // hook to keep it running — a plain unawaited call is enough.
+    void generateSessionInsights(session).catch((error) => {
+      console.error("generateSessionInsights failed", error);
+    });
   }
 }

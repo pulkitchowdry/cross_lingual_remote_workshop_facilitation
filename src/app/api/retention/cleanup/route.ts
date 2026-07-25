@@ -7,10 +7,10 @@ import { secureCompare } from "@/lib/session-security";
  * Enforces the "Automatic deletion after session" / "No permanent storage
  * unless enabled" privacy goals (docs/FEATURE_LIST.md Module 6) — retentionDays
  * was previously captured at session setup but never acted on (issue #62).
- * Meant to be triggered by Vercel Cron (see vercel.json), which sends
- * `Authorization: Bearer ${CRON_SECRET}` automatically once CRON_SECRET is
- * set on the project; also callable manually with the same header for local
- * testing or non-Vercel schedulers.
+ * Meant to be triggered by an external scheduler (Railway Cron Job, GitHub
+ * Actions schedule, cron-job.org, etc.) sending `Authorization: Bearer
+ * ${CRON_SECRET}`; also callable manually with the same header for local
+ * testing.
  */
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CRON_SECRET;
@@ -67,6 +67,6 @@ export async function POST(request: NextRequest) {
   return Response.json({ deletedSessionIds: expiredIds });
 }
 
-// Vercel Cron sends GET by default unless a method is configured; support
-// both so the vercel.json schedule below works without extra configuration.
+// Some schedulers default to GET rather than POST; support both so any
+// scheduler works without extra configuration.
 export const GET = POST;

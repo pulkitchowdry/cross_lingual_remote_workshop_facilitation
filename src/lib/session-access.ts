@@ -2,19 +2,12 @@ import { cookies } from "next/headers";
 import { ParticipantRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { facilitatorCookieName, hashToken, learnerCookieName } from "@/lib/session-security";
+import { verifyFacilitatorToken } from "@/lib/facilitator-token";
 
 export async function hasFacilitatorAccess(sessionId: string) {
   const token = (await cookies()).get(facilitatorCookieName(sessionId))?.value;
   if (!token) return false;
-
-  const link = await prisma.joinLink.findUnique({ where: { tokenHash: hashToken(token) } });
-  return Boolean(
-    link &&
-      link.sessionId === sessionId &&
-      link.role === ParticipantRole.FACILITATOR &&
-      !link.revokedAt &&
-      (!link.expiresAt || link.expiresAt >= new Date()),
-  );
+  return verifyFacilitatorToken(sessionId, token);
 }
 
 export async function learnerParticipantId(sessionId: string) {

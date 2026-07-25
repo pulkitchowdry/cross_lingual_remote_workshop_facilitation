@@ -8,8 +8,9 @@ mic control in their browser. This is the "server-side track subscription" item 
 ## Why this is a separate package
 
 This worker needs a **persistent, long-running process** — it registers with LiveKit's server and
-stays connected, waiting to be dispatched into rooms. That doesn't fit Vercel Functions (the main
-app's deployment target), which are request-scoped. So it:
+stays connected, waiting to be dispatched into rooms. That's a different lifecycle than the main
+app's request/response handling, so it deploys as its own Railway service rather than living
+inside the app's service. So it:
 
 - Lives in its own `agent/` directory with its own `package.json`/`node_modules`, keeping
   `@livekit/agents` (an 18MB+ dependency tree with native/ffmpeg bits) out of the Next.js app's
@@ -26,9 +27,8 @@ app's deployment target), which are request-scoped. So it:
   (`LiveCaptionStream`/`/api/captions/stream`) uses, so both capture paths go through one Deepgram
   integration.
 
-You need to deploy this somewhere that supports a persistent process — a small VM, Fly.io,
-Railway, a container platform, etc. Which one is an explicit infrastructure decision this repo
-hasn't made yet; nothing here assumes a specific host.
+Deploy this as its own Railway service (same platform as the main app and `local-inference/`),
+since it needs a persistent process rather than a request-scoped one.
 
 ## Environment variables
 
