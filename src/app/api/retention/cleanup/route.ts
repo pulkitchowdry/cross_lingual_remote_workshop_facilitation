@@ -30,17 +30,20 @@ export async function POST(request: NextRequest) {
   // and then never clicks "End" (browser crash, closed laptop, lost connectivity)
   // would otherwise keep its full transcript/chat/participant data forever, since
   // nothing else ever sets `status: ENDED` / `endedAt`. isSessionRetentionExpired
-  // falls back to `createdAt` for a session that never ended, giving every DRAFT/ENDED
-  // session a hard retention cap regardless of how it stopped being live. A currently
-  // LIVE session is excluded outright, though — its participants are actively using it
-  // right now, and `createdAt` alone says nothing about that; a workshop running longer
-  // than its own `retentionDays` (a facilitator's transcript-retention choice, not a
-  // session-length limit) must not have its data deleted out from under it mid-session.
-  // The tradeoff is that a session stuck LIVE forever (never explicitly ended) keeps its
-  // data indefinitely too — an acceptable cost next to deleting an active session's data.
+  // falls back to `startedAt` for a session that never ended, giving every abandoned
+  // LIVE-then-never-ended session a hard retention cap regardless of how it stopped
+  // being live — but returns false outright for a DRAFT session that was never even
+  // started (`startedAt` still null), since that has no lifecycle to anchor a
+  // deletion deadline to yet. A currently LIVE session is excluded outright too — its
+  // participants are actively using it right now, and `startedAt` alone says nothing
+  // about that; a workshop running longer than its own `retentionDays` (a
+  // facilitator's transcript-retention choice, not a session-length limit) must not
+  // have its data deleted out from under it mid-session. The tradeoff is that a
+  // session stuck LIVE forever (never explicitly ended) keeps its data indefinitely
+  // too — an acceptable cost next to deleting an active session's data.
   const sessions = await prisma.session.findMany({
     where: { status: { not: SessionStatus.LIVE } },
-    select: { id: true, createdAt: true, endedAt: true, retentionDays: true },
+    select: { id: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true },
   });
 
   const expiredIds = sessions.filter((session) => isSessionRetentionExpired(session, now)).map((session) => session.id);

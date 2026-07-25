@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
@@ -11,7 +11,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
@@ -33,7 +33,7 @@ export default async function LearnerSessionPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+          transcript: { include: { translations: true }, orderBy: { startedAt: "desc" }, take: TRANSCRIPT_HISTORY_LIMIT },
           messages: {
             include: { sender: true, translations: true },
             orderBy: { sentAt: "desc" },
@@ -57,6 +57,7 @@ export default async function LearnerSessionPage({
     participant.session.learnerLanguages.includes(language.value),
   );
   const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
+  const transcript = [...participant.session.transcript].reverse();
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,15 +93,19 @@ export default async function LearnerSessionPage({
             <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
             <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
-            <LiveSessionRoom sessionId={participant.session.id} role="learner" lang={lang} />
-            <SessionChatPanel
-              messages={[...participant.session.messages].reverse()}
-              targetLanguage={participant.preferredLanguage}
-              sendAction={sendChatAction}
-              allowQuestions
-            />
-          </div>
+          <WorkshopRoomLayout
+            sessionId={participant.session.id}
+            role="learner"
+            lang={lang}
+            sidebar={
+              <SessionChatPanel
+                messages={[...participant.session.messages].reverse()}
+                targetLanguage={participant.preferredLanguage}
+                sendAction={sendChatAction}
+                allowQuestions
+              />
+            }
+          />
         </section>
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
@@ -116,7 +121,7 @@ export default async function LearnerSessionPage({
         </div>
         {textToSpeechProvider.isConfigured && (
           <TranslatedAudioPlayer
-            segments={participant.session.transcript.map((segment) => ({
+            segments={transcript.map((segment) => ({
               id: segment.id,
               hasTranslation:
                 segment.language === participant.preferredLanguage ||
@@ -125,9 +130,9 @@ export default async function LearnerSessionPage({
             preferredLanguage={participant.preferredLanguage}
           />
         )}
-        {participant.session.transcript.length > 0 ? (
+        {transcript.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {participant.session.transcript.map((segment) => {
+            {transcript.map((segment) => {
               const isOwnLanguage = segment.language === participant.preferredLanguage;
               const translation = segment.translations.find(
                 (item) => item.targetLanguage === participant.preferredLanguage,

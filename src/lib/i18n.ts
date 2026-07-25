@@ -549,20 +549,16 @@ export function resolveLanguage(value: unknown, fallback: SupportedLanguage = "e
 
 /**
  * Parses an `Accept-Language` header (e.g. `"es-MX,es;q=0.9,en;q=0.8"`) and picks the
- * first supported language it names, in the browser's own preference order. Used to pick
- * the initial UI language for pages with no session yet (setup/join before a `?lang=` is
- * set), so a first-time visitor sees their own language instead of always English.
+ * first supported language it names, by descending `;q=` weight (not raw list order —
+ * a header can legally list a lower-priority tag before a higher-priority one, e.g.
+ * `"en;q=0.5,fr;q=0.9"`). Used to pick the initial UI language for pages with no session
+ * yet (setup/join before a `?lang=` is set), so a first-time visitor sees their own
+ * language instead of always English. Delegates to `resolveLanguageFromAcceptLanguage`,
+ * which the root layout already uses for the same header — two separate parsers here
+ * used to disagree on which language wins whenever q-values weren't in list order.
  */
 export function detectBrowserLanguage(acceptLanguageHeader: string | null, fallback: SupportedLanguage = "en"): SupportedLanguage {
-  if (!acceptLanguageHeader) return fallback;
-  const preferred = acceptLanguageHeader
-    .split(",")
-    .map((part) => part.trim().split(";")[0]?.split("-")[0]?.toLowerCase())
-    .filter(Boolean);
-  for (const tag of preferred) {
-    if (isSupportedLanguage(tag)) return tag;
-  }
-  return fallback;
+  return resolveLanguageFromAcceptLanguage(acceptLanguageHeader, fallback);
 }
 
 /**

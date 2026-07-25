@@ -71,6 +71,27 @@ describe("translateText", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("still returns a truncated Claude translation (logging a warning) rather than discarding it", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "cut off mid-sen" }], stop_reason: "max_tokens" }),
+      }),
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es");
+
+    expect(result).toEqual({ text: "cut off mid-sen", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("truncated"));
+    errorSpy.mockRestore();
+  });
+
   it("returns null when neither local-inference nor Claude is configured", async () => {
     delete process.env.LOCAL_INFERENCE_URL;
     delete process.env.LOCAL_INFERENCE_SECRET;

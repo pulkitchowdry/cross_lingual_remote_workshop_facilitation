@@ -114,7 +114,14 @@ async function streamFacilitatorAudio(
     // identity between this loop ending and this `finally` running; blindly
     // deleting here could otherwise clobber a newer, still-active stream's guard.
     if (activeTracks.get(identity) === track) activeTracks.delete(identity);
-    await clearCaptionAgentCapturing(sessionId);
+    // Only clear the DB-backed `captionAgentActive` flag once no track is active for
+    // ANY identity — an old, already-superseded track's cleanup (the guard above
+    // correctly skipped deleting the map entry for it) must not still unconditionally
+    // reset the flag to false while a newer track is actively capturing, or the
+    // facilitator dashboard shows "Start live captions from mic" as available while
+    // the agent is in fact still streaming, inviting exactly the duplicate pipeline
+    // this flag exists to prevent (see server.ts's upgrade-handler check).
+    if (activeTracks.size === 0) await clearCaptionAgentCapturing(sessionId);
   }
 }
 
@@ -126,9 +133,18 @@ async function streamFacilitatorAudio(
  */
 export default defineAgent({
   entry: async (ctx: JobContext) => {
-    const sessionId = sessionIdFromRoomName(ctx.room.name);
+    // `ctx.room` (the live @livekit/rtc-node Room) only has `.name` populated once
+    // `ctx.connect()` resolves — its getter reads `this.info?.name`, and `info` is
+    // filled in by the connect response, not before. Reading it here (pre-connect)
+    // always returned `undefined`, so this check always failed and `entry` always
+    // returned without ever calling `ctx.connect()` — the server-side facilitator
+    // capture this worker exists for never ran, for any session, ever. `ctx.job.room`
+    // is the dispatch's own `proto.Room` (job.js's `RunningJobInfo.job.room`), whose
+    // `name` is a plain string field set at dispatch time, independent of the RTC
+    // connection — that's the one to check before connecting.
+    const sessionId = sessionIdFromRoomName(ctx.job.room?.name);
     if (!sessionId) {
-      console.warn(`[caption-agent] Room name "${ctx.room.name}" doesn't match "workshop-<sessionId>"; skipping.`);
+      console.warn(`[caption-agent] Room name "${ctx.job.room?.name}" doesn't match "workshop-<sessionId>"; skipping.`);
       return;
     }
 

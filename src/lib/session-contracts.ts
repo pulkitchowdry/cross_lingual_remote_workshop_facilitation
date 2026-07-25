@@ -17,6 +17,15 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];
  */
 export const MESSAGE_HISTORY_LIMIT = 50;
 
+/**
+ * Same rationale as `MESSAGE_HISTORY_LIMIT`, applied to `Session.transcript` —
+ * unlike `messages`, the transcript query had no cap at all, so a long-running
+ * LIVE session's full caption/STT history was re-fetched and re-rendered on
+ * every 2s poll for as long as it stayed live, on both the facilitator and
+ * every learner's page.
+ */
+export const TRANSCRIPT_HISTORY_LIMIT = 100;
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
 export type TranslationMode = "AUTO" | "LOCAL_ONLY";

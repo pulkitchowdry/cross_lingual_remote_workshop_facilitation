@@ -37,7 +37,13 @@ async function translateWithClaude(
       },
       body: JSON.stringify({
         model: CLAUDE_TRANSLATION_MODEL,
-        max_tokens: 1024,
+        // Raised from 1024: a routine multi-sentence caption/chat message (up to the
+        // UI's own 3000-character maxLength) translated into a token-denser target
+        // language can need more than 1024 output tokens — Claude would silently stop
+        // generating mid-sentence at the cap (stop_reason: "max_tokens") rather than
+        // erroring, and the code below used to return that partial text as a normal,
+        // complete translation with no signal anything was cut off.
+        max_tokens: 4096,
         system:
           `You are a real-time translation engine for a live workshop caption pipeline. ` +
           `Translate the user's message from ${languageName[sourceLanguage]} to ${languageName[targetLanguage]}. ` +
@@ -52,9 +58,22 @@ async function translateWithClaude(
       console.error(`translateWithClaude: Claude API responded ${response.status} ${await response.text()}`);
       return null;
     }
-    const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const payload = (await response.json()) as {
+      content?: Array<{ type?: string; text?: string }>;
+      stop_reason?: string;
+    };
     const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
     if (!translated) return null;
+
+    // A truncated translation is still more useful to a learner than none at all, so
+    // this returns the (possibly partial) text rather than degrading to null — but
+    // log loudly, or a translation getting silently cut off mid-sentence is
+    // indistinguishable from a normal short one until someone happens to notice.
+    if (payload.stop_reason === "max_tokens") {
+      console.error(
+        `translateWithClaude: ${sourceLanguage}->${targetLanguage} translation was truncated at the max_tokens cap.`,
+      );
+    }
 
     return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
   } catch (error) {

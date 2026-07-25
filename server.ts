@@ -91,6 +91,19 @@ async function main() {
       if (!session || session.status !== SessionStatus.LIVE) {
         throw new Error("Start the session before streaming captions.");
       }
+      // Authoritative server-side backstop against a duplicate STT pipeline: the
+      // caption-agent worker (caption-agent.ts) auto-subscribes to the facilitator's
+      // mic as soon as it's unmuted and sets `captionAgentActive` once it starts
+      // streaming. The client-side guard for this (LiveCaptionStream.tsx hiding its
+      // "Start" button while `agentCapturing` is true) only learns about that via
+      // SessionAutoRefresh's 2s poll, so a facilitator can still click "Start" in the
+      // race window right after the agent begins capturing but before the next poll
+      // lands — without this check, that would open a second, independent Deepgram
+      // stream for the same audio and duplicate/interleave every caption line
+      // (the same class of bug issue #95 fixed client-side, now backstopped here too).
+      if (session.captionAgentActive) {
+        throw new Error("Captions are already being captured automatically for this session.");
+      }
 
       wss.handleUpgrade(req, socket, head, (ws) => {
         attachCaptionSocket(ws, session);

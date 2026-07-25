@@ -27,25 +27,34 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
       const endedAt = new Date();
       segmentStartedAt = endedAt;
       void (async () => {
-        // Re-check status per segment, not just once at connect — the facilitator
-        // may click "End session" while this socket is still open (mirrors the
-        // per-segment re-check in src/lib/caption-agent.ts).
-        const current = await prisma.session.findUnique({
-          where: { id: session.id },
-          select: { status: true },
-        });
+        // Re-fetch the full session per segment, not just once at connect — the
+        // facilitator may click "End session" while this socket is still open, or
+        // change the session's source language mid-LIVE-session (updateFacilitatorLanguage
+        // has no LIVE-session guard). Re-fetching only `status` and still publishing
+        // against the stale `session`/`sourceLanguage` closed over at connect time
+        // (mirrors the per-segment re-fetch in src/lib/caption-agent.ts, which reads
+        // the *fresh* session for exactly this reason) meant every segment kept
+        // getting stamped and translated with whatever language was active when this
+        // WebSocket first opened, for the rest of its lifetime.
+        const current = await prisma.session.findUnique({ where: { id: session.id } });
         if (!current || current.status !== SessionStatus.LIVE) return;
-        await publishTranslatedCaption(session, {
+        await publishTranslatedCaption(current, {
           speakerId: "Facilitator",
           originalText: event.text,
-          language: sourceLanguage,
+          language: current.sourceLanguage as SupportedLanguage,
           startedAt,
           endedAt,
         });
       })();
     },
     onError: (error) => {
+      // Send the error, then close — without closing, the STT stream is dead (its
+      // `sendAudio` silently no-ops once the inner connection leaves OPEN) but the
+      // WebSocket itself stays open, so the client (LiveCaptionStream.tsx) never
+      // gets an `onclose` and keeps rendering an active "Stop"/recording state
+      // indefinitely while no further audio is actually being transcribed.
       ws.send(JSON.stringify({ type: "error", message: error.message }));
+      ws.close(1011, error.message);
     },
   });
 

@@ -49,6 +49,8 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   private fallbackStream: SpeechToTextStream | null = null;
   private closed = false;
   private flushing = false;
+  /** The most recently started `flush()` call's promise — lets `close()` find and wait out an in-flight flush before issuing its own final one; see `close()`'s comment for why. */
+  private flushPromise: Promise<void> | null = null;
   /**
    * Browser `MediaRecorder` writes the WebM/Matroska container header (EBML +
    * Segment info + Tracks) only into the very first emitted chunk of a
@@ -62,7 +64,7 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
-      void this.flush();
+      this.flushPromise = this.flush();
     }, WINDOW_MS);
   }
 
@@ -81,7 +83,14 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-    void this.flush(); // best-effort final window; failures are ignored since the connection is closing anyway
+    // Best-effort final window; failures are ignored since the connection is closing
+    // anyway. If a previous window's flush is still in-flight, calling `flush()`
+    // directly would no-op on its own single-flight guard (`this.flushing`) and
+    // silently drop everything buffered since that in-flight call started — wait for
+    // it via `flushPromise` first, then flush what's left, so the last stretch of
+    // audio isn't lost just because it arrived while the previous window was still
+    // transcribing.
+    void (this.flushPromise ?? Promise.resolve()).then(() => this.flush());
     this.fallbackStream?.close();
   }
 

@@ -74,7 +74,19 @@ def translate(text: str, source_language: str, target_language: str) -> str:
     # `source_tokens` (already a plain local list) and vocabulary lookups that don't
     # depend on `.src_lang` — safe to run outside the lock.
     target_prefix = [FLORES_CODE[target_language]]
-    results = _translator().translate_batch([source_tokens], target_prefix=[target_prefix])
+    # ctranslate2.Translator.translate_batch defaults to max_input_length=1024 and
+    # max_decoding_length=256 tokens, silently truncating anything longer instead of
+    # raising — a routine multi-sentence caption or chat message (this service's own
+    # /translate route accepts up to MAX_TEXT_LENGTH=3000 characters) can easily need
+    # more than 256 output tokens, especially translating into a token-denser target
+    # language. Both are raised well above what a 3000-character input could plausibly
+    # need on either side, so a normal request is never silently cut off.
+    results = _translator().translate_batch(
+        [source_tokens],
+        target_prefix=[target_prefix],
+        max_input_length=4096,
+        max_decoding_length=4096,
+    )
 
     output_tokens = results[0].hypotheses[0][1:]  # drop the forced target-language prefix token
     output_ids = tokenizer.convert_tokens_to_ids(output_tokens)

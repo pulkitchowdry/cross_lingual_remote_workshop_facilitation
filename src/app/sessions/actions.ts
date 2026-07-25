@@ -54,6 +54,17 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
     }),
   );
 
+  // Re-check LIVE status right before persisting, not just at the top of this
+  // function — the per-language translation loop above can take up to ~10s (local-
+  // inference tried first, Claude as fallback), long enough for the facilitator to
+  // click "End session" while a learner's message is still in flight. Without this,
+  // the message would still get written into a session that had already ended by
+  // the time this runs.
+  const stillLive = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+  if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
+    throw new Error("This session is not live — messages can only be sent while it is in progress.");
+  }
+
   await prisma.message.create({
     data: {
       sessionId,

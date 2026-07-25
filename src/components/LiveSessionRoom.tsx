@@ -76,12 +76,15 @@ function WorkshopVideoStage({
   role,
   dict,
   onPublishStateChange,
+  onScreenShareActiveChange,
   onLeave,
 }: {
   role: Role;
   dict: RoomDict;
   /** Reports the local participant's actual mic/camera/screen-share state after every change, so a later forced reconnect (see `publishState` below) can restore it instead of resetting to fixed defaults. */
   onPublishStateChange: (patch: Partial<PublishState>) => void;
+  /** Reports whether ANY participant's screen share is currently live in the room (not just the local one) — the page grid uses this to let the video column grow toward full width while something is actively being presented, instead of staying capped at its idle share. */
+  onScreenShareActiveChange?: (active: boolean) => void;
   /** Fired when the user explicitly clicks Leave, distinct from a network-triggered disconnect — see `hasLeftRef` below. */
   onLeave: () => void;
 }) {
@@ -117,6 +120,11 @@ function WorkshopVideoStage({
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
 
+  const isScreenShareActive = Boolean(screenShareTrack);
+  useEffect(() => {
+    onScreenShareActiveChange?.(isScreenShareActive);
+  }, [isScreenShareActive, onScreenShareActiveChange]);
+
   // `useTrackToggle` (which `<TrackToggle>` wraps) re-runs an internal effect whose
   // dependency array includes this `onChange` reference every time it changes — an
   // inline arrow function here would be a new reference on every render, so that
@@ -143,11 +151,18 @@ function WorkshopVideoStage({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-hidden p-2">
         {screenShareTrack ? (
+          // FocusLayoutContainer expects its FIRST child to be the small side
+          // carousel and its SECOND child to be the large focused tile — its
+          // own CSS (.lk-focus-layout { grid-template-columns: 1fr 5fr }) hands
+          // the first DOM child the narrow 1fr column. Screen share must go
+          // second (the 5fr column) or it renders as the small tile with the
+          // camera carousel blown up huge instead — the inverse of "screen
+          // share is always the biggest".
           <FocusLayoutContainer className="h-full">
-            <FocusLayout trackRef={screenShareTrack} />
             <CarouselLayout tracks={cameraTracks}>
               <ParticipantTile />
             </CarouselLayout>
+            <FocusLayout trackRef={screenShareTrack} />
           </FocusLayoutContainer>
         ) : (
           <GridLayout tracks={cameraTracks} className="h-full">
@@ -179,7 +194,18 @@ function WorkshopVideoStage({
   );
 }
 
-export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; role: Role; lang: SupportedLanguage }) {
+export function LiveSessionRoom({
+  sessionId,
+  role,
+  lang,
+  onScreenShareActiveChange,
+}: {
+  sessionId: string;
+  role: Role;
+  lang: SupportedLanguage;
+  /** See the matching prop on `WorkshopVideoStage` — bubbled straight through so the page grid wrapping this component can react to it. */
+  onScreenShareActiveChange?: (active: boolean) => void;
+}) {
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +339,13 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         screen={publishState.screen}
         data-lk-theme="default"
       >
-        <WorkshopVideoStage role={role} dict={dict} onPublishStateChange={handlePublishStateChange} onLeave={handleLeave} />
+        <WorkshopVideoStage
+          role={role}
+          dict={dict}
+          onPublishStateChange={handlePublishStateChange}
+          onScreenShareActiveChange={onScreenShareActiveChange}
+          onLeave={handleLeave}
+        />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>
