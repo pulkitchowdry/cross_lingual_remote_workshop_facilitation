@@ -238,3 +238,35 @@ body {
 .lk-participant-media-video {
   will-change: transform;
 }
+
+/* Covers the OTHER black-video/screen-share cause (see LiveSessionRoom.tsx's
+   stageRef effect, which toggles this attribute): a track that's subscribed
+   but has no decoded frame yet (WebRTC's own transient "muted" state, before
+   the first keyframe arrives) is indistinguishable from a working video until
+   the spinner below tells the other party it's still connecting instead of
+   silently leaving them looking at a solid black tile. */
+.lk-participant-tile[data-video-loading] .lk-participant-media-video {
+  opacity: 0.001;
+}
+
+.lk-participant-tile[data-video-loading]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.875rem 0 0 -0.875rem;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: lk-video-loading-spin 0.8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes lk-video-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

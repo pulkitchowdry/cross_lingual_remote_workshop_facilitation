@@ -132,6 +132,59 @@ function WorkshopVideoStage({
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
   const [showCaptions, setShowCaptions] = useState(true);
+  const stageRef = useRef<HTMLDivElement>(null);
+  // A freshly (re)subscribed camera/screen-share MediaStreamTrack starts in
+  // WebRTC's own "muted" state (`track.muted === true`, no decoded frames yet)
+  // until its first keyframe arrives — confirmed live: `readyState` sits at 0
+  // and `videoWidth`/`videoHeight` at 0 for several seconds after subscribing,
+  // then jumps straight to a fully-decoding video with no error or event the
+  // app currently reacts to. `@livekit/components-styles`'s own placeholder
+  // (`.lk-participant-placeholder`) only reacts to `data-lk-video-muted`
+  // (the participant explicitly turning their camera off) — not this
+  // transient no-data window — so the raw `<video>` element's own
+  // `background-color: #000` paints solid black with nothing telling the
+  // other party it's still connecting, which is what the "screen share/video
+  // is just black" reports were actually seeing (a *different* root cause
+  // than the GPU-compositing race `will-change: transform` above already
+  // fixed — that one showed correct pixel data on canvas readback; this one
+  // has zero decoded frames yet, and can recur on every reconnect, not just
+  // first subscribe). Flags each tile with `data-video-loading` (see the
+  // spinner in globals.css) until its `<video>` actually has a frame
+  // (`readyState >= 2`), and re-flags it if playback ever stalls again.
+  useEffect(() => {
+    const container = stageRef.current;
+    if (!container) return;
+    const tracked = new WeakSet<HTMLVideoElement>();
+    const updateTile = (video: HTMLVideoElement) => {
+      const tile = video.closest(".lk-participant-tile");
+      if (!tile) return;
+      tile.toggleAttribute("data-video-loading", video.readyState < 2);
+    };
+    const attach = (video: HTMLVideoElement) => {
+      if (tracked.has(video)) return;
+      tracked.add(video);
+      updateTile(video);
+      for (const eventType of ["loadeddata", "playing", "waiting", "emptied"]) {
+        video.addEventListener(eventType, () => updateTile(video));
+      }
+    };
+    const scan = (node: Node) => {
+      if (node instanceof HTMLVideoElement && node.classList.contains("lk-participant-media-video")) {
+        attach(node);
+      }
+      if (node instanceof Element) {
+        node.querySelectorAll<HTMLVideoElement>("video.lk-participant-media-video").forEach(attach);
+      }
+    };
+    scan(container);
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach(scan);
+      }
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   const isScreenShareActive = Boolean(screenShareTrack);
   useEffect(() => {
@@ -162,7 +215,7 @@ function WorkshopVideoStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="relative flex-1 overflow-hidden p-2">
+      <div ref={stageRef} className="relative flex-1 overflow-hidden p-2">
         {screenShareTrack ? (
           // FocusLayoutContainer expects its FIRST child to be the small side
           // carousel and its SECOND child to be the large focused tile — its
