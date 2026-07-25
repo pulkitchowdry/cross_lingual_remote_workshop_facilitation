@@ -257,6 +257,7 @@ export default async function FacilitatorSessionPage({
                     dict={{
                       captionLabel: dict.captionLabel,
                       captionPlaceholder: dict.captionPlaceholder,
+                      captionAudioHint: dict.captionAudioHint,
                       publish: dict.publish,
                       publishing: dict.publishing,
                     }}
