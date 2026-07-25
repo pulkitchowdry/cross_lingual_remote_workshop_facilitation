@@ -10,7 +10,7 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * delivery (synthesize on request, stream the bytes back), not the doc's
  * fuller per-language "interpreter participant" design — that needs a
  * persistent LiveKit bot participant per language, which is the same
- * always-on-process tradeoff as `agent/`'s track-subscription worker and is
+ * always-on-process tradeoff as `src/lib/caption-agent.ts`'s track-subscription worker and is
  * left as follow-up. This route stays serverless-compatible: no LiveKit
  * publish involved, just synthesize-and-return.
  */
@@ -45,10 +45,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "No text available in the requested language." }, { status: 404 });
   }
 
+  const session = await prisma.session.findUnique({
+    where: { id: segment.sessionId },
+    select: { translationMode: true },
+  });
+
   let speech;
   try {
-    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage);
-  } catch {
+    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage, {
+      // Fail closed (no cloud fallback) if `session` is unexpectedly gone —
+      // e.g. the retention-cleanup cron deleted it between this route's two
+      // queries — rather than defaulting a privacy gate to permissive.
+      allowCloudFallback: session !== null && session.translationMode !== "LOCAL_ONLY",
+    });
+  } catch (error) {
+    console.error("textToSpeechProvider.synthesize failed", error);
     return Response.json({ error: "Speech synthesis failed." }, { status: 502 });
   }
   if (!speech) {

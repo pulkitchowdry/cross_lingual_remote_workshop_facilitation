@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ParticipantRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { learnerCookieName, hashToken } from "@/lib/session-security";
+import { learnerCookieName, hashToken, createOpaqueToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
@@ -36,11 +36,18 @@ export async function joinSession(formData: FormData) {
   }
 
   const session = await prisma.session.findUnique({ where: { id: joinLink.sessionId } });
-  if (!session || !session.learnerLanguages.includes(preferredLanguage)) {
-    throw new Error("This language is not enabled for the session.");
+  if (!session) {
+    throw new Error("This session is no longer available.");
   }
 
-  const participant = await prisma.$transaction(async (transaction) => {
+  // The learner's ongoing session credential must be a random secret only they
+  // ever hold, not `participant.id` — that id is also this participant's
+  // LiveKit room identity (see room.ts), which every other participant in the
+  // room can read, so using it as the session cookie too would let any
+  // co-learner impersonate any other by copying that publicly-visible id.
+  const accessToken = createOpaqueToken();
+
+  await prisma.$transaction(async (transaction) => {
     const user = await transaction.user.create({
       data: {
         displayName: displayName.trim(),
@@ -54,6 +61,7 @@ export async function joinSession(formData: FormData) {
         role: ParticipantRole.LEARNER,
         preferredLanguage: preferredLanguage as SupportedLanguage,
         consentedAt: new Date(),
+        accessTokenHash: hashToken(accessToken),
       },
     });
     await transaction.joinLink.update({
@@ -64,7 +72,7 @@ export async function joinSession(formData: FormData) {
   });
 
   const cookieStore = await cookies();
-  cookieStore.set(learnerCookieName(joinLink.sessionId), participant.id, {
+  cookieStore.set(learnerCookieName(joinLink.sessionId), accessToken, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

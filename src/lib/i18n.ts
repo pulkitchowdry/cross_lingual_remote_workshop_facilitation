@@ -45,6 +45,8 @@ export interface Dictionary {
     retentionWeek: string;
     retentionMonth: string;
     privacyNote: string;
+    strictPrivacyLabel: string;
+    strictPrivacyHint: string;
     submit: string;
   };
   join: {
@@ -70,10 +72,8 @@ export interface Dictionary {
     captionPlaceholder: string;
     publish: string;
     actNow: string;
-    loadDemo: string;
     blocker: string;
     noInterventionYet: string;
-    noInterventionHintEmpty: string;
     noInterventionHintOnTrack: string;
     liveTranscript: string;
     transcriptEmpty: string;
@@ -110,10 +110,12 @@ export interface Dictionary {
     placeholder: string;
     flagQuestion: string;
     send: string;
+    sending: string;
   };
   captions: {
     start: string;
     stop: string;
+    agentCapturing: string;
     connectionFailed: string;
     sttError: string;
     micRecordingFailed: string;
@@ -170,6 +172,9 @@ const en: Dictionary = {
     retentionWeek: "Delete after 7 days",
     retentionMonth: "Delete after 30 days",
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
+    strictPrivacyLabel: "Strict privacy mode",
+    strictPrivacyHint:
+      "Never send audio or text to external translation providers. If the local translation service is unavailable, captions and translations will show as unavailable instead of falling back to the cloud.",
     submit: "Create session",
   },
   join: {
@@ -177,7 +182,7 @@ const en: Dictionary = {
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
     yourName: "Your name",
     consent:
-      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My microphone will join the workshop room live (audible to other participants) as soon as I enter — my camera stays off until I turn it on.",
+      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
     submit: "Join session",
   },
   facilitator: {
@@ -191,15 +196,13 @@ const en: Dictionary = {
     learnersJoinedHint: "Learners have completed consent and joined.",
     workshopRoom: "Workshop room",
     liveAudioVideo: "Live audio and video",
-    micCameraHint: "Your microphone joins live; your camera starts off — click the camera icon below to turn it on.",
+    micCameraHint: "Your camera joins live; your microphone starts muted — click the microphone icon below to turn it on.",
     captionLabel: "Type a caption for learners",
     captionPlaceholder: "Type a caption for learners in their selected language…",
     publish: "Publish",
     actNow: "Act now",
-    loadDemo: "Load demo scenario",
     blocker: "Blocker",
     noInterventionYet: "No intervention needed yet",
-    noInterventionHintEmpty: "Load the demo scenario to test the grounded intervention experience.",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
@@ -236,12 +239,14 @@ const en: Dictionary = {
     placeholder: "Write in your own language…",
     flagQuestion: "Flag as a question for the facilitator",
     send: "Send",
+    sending: "Sending…",
   },
   captions: {
     start: "Start live captions from mic",
     stop: "Stop live captions",
+    agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
-      "Live caption connection failed. In local development this endpoint needs a Vercel deployment (or `vercel dev`) — use the typed caption box above instead.",
+      "Live caption connection failed. Use the typed caption box above instead.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -293,6 +298,8 @@ const zh: Dictionary = {
     retentionWeek: "7 天后删除",
     retentionMonth: "30 天后删除",
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
+    strictPrivacyLabel: "严格隐私模式",
+    strictPrivacyHint: "绝不将音频或文本发送给外部翻译服务。如果本地翻译服务不可用，字幕和翻译将显示为不可用，而不会回退到云端。",
     submit: "创建场次",
   },
   join: {
@@ -300,7 +307,7 @@ const zh: Dictionary = {
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
     yourName: "你的姓名",
     consent:
-      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的麦克风会立即接入活动室（其他参与者可以听到），摄像头会保持关闭，直到我手动开启。",
+      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
   },
   facilitator: {
@@ -314,15 +321,13 @@ const zh: Dictionary = {
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
     workshopRoom: "活动室",
     liveAudioVideo: "实时音视频",
-    micCameraHint: "你的麦克风会立即接入；摄像头默认关闭——点击下方摄像头图标可开启。",
+    micCameraHint: "你的摄像头会立即接入；麦克风默认静音——点击下方麦克风图标可开启。",
     captionLabel: "为学员输入字幕",
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
     publish: "发布",
     actNow: "立即处理",
-    loadDemo: "加载演示场景",
     blocker: "障碍",
     noInterventionYet: "暂无需要干预的事项",
-    noInterventionHintEmpty: "加载演示场景以体验基于证据的干预功能。",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
@@ -359,12 +364,14 @@ const zh: Dictionary = {
     placeholder: "用你自己的语言书写……",
     flagQuestion: "标记为向主持人提出的问题",
     send: "发送",
+    sending: "发送中……",
   },
   captions: {
     start: "从麦克风开始实时字幕",
     stop: "停止实时字幕",
+    agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
-      "实时字幕连接失败。本地开发环境下此功能需要 Vercel 部署（或 `vercel dev`）——请改用上方的手动输入字幕框。",
+      "实时字幕连接失败。请改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -417,6 +424,9 @@ const es: Dictionary = {
     retentionWeek: "Eliminar después de 7 días",
     retentionMonth: "Eliminar después de 30 días",
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
+    strictPrivacyLabel: "Modo de privacidad estricto",
+    strictPrivacyHint:
+      "Nunca se enviará audio ni texto a proveedores de traducción externos. Si el servicio de traducción local no está disponible, los subtítulos y traducciones se mostrarán como no disponibles en lugar de recurrir a la nube.",
     submit: "Crear sesión",
   },
   join: {
@@ -424,7 +434,7 @@ const es: Dictionary = {
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
     yourName: "Tu nombre",
     consent:
-      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi micrófono se conectará a la sala del taller en vivo (audible para el resto de participantes) en cuanto entre; mi cámara permanecerá apagada hasta que yo la active.",
+      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
     submit: "Unirse a la sesión",
   },
   facilitator: {
@@ -438,15 +448,13 @@ const es: Dictionary = {
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
     workshopRoom: "Sala del taller",
     liveAudioVideo: "Audio y video en vivo",
-    micCameraHint: "Tu micrófono se conecta en vivo; tu cámara empieza apagada — haz clic en el ícono de cámara para activarla.",
+    micCameraHint: "Tu cámara se conecta en vivo; tu micrófono empieza silenciado — haz clic en el ícono de micrófono para activarlo.",
     captionLabel: "Escribe un subtítulo para los alumnos",
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
     publish: "Publicar",
     actNow: "Actuar ahora",
-    loadDemo: "Cargar escenario de demostración",
     blocker: "Bloqueo",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
-    noInterventionHintEmpty: "Carga el escenario de demostración para probar la experiencia de intervención con evidencia.",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
@@ -483,12 +491,14 @@ const es: Dictionary = {
     placeholder: "Escribe en tu propio idioma…",
     flagQuestion: "Marcar como pregunta para el facilitador",
     send: "Enviar",
+    sending: "Enviando…",
   },
   captions: {
     start: "Iniciar subtítulos en vivo desde el micrófono",
     stop: "Detener subtítulos en vivo",
+    agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
-      "Falló la conexión de subtítulos en vivo. En desarrollo local este endpoint requiere un despliegue en Vercel (o `vercel dev`) — usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -540,6 +550,39 @@ export function detectBrowserLanguage(acceptLanguageHeader: string | null, fallb
     .filter(Boolean);
   for (const tag of preferred) {
     if (isSupportedLanguage(tag)) return tag;
+  }
+  return fallback;
+}
+
+/**
+ * Best-effort initial `<html lang>` for the very first server-rendered response
+ * (see layout.tsx), before any page-specific language is known — the root
+ * layout is shared by every route and has no access to a nested route's
+ * searchParams/session/participant data, which is where each page's real
+ * language actually comes from. Parses the standard `Accept-Language` header
+ * format ("en-US,en;q=0.9,zh;q=0.8") and picks the first supported language by
+ * descending q-value. `SyncUiLanguage` corrects this to the page's actual
+ * resolved language once client JS hydrates; this is only a heuristic to avoid
+ * shipping a wrong-language `lang` attribute for the common case where a
+ * visitor's browser preference matches the language they'll pick.
+ */
+export function resolveLanguageFromAcceptLanguage(
+  header: string | null | undefined,
+  fallback: SupportedLanguage = "en",
+): SupportedLanguage {
+  if (!header) return fallback;
+  const ranges = header
+    .split(",")
+    .map((part) => {
+      const [tag, qPart] = part.trim().split(";q=");
+      const q = qPart ? Number.parseFloat(qPart) : 1;
+      return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 1 };
+    })
+    .sort((a, b) => b.q - a.q);
+
+  for (const { tag } of ranges) {
+    const primary = tag.split("-")[0];
+    if (isSupportedLanguage(primary)) return primary;
   }
   return fallback;
 }

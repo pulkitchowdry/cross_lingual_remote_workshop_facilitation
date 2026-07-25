@@ -11,8 +11,9 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
@@ -33,13 +34,21 @@ export default async function LearnerSessionPage({
       session: {
         include: {
           transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-          messages: { include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
+          messages: {
+            include: { sender: true, translations: true },
+            orderBy: { sentAt: "desc" },
+            take: MESSAGE_HISTORY_LIMIT,
+          },
         },
       },
       user: true,
     },
   });
   if (!participant) notFound();
+  // See the matching check in facilitator/page.tsx: the hourly cleanup cron
+  // physically deletes an expired session, but nothing else stops it being
+  // served here in the meantime.
+  if (isSessionRetentionExpired(participant.session)) notFound();
   const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
@@ -52,7 +61,15 @@ export default async function LearnerSessionPage({
   return (
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      {participant.session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {/*
+        Poll during DRAFT too, not just LIVE: while the learner is on
+        "waiting for facilitator", nothing else on this page triggers a
+        refetch — without polling here, the transition to LIVE (and the
+        video room it unlocks below) is invisible until a manual reload.
+      */}
+      {(participant.session.status === SessionStatus.DRAFT || participant.session.status === SessionStatus.LIVE) && (
+        <SessionAutoRefresh />
+      )}
       <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -109,7 +126,7 @@ export default async function LearnerSessionPage({
           />
         )}
         {participant.session.transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
             {participant.session.transcript.map((segment) => {
               const isOwnLanguage = segment.language === participant.preferredLanguage;
               const translation = segment.translations.find(

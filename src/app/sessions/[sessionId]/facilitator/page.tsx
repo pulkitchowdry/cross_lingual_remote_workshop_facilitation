@@ -14,11 +14,13 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { isCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import {
   endSession,
-  loadDemoScenario,
   publishCaption,
   revokeLearnerInvite,
   startSession,
@@ -27,6 +29,15 @@ import {
 import { sendChatMessage } from "@/app/sessions/actions";
 
 export const metadata: Metadata = { title: "Facilitator dashboard" };
+
+/**
+ * A caption published right before "End session" starts a background
+ * `waitUntil(generateSessionInsights(...))` (captions.ts) that can still be
+ * running when the page stops being LIVE. Keep polling for a short grace
+ * period past end so that last insight still reaches the dashboard instead
+ * of silently requiring a manual reload.
+ */
+const POST_SESSION_INSIGHT_GRACE_MS = 30_000;
 
 export default async function FacilitatorSessionPage({
   params,
@@ -46,11 +57,18 @@ export default async function FacilitatorSessionPage({
       messages: {
         include: { sender: true, translations: true },
         orderBy: { sentAt: "desc" },
+        take: MESSAGE_HISTORY_LIMIT,
       },
       joinLinks: { where: { role: ParticipantRole.LEARNER } },
     },
   });
   if (!session) notFound();
+  // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
+  // expired session's data, but nothing stops it being served here in the
+  // meantime — up to an hour after its own retention deadline, or indefinitely
+  // if the cron never runs (e.g. CRON_SECRET was never set). Treat it as gone
+  // as soon as it's due, not just once the delete has actually happened.
+  if (isSessionRetentionExpired(session)) notFound();
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -71,7 +89,6 @@ export default async function FacilitatorSessionPage({
   }
   const startAction = startSession.bind(null, sessionId);
   const endAction = endSession.bind(null, sessionId);
-  const demoAction = loadDemoScenario.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
@@ -79,11 +96,21 @@ export default async function FacilitatorSessionPage({
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
+  const recentlyEnded =
+    session.status === SessionStatus.ENDED &&
+    session.endedAt !== null &&
+    new Date().getTime() - session.endedAt.getTime() < POST_SESSION_INSIGHT_GRACE_MS;
 
   return (
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      {session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {/*
+        Poll during DRAFT too, not just LIVE: while waiting to start, the
+        facilitator needs the "learners joined" count (Card below) to update
+        as people use the QR/link, without a manual reload.
+      */}
+      {(session.status === SessionStatus.DRAFT || session.status === SessionStatus.LIVE) && <SessionAutoRefresh />}
+      {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
       <LanguageMenu current={lang} onSelect={changeLanguageAction} />
       <div>
         <div className="flex flex-wrap items-center gap-3" aria-live="polite">
@@ -139,7 +166,13 @@ export default async function FacilitatorSessionPage({
                   {dict.publish}
                 </button>
               </form>
-              {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} lang={lang} />}
+              {speechToTextProvider.isConfigured && (
+                <LiveCaptionStream
+                  sessionId={session.id}
+                  lang={lang}
+                  agentCapturing={isCaptionAgentCapturing(session.id)}
+                />
+              )}
             </div>
             <SessionChatPanel
               messages={chatMessages}
@@ -152,13 +185,6 @@ export default async function FacilitatorSessionPage({
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
-          {session.transcript.length === 0 && (
-            <form action={demoAction}>
-              <button className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                {dict.loadDemo}
-              </button>
-            </form>
-          )}
         </div>
         {activeBlockers.length > 0 ? (
           <div className="flex flex-col gap-3">
@@ -191,7 +217,7 @@ export default async function FacilitatorSessionPage({
           </div>
         ) : session.transcript.length === 0 ? (
           <Card eyebrow={dict.noInterventionYet}>
-            <p className="text-muted-foreground">{dict.noInterventionHintEmpty}</p>
+            <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>

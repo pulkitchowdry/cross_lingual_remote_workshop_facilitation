@@ -1,4 +1,5 @@
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { ChatSendButton } from "@/components/ChatSendButton";
 
 type ChatMessage = {
   id: string;
@@ -81,9 +82,7 @@ export function SessionChatPanel({
           ) : (
             <span />
           )}
-          <button className="font-data w-fit rounded-md bg-accent px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-            {dict.send}
-          </button>
+          <ChatSendButton label={dict.send} sendingLabel={dict.sending} />
         </div>
       </form>
     </aside>

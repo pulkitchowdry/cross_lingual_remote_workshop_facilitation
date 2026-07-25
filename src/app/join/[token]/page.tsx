@@ -69,6 +69,9 @@ export default async function JoinPage({
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
         <input type="hidden" name="token" value={token} />
+        {/* The learner's preferred language is whatever they've already
+            toggled the UI to (see the LanguageSwitcher above this form) — no
+            need to ask them to pick it again in a separate field. */}
         <input type="hidden" name="preferredLanguage" value={lang} />
         <label className="flex flex-col gap-2 text-sm font-medium">
           {dict.join.yourName}

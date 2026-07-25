@@ -16,8 +16,6 @@ test("facilitator can create a session and receives an opaque learner link", asy
   const sourceSelect = page.locator('select[name="sourceLanguage"]');
   if (await sourceSelect.count()) await sourceSelect.selectOption("en");
 
-  await page.locator('input[name="learnerLanguages"][value="zh"]').check();
-
   const retention = page.locator('input[name="retentionDays"]');
   if (await retention.count()) await retention.fill("7");
 

@@ -1,0 +1,31 @@
+# local-inference builds its own image from its own directory (see
+# local-inference/Dockerfile) and is never needed by web's build — excluded
+# so web's image build (nor its Docker layer cache) is affected by changes
+# under it.
+local-inference
+
+node_modules
+.next
+out
+build
+coverage
+test-results
+playwright-report
+blob-report
+.playwright-mcp
+
+.git
+.github
+.vscode
+.claude
+
+docs
+e2e
+*.md
+
+.env*
+!.env.example
+
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*

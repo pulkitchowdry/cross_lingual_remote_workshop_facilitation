@@ -30,6 +30,12 @@ enum InsightType {
   CONFUSION
 }
 
+/** AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5. */
+enum TranslationMode {
+  AUTO
+  LOCAL_ONLY
+}
+
 model User {
   id             String               @id @default(cuid())
   displayName    String
@@ -47,6 +53,7 @@ model Session {
   sourceLanguage  String
   learnerLanguages String[]
   retentionDays   Int                  @default(7)
+  translationMode TranslationMode      @default(AUTO)
   status          SessionStatus        @default(DRAFT)
   facilitatorId   String
   facilitator     User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
@@ -70,6 +77,17 @@ model SessionParticipant {
   consentedAt       DateTime?
   joinedAt          DateTime        @default(now())
   lastActiveAt      DateTime        @default(now())
+  /**
+   * SHA-256 hash of the random opaque secret issued to a learner at join time
+   * and stored in their session cookie (see session-security.ts hashToken /
+   * createOpaqueToken). The learner's ongoing session credential must be this
+   * secret, never `id` itself — `id` is also this participant's LiveKit room
+   * identity (see room.ts), which every other participant in the room can
+   * read, so using it as the session credential too would let any co-learner
+   * impersonate any other by copying that publicly-visible id into their own
+   * cookie.
+   */
+  accessTokenHash   String?         @unique
   session           Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 

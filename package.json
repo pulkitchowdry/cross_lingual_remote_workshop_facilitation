@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx server.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,11 +16,12 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@livekit/agents": "^1.5.5",
     "@livekit/components-react": "^2.9.23",
     "@livekit/components-styles": "^1.2.0",
+    "@livekit/rtc-node": "^0.13.31",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
-    "@vercel/functions": "^3.7.5",
     "livekit-client": "^2.20.2",
     "livekit-server-sdk": "^2.17.0",
     "next": "16.2.11",
@@ -29,6 +30,7 @@
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "tsx": "^4.23.1",
     "ws": "^8.21.1"
   },
   "devDependencies": {
@@ -42,7 +44,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
-    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

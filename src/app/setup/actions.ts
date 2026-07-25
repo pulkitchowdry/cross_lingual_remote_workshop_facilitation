@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { ParticipantRole } from "@/generated/prisma/client";
+import { ParticipantRole, TranslationMode } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
   createOpaqueToken,
@@ -41,22 +41,24 @@ export async function createSession(formData: FormData) {
     throw new Error("Choose a retention period between 1 and 30 days.");
   }
 
-  const learnerLanguages = formData
-    .getAll("learnerLanguages")
-    .filter((value): value is string => typeof value === "string" && languageValues.has(value));
-
-  if (learnerLanguages.length === 0) {
-    throw new Error("Choose at least one learner language.");
-  }
+  const strictPrivacy = formData.get("strictPrivacy") === "on";
+  const translationMode = strictPrivacy ? TranslationMode.LOCAL_ONLY : TranslationMode.AUTO;
 
   const facilitatorToken = createOpaqueToken();
   const learnerToken = createOpaqueToken();
-  // Tie both join links' lifetime to the facilitator's own retention choice: once the
-  // transcript is due for deletion, a leaked/forgotten link should stop working too,
-  // rather than staying valid indefinitely (see docs/problem_statement.md's privacy
-  // requirement — a link with no expiry is a standing access risk for the life of the
-  // Session row).
-  const linkExpiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
+  // Deliberately NOT tied to `retentionDays`: that clock is anchored to session
+  // *creation*, but the actual data-retention deadline the cleanup cron enforces
+  // (session-retention.ts) is anchored to when the session *ends* (falling back to
+  // createdAt only for an abandoned session that never ends). A short retention
+  // choice (e.g. 1 day) would otherwise expire the facilitator's own access link —
+  // and the learner invite — before or during a session created ahead of time or
+  // running longer than that window, locking everyone out of a still-live workshop.
+  // A link with no expiry isn't a standing risk either: `logoutFacilitator` /
+  // `revokeLearnerInvite` can cut access immediately, and the cleanup cron deletes
+  // the Session row (cascading its JoinLinks) once retention genuinely expires — this
+  // generous, retention-independent cap is just a secondary safety net for a link
+  // that's simply never revoked or reclaimed.
+  const linkExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const session = await prisma.$transaction(async (transaction) => {
     const facilitator = await transaction.user.create({
@@ -67,8 +69,12 @@ export async function createSession(formData: FormData) {
         title,
         goal,
         sourceLanguage,
-        learnerLanguages: [...new Set(learnerLanguages)],
+        // Learners choose freely from every supported language at join time
+        // (see join/[token]/page.tsx) — this isn't a facilitator-curated
+        // subset, so it's just the full supported set.
+        learnerLanguages: SUPPORTED_LANGUAGES.map((language) => language.value),
         retentionDays,
+        translationMode,
         facilitatorId: facilitator.id,
         participants: {
           create: {
