@@ -77,10 +77,8 @@ export interface Dictionary {
     publish: string;
     actNow: string;
     interventionQueue: string;
-    loadDemo: string;
     blocker: string;
     noInterventionYet: string;
-    noInterventionHintEmpty: string;
     noInterventionHintOnTrack: string;
     liveTranscript: string;
     whatGroupSaying: string;
@@ -214,10 +212,8 @@ const en: Dictionary = {
     publish: "Publish",
     actNow: "Act now",
     interventionQueue: "Evidence-backed intervention queue",
-    loadDemo: "Load demo scenario",
     blocker: "Blocker",
     noInterventionYet: "No intervention needed yet",
-    noInterventionHintEmpty: "Load the demo scenario to test the grounded intervention experience.",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
     liveTranscript: "Live transcript",
     whatGroupSaying: "What the group is saying",
@@ -347,10 +343,8 @@ const zh: Dictionary = {
     publish: "发布",
     actNow: "立即处理",
     interventionQueue: "有据可查的干预队列",
-    loadDemo: "加载演示场景",
     blocker: "障碍",
     noInterventionYet: "暂无需要干预的事项",
-    noInterventionHintEmpty: "加载演示场景以体验基于证据的干预功能。",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
     liveTranscript: "实时转录",
     whatGroupSaying: "小组正在讨论的内容",
@@ -482,10 +476,8 @@ const es: Dictionary = {
     publish: "Publicar",
     actNow: "Actuar ahora",
     interventionQueue: "Cola de intervención respaldada por evidencia",
-    loadDemo: "Cargar escenario de demostración",
     blocker: "Bloqueo",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
-    noInterventionHintEmpty: "Carga el escenario de demostración para probar la experiencia de intervención con evidencia.",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
     liveTranscript: "Transcripción en vivo",
     whatGroupSaying: "Lo que el grupo está diciendo",
