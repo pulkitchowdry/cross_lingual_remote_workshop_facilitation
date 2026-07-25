@@ -4,6 +4,7 @@ translation weights, not a tokenizer, so the tokenizer is loaded separately
 from the base NLLB repo (tokenizer artifacts only — see
 scripts/download_models.sh, which skips the ~2.4GB PyTorch weights)."""
 
+import threading
 from functools import lru_cache
 
 import ctranslate2
@@ -11,6 +12,14 @@ from transformers import AutoTokenizer
 
 from app.config import settings
 from app.languages import FLORES_CODE
+
+# `translate()` runs on FastAPI's request threadpool (routers/translate.py's handler is
+# a plain `def`, auto-offloaded by Starlette) against the single lru_cache-singleton
+# tokenizer below. Guards the set-src_lang-then-encode step, since two concurrent
+# requests with different source languages would otherwise race on that shared mutable
+# `.src_lang` attribute and silently tokenize one request's text with the other's
+# source-language token.
+_tokenizer_lock = threading.Lock()
 
 
 @lru_cache(maxsize=1)
@@ -39,9 +48,13 @@ def is_loaded() -> bool:
 
 def translate(text: str, source_language: str, target_language: str) -> str:
     tokenizer = _tokenizer()
-    tokenizer.src_lang = FLORES_CODE[source_language]
-    source_tokens = tokenizer.convert_ids_to_tokens(tokenizer.encode(text))
+    with _tokenizer_lock:
+        tokenizer.src_lang = FLORES_CODE[source_language]
+        source_tokens = tokenizer.convert_ids_to_tokens(tokenizer.encode(text))
 
+    # `_translator().translate_batch` and the id/decode calls below only depend on
+    # `source_tokens` (already a plain local list) and vocabulary lookups that don't
+    # depend on `.src_lang` — safe to run outside the lock.
     target_prefix = [FLORES_CODE[target_language]]
     results = _translator().translate_batch([source_tokens], target_prefix=[target_prefix])
 

@@ -1,8 +1,11 @@
 /**
  * Server-only environment contract. Fails fast with a readable error instead of
  * letting a missing variable surface as an obscure runtime crash later.
- * Optional provider keys are validated for shape only when present, since
- * features stay in fixture/mock mode until their key is configured.
+ * Optional provider keys only have their *presence* checked (a non-empty
+ * string) — not their shape/format — since features stay in fixture/mock mode
+ * until their key is configured; a malformed-but-present value (e.g. a
+ * truncated key or an invalid URL) still passes here and only surfaces once
+ * the real provider SDK/fetch call using it fails.
  */
 
 type EnvSpec = {
@@ -43,7 +46,7 @@ const ENV_SPEC: EnvSpec[] = [
   {
     key: "CRON_SECRET",
     required: false,
-    description: "Shared secret authorizing Vercel Cron's /api/retention/cleanup calls",
+    description: "Shared secret authorizing scheduled /api/retention/cleanup calls",
   },
 ];
 

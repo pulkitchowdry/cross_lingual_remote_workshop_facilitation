@@ -1,4 +1,4 @@
-import { AccessToken, DataPacket_Kind, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 
 export type RoomRole = "facilitator" | "learner";
 
@@ -48,7 +48,14 @@ class LiveKitRoomProvider implements RoomProvider {
       identity: `${role}:${identity}`,
       name: displayName,
       metadata: JSON.stringify({ sessionId, role }),
-      ttl: "15m",
+      // LiveSessionRoom fetches this token exactly once per mount and never
+      // refreshes it — a token that expires mid-workshop leaves a reconnect
+      // (network blip, laptop sleep/wake) permanently rejected until the
+      // participant manually reloads the page. 6h comfortably covers a live
+      // workshop session; a real refresh flow (livekit-client's TokenSource)
+      // would be the more thorough fix but is a larger, untested change for
+      // this prototype's scope.
+      ttl: "6h",
     });
     token.addGrant({
       roomJoin: true,
@@ -64,6 +71,16 @@ class LiveKitRoomProvider implements RoomProvider {
       canPublish: true,
       canSubscribe: true,
       canPublishData: false,
+      // Screen share is a facilitator-to-group broadcast (see
+      // LiveSessionRoom's role==="facilitator" ControlBar gate) — that's a
+      // client-side UI restriction only, so it must also be enforced here at
+      // the token level, or any learner could publish a screen-share track
+      // directly via the LiveKit client SDK and take over every viewer's
+      // FocusLayout.
+      canPublishSources:
+        role === "facilitator"
+          ? [TrackSource.CAMERA, TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO]
+          : [TrackSource.CAMERA, TrackSource.MICROPHONE],
     });
 
     return { serverUrl, token: await token.toJwt() };

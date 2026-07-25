@@ -123,6 +123,7 @@ export interface Dictionary {
     placeholder: string;
     flagQuestion: string;
     send: string;
+    sending: string;
   };
   captions: {
     start: string;
@@ -190,7 +191,7 @@ const en: Dictionary = {
     yourName: "Your name",
     preferredLanguage: "Preferred language",
     consent:
-      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My microphone will join the workshop room live (audible to other participants) as soon as I enter — my camera stays off until I turn it on.",
+      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
     submit: "Join session",
   },
   facilitator: {
@@ -259,12 +260,13 @@ const en: Dictionary = {
     placeholder: "Write in your own language…",
     flagQuestion: "Flag as a question for the facilitator",
     send: "Send",
+    sending: "Sending…",
   },
   captions: {
     start: "Start live captions from mic",
     stop: "Stop live captions",
     connectionFailed:
-      "Live caption connection failed. In local development this endpoint needs a Vercel deployment (or `vercel dev`) — use the typed caption box above instead.",
+      "Live caption connection failed. Use the typed caption box above instead.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -322,7 +324,7 @@ const zh: Dictionary = {
     yourName: "你的姓名",
     preferredLanguage: "偏好语言",
     consent:
-      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的麦克风会立即接入活动室（其他参与者可以听到），摄像头会保持关闭，直到我手动开启。",
+      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
   },
   facilitator: {
@@ -391,12 +393,13 @@ const zh: Dictionary = {
     placeholder: "用你自己的语言书写……",
     flagQuestion: "标记为向主持人提出的问题",
     send: "发送",
+    sending: "发送中……",
   },
   captions: {
     start: "从麦克风开始实时字幕",
     stop: "停止实时字幕",
     connectionFailed:
-      "实时字幕连接失败。本地开发环境下此功能需要 Vercel 部署（或 `vercel dev`）——请改用上方的手动输入字幕框。",
+      "实时字幕连接失败。请改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -456,7 +459,7 @@ const es: Dictionary = {
     yourName: "Tu nombre",
     preferredLanguage: "Idioma preferido",
     consent:
-      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi micrófono se conectará a la sala del taller en vivo (audible para el resto de participantes) en cuanto entre; mi cámara permanecerá apagada hasta que yo la active.",
+      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
     submit: "Unirse a la sesión",
   },
   facilitator: {
@@ -525,12 +528,13 @@ const es: Dictionary = {
     placeholder: "Escribe en tu propio idioma…",
     flagQuestion: "Marcar como pregunta para el facilitador",
     send: "Enviar",
+    sending: "Enviando…",
   },
   captions: {
     start: "Iniciar subtítulos en vivo desde el micrófono",
     stop: "Detener subtítulos en vivo",
     connectionFailed:
-      "Falló la conexión de subtítulos en vivo. En desarrollo local este endpoint requiere un despliegue en Vercel (o `vercel dev`) — usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -560,6 +564,39 @@ export function isSupportedLanguage(value: unknown): value is SupportedLanguage 
 
 export function resolveLanguage(value: unknown, fallback: SupportedLanguage = "en"): SupportedLanguage {
   return isSupportedLanguage(value) ? value : fallback;
+}
+
+/**
+ * Best-effort initial `<html lang>` for the very first server-rendered response
+ * (see layout.tsx), before any page-specific language is known — the root
+ * layout is shared by every route and has no access to a nested route's
+ * searchParams/session/participant data, which is where each page's real
+ * language actually comes from. Parses the standard `Accept-Language` header
+ * format ("en-US,en;q=0.9,zh;q=0.8") and picks the first supported language by
+ * descending q-value. `SyncUiLanguage` corrects this to the page's actual
+ * resolved language once client JS hydrates; this is only a heuristic to avoid
+ * shipping a wrong-language `lang` attribute for the common case where a
+ * visitor's browser preference matches the language they'll pick.
+ */
+export function resolveLanguageFromAcceptLanguage(
+  header: string | null | undefined,
+  fallback: SupportedLanguage = "en",
+): SupportedLanguage {
+  if (!header) return fallback;
+  const ranges = header
+    .split(",")
+    .map((part) => {
+      const [tag, qPart] = part.trim().split(";q=");
+      const q = qPart ? Number.parseFloat(qPart) : 1;
+      return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 1 };
+    })
+    .sort((a, b) => b.q - a.q);
+
+  for (const { tag } of ranges) {
+    const primary = tag.split("-")[0];
+    if (isSupportedLanguage(primary)) return primary;
+  }
+  return fallback;
 }
 
 export function getDictionary(lang: SupportedLanguage): Dictionary {

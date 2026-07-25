@@ -5,6 +5,7 @@ import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CHUNK_INTERVAL_MS = 250;
+const NORMAL_CLOSURE_CODE = 1000;
 
 /**
  * Streams facilitator mic audio to `/api/captions/stream` over a WebSocket —
@@ -20,8 +21,10 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const stoppedByUserRef = useRef(false);
 
   const stop = useCallback(() => {
+    stoppedByUserRef.current = true;
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -35,6 +38,7 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
 
   const start = useCallback(async () => {
     setError(null);
+    stoppedByUserRef.current = false;
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
@@ -52,9 +56,28 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       // (e.g. on a failed handshake) while the recorder/mic stream are still open, which
       // would otherwise leave the microphone silently capturing with no way to release it
       // from the UI (the button reads "Start…" again, but a stale stream is still live).
-      socket.onclose = () => stop();
+      // A close the user didn't ask for (any code other than a normal 1000 closure — e.g.
+      // the server's `ws.close(1011, ...)` when the route handler throws *after* a
+      // successful production handshake, which never reaches `onerror`/a `{type:'error'}`
+      // message) must also be surfaced here, or the button just silently flips back to idle.
+      socket.onclose = (event) => {
+        if (!stoppedByUserRef.current && event.code !== NORMAL_CLOSURE_CODE) {
+          setError(dict.connectionFailed);
+        }
+        stop();
+      };
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The WebSocket can already have failed and closed (running `stop()` via `onclose`
+      // above) while `getUserMedia`'s permission prompt was still pending — resolving
+      // after that must not resurrect a "streaming" state or leave the mic hot with
+      // nothing consuming it.
+      const socketFailed =
+        socketRef.current !== socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
+      if (socketFailed) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
@@ -72,6 +95,7 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       setIsStreaming(true);
     } catch {
       setError(dict.micDenied);
+      stop();
     }
   }, [sessionId, stop, dict.connectionFailed, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 

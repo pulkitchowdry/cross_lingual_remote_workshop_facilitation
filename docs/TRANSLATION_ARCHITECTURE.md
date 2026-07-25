@@ -128,11 +128,15 @@ GPU/API load proportional to active speakers, not room size.
 pre-recorded clip) and `openStream` (Deepgram's live websocket API, used by
 the facilitator's live-caption control). The facilitator page's
 `LiveCaptionStream` component streams mic audio in ~250ms `MediaRecorder`
-frames over a WebSocket to `/api/captions/stream` (built with
-`experimental_upgradeWebSocket` from `@vercel/functions`, so it runs on
-Vercel Functions/Fluid Compute with no separate WebSocket server). The route
-authenticates the facilitator on the plain HTTP `GET` before upgrading, opens
-a Deepgram streaming session per connection, and on every **final** segment
+frames over a WebSocket to `/api/captions/stream`. The upgrade itself is
+handled by the custom Node server (`server.ts`) that Railway runs, using `ws`
+directly — Next route handlers can't perform a raw WebSocket upgrade on their
+own, so `server.ts` intercepts the HTTP `upgrade` event for this path before
+it reaches Next's router at all. `server.ts` authenticates the facilitator
+(parsing the facilitator cookie off the raw upgrade request, via
+`verifyFacilitatorToken` in `session-access.ts`) before upgrading, then hands
+the socket to `attachCaptionSocket` (`src/lib/captions-socket.ts`), which
+opens a Deepgram streaming session per connection, and on every **final** segment
 calls `publishTranslatedCaption` (`src/lib/captions.ts`) — the same helper
 `publishCaption` uses for typed captions — which translates per learner
 language, persists a `TranscriptSegment`, and pushes the DataChannel signal
@@ -152,9 +156,9 @@ haven't joined the LiveKit room yet (or if the push itself fails).
 facilitator's own mic UI — is now scaffolded in `agent/`, a standalone
 [LiveKit Agents](https://docs.livekit.io/agents/) worker. It's deliberately a
 separate package (own `package.json`, not a dependency of the Next.js app):
-it needs a persistent, long-running process, which doesn't fit Vercel
-Functions, and `@livekit/agents` is an 18MB+ dependency tree with native/
-ffmpeg bits that shouldn't bloat the app's install/deploy. The worker
+`@livekit/agents` is an 18MB+ dependency tree with native/ffmpeg bits that
+shouldn't bloat the main app's install/deploy, and it's deployed as its own
+long-running Railway service, independent of the app's lifecycle. The worker
 subscribes to the `facilitator:*` participant's audio track, streams it
 through the same `SpeechToTextProvider.openStream` boundary the browser mic
 path uses, and publishes final transcripts to a new authenticated endpoint,
@@ -217,11 +221,12 @@ for sequential playback so overlapping captions don't talk over each other.
   segment per listener, streamed back over a plain HTTP route. This was a
   deliberate scope cut — the interpreter-participant design needs the same
   always-on-process tradeoff as `agent/`'s track-subscription worker (a
-  persistent bot participant per language, not a serverless function), and
-  building a second piece of always-on infrastructure in the same phase as
-  the first wasn't worth it yet. The per-listener version is a straight
-  Vercel Function, ships now, and can be swapped for the bot-participant
-  design later without changing `TextToSpeechProvider`'s interface.
+  persistent bot participant per language, running as its own long-lived
+  process), and building a second piece of always-on infrastructure in the
+  same phase as the first wasn't worth it yet. The per-listener version is a
+  plain HTTP route on the main app, ships now, and can be swapped for the
+  bot-participant design later without changing `TextToSpeechProvider`'s
+  interface.
 - **Self-hosted option:** Piper, behind the same `TextToSpeechProvider`
   interface — **shipped** in `local-inference/` (Part 5) and now the default,
   tried before ElevenLabs. ElevenLabs is the automatic cloud fallback on local

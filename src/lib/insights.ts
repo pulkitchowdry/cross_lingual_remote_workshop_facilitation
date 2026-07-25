@@ -4,6 +4,8 @@ import { insightProvider, validateInsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
 
 const CONTEXT_WINDOW = 20;
+/** Word-overlap (Jaccard) threshold above which a new draft is treated as a paraphrase of an already-noted insight, not genuinely new. */
+const DUPLICATE_SUMMARY_SIMILARITY = 0.6;
 
 /**
  * Analyzes the session's recent transcript for new facilitator-dashboard
@@ -17,52 +19,109 @@ const CONTEXT_WINDOW = 20;
  * insight", matching the mock provider's original safe-empty behavior; a
  * missed insight is far less harmful than a caption delayed by an unrelated
  * background analysis call.
+ *
+ * Consecutive final captions (a couple of seconds apart in live speech) each
+ * trigger their own `waitUntil` call for the same session, all reading the
+ * "already noted" snapshot before any of them has written — a Postgres
+ * session-scoped advisory lock (`pg_advisory_xact_lock`, released
+ * automatically at transaction end) serializes those into one at a time per
+ * session, so two overlapping calls can't both persist the same insight.
+ * Holding one Postgres connection for the duration of the Claude call this
+ * wraps is a deliberate tradeoff: this path is already off the user-facing
+ * latency budget (`waitUntil`), and workshop-scale concurrency here is low.
  */
 export async function generateSessionInsights(session: Session): Promise<void> {
   if (!insightProvider.isConfigured) return;
 
   try {
-    const recentSegments = await prisma.transcriptSegment.findMany({
-      where: { sessionId: session.id, isFinal: true },
-      orderBy: { startedAt: "desc" },
-      take: CONTEXT_WINDOW,
-      select: { id: true, originalText: true },
-    });
-    if (recentSegments.length === 0) return;
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${session.id}))`;
 
-    const existingInsights = await prisma.insight.findMany({
-      where: { sessionId: session.id },
-      select: { summary: true },
-    });
-    const alreadyNoted = existingInsights.map((insight) => insight.summary);
-    const alreadyNotedKeys = new Set(alreadyNoted.map((summary) => summary.trim().toLowerCase()));
+        const recentSegments = await tx.transcriptSegment.findMany({
+          where: { sessionId: session.id, isFinal: true },
+          orderBy: { startedAt: "desc" },
+          take: CONTEXT_WINDOW,
+          select: { id: true, originalText: true },
+        });
+        if (recentSegments.length === 0) return;
 
-    const drafts = await insightProvider.generateInsights({
-      sessionGoal: session.goal,
-      finalSegments: recentSegments.map((segment) => ({ id: segment.id, originalText: segment.originalText })),
-      alreadyNoted,
-    });
+        const existingInsights = await tx.insight.findMany({
+          where: { sessionId: session.id },
+          select: { summary: true },
+        });
+        const alreadyNoted = existingInsights.map((insight) => insight.summary);
 
-    const knownSegmentIds = new Set(recentSegments.map((segment) => segment.id));
-    const newDrafts = drafts.filter(
-      (draft) =>
-        validateInsightDraft(draft, knownSegmentIds) && !alreadyNotedKeys.has(draft.summary.trim().toLowerCase()),
+        const drafts = await insightProvider.generateInsights({
+          sessionGoal: session.goal,
+          finalSegments: recentSegments.map((segment) => ({ id: segment.id, originalText: segment.originalText })),
+          alreadyNoted,
+        });
+
+        const knownSegmentIds = new Set(recentSegments.map((segment) => segment.id));
+        const newDrafts = drafts.filter(
+          (draft) => validateInsightDraft(draft, knownSegmentIds) && !isDuplicateSummary(draft.summary, alreadyNoted),
+        );
+        if (newDrafts.length === 0) return;
+
+        for (const draft of newDrafts) {
+          await tx.insight.create({
+            data: {
+              sessionId: session.id,
+              type: draft.type,
+              summary: draft.summary,
+              // Dedupe: InsightEvidence's primary key is (insightId, transcriptSegmentId) —
+              // a model draft citing the same segment id twice would otherwise violate that
+              // unique constraint and abort the whole createMany for this insight.
+              evidence: {
+                createMany: { data: Array.from(new Set(draft.sourceSegmentIds)).map((id) => ({ transcriptSegmentId: id })) },
+              },
+            },
+          });
+          // Newer drafts in the same batch must not duplicate an insight this loop just
+          // created, even though the model saw it as "new" (it was derived from the same
+          // `alreadyNoted` snapshot taken before this transaction wrote anything).
+          alreadyNoted.push(draft.summary);
+        }
+
+        revalidatePath(`/sessions/${session.id}/facilitator`);
+      },
+      // The Claude call inside this transaction can take a few seconds; Prisma's default
+      // 5s transaction timeout is tuned for pure-DB work and would abort a slow-but-healthy
+      // analysis call.
+      { timeout: 20_000 },
     );
-    if (newDrafts.length === 0) return;
-
-    for (const draft of newDrafts) {
-      await prisma.insight.create({
-        data: {
-          sessionId: session.id,
-          type: draft.type,
-          summary: draft.summary,
-          evidence: { createMany: { data: draft.sourceSegmentIds.map((id) => ({ transcriptSegmentId: id })) } },
-        },
-      });
-    }
-
-    revalidatePath(`/sessions/${session.id}/facilitator`);
   } catch {
     // Best-effort background analysis — never let this affect the live caption path.
   }
+}
+
+/**
+ * Simple word-overlap (Jaccard) similarity check: catches Claude re-phrasing
+ * the same underlying blocker/decision slightly differently between calls
+ * (e.g. "Group still sees a 500 error" vs. "The group is still hitting a 500
+ * error"), which an exact case-insensitive string match — the previous
+ * check — never catches. Not a semantic/embedding comparison, just a
+ * pragmatic, dependency-free improvement over exact matching.
+ */
+function isDuplicateSummary(candidate: string, existing: string[]): boolean {
+  const candidateWords = summaryWords(candidate);
+  if (candidateWords.size === 0) return false;
+  return existing.some((summary) => {
+    const existingWords = summaryWords(summary);
+    if (existingWords.size === 0) return false;
+    const intersectionSize = [...candidateWords].filter((word) => existingWords.has(word)).length;
+    const unionSize = new Set([...candidateWords, ...existingWords]).size;
+    return intersectionSize / unionSize >= DUPLICATE_SUMMARY_SIMILARITY;
+  });
+}
+
+function summaryWords(summary: string): Set<string> {
+  return new Set(
+    summary
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, "")
+      .split(/\s+/)
+      .filter(Boolean),
+  );
 }

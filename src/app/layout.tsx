@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono, Inter } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { resolveLanguageFromAcceptLanguage } from "@/lib/i18n";
 
 const heading = Hanken_Grotesk({
   variable: "--font-heading",
@@ -51,14 +53,21 @@ try {
 } catch (e) {}
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Only a heuristic (see resolveLanguageFromAcceptLanguage) — the root layout
+  // is shared by every route and has no access to a nested page's actual
+  // resolved language (searchParams / session / participant data), which
+  // `SyncUiLanguage` corrects client-side once that page's own language is known.
+  const acceptLanguage = (await headers()).get("accept-language");
+  const lang = resolveLanguageFromAcceptLanguage(acceptLanguage);
+
   return (
     <html
-      lang="en"
+      lang={lang}
       suppressHydrationWarning
       className={`${heading.variable} ${bodyFont.variable} ${dataFont.variable} h-full antialiased`}
     >

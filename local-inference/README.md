@@ -13,9 +13,10 @@ that fallback entirely).
 
 This is the first Python component in the repo. It needs a long-lived process
 holding three CPU models (NLLB-600M-int8, faster-whisper-small, three Piper
-voices — roughly 1-1.5GB combined) in memory, which doesn't fit Vercel
-Functions (the main app's deployment target) any better than the `agent/`
-worker's persistent LiveKit connection does. It lives in its own directory
+voices — roughly 1-1.5GB combined) in memory and a different runtime (Python,
+not Node), so it deploys as its own Railway service rather than as part of
+the main app's service, the same way the `agent/` worker's persistent LiveKit
+connection does. It lives in its own directory
 with its own dependency tree (`ctranslate2`, `faster-whisper`, `piper-tts`,
 `transformers` — none of which belong in the Next.js app's install) and talks
 to the Next.js app over plain authenticated HTTP, the same shared-secret
