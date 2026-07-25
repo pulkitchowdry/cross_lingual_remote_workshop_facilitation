@@ -53,9 +53,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let speech;
   try {
     speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage, {
-      allowCloudFallback: session?.translationMode !== "LOCAL_ONLY",
+      // Fail closed (no cloud fallback) if `session` is unexpectedly gone —
+      // e.g. the retention-cleanup cron deleted it between this route's two
+      // queries — rather than defaulting a privacy gate to permissive.
+      allowCloudFallback: session !== null && session.translationMode !== "LOCAL_ONLY",
     });
-  } catch {
+  } catch (error) {
+    console.error("textToSpeechProvider.synthesize failed", error);
     return Response.json({ error: "Speech synthesis failed." }, { status: 502 });
   }
   if (!speech) {
