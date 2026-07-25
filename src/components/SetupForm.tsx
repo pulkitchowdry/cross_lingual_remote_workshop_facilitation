@@ -57,7 +57,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       </label>
       <p className="text-sm text-muted-foreground">{dict.setup.privacyNote}</p>
       <label className="flex items-center gap-2 text-sm font-medium">
-        <input name="strictPrivacy" type="checkbox" />
+        <input name="strictPrivacy" type="checkbox" className="h-3.5 w-3.5 accent-[var(--accent)]" />
         {dict.setup.strictPrivacyLabel}
       </label>
       <p className="text-sm text-muted-foreground">{dict.setup.strictPrivacyHint}</p>

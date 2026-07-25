@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { ChatSendButton } from "@/components/ChatSendButton";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -16,6 +19,7 @@ import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { isCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
@@ -72,6 +76,28 @@ export default async function FacilitatorSessionPage({
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
+  const commonDict = getDictionary(lang).common;
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  const transcriptEntries: TranscriptFeedEntry[] = session.transcript.map((segment) => {
+    // Segments used to always be facilitator-authored (always in sourceLanguage), but
+    // learners can now type captions too, in their own preferredLanguage — so this can no
+    // longer just show originalText and assume it's already the facilitator's language.
+    const isSourceLanguage = segment.language === session.sourceLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+    const primaryText = isSourceLanguage ? segment.originalText : (translation?.text ?? commonDict.translationUnavailable);
+    const primaryLang = isSourceLanguage ? segment.language : translation ? session.sourceLanguage : "en";
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? commonDict.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isSourceLanguage && !translation,
+      secondaryText: !isSourceLanguage ? segment.originalText : undefined,
+      secondaryLang: !isSourceLanguage ? segment.language : undefined,
+    };
+  });
+  const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
   const statusLabel = {
     [SessionStatus.DRAFT]: dict.statusDraft,
     [SessionStatus.LIVE]: dict.statusLive,
@@ -150,22 +176,7 @@ export default async function FacilitatorSessionPage({
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="flex flex-col gap-3">
-              <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} />
-              <form action={publishCaptionAction} className="flex gap-2">
-                <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
-                <textarea
-                  id="facilitator-caption"
-                  className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                  name="captionText"
-                  rows={1}
-                  required
-                  maxLength={3000}
-                  placeholder={dict.captionPlaceholder}
-                />
-                <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                  {dict.publish}
-                </button>
-              </form>
+              <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} captionText={latestCaptionText} />
               {speechToTextProvider.isConfigured && (
                 <LiveCaptionStream
                   sessionId={session.id}
@@ -174,10 +185,52 @@ export default async function FacilitatorSessionPage({
                 />
               )}
             </div>
-            <SessionChatPanel
-              messages={chatMessages}
-              targetLanguage={session.sourceLanguage}
-              sendAction={sendChatAction}
+            <SessionSidePanel
+              chat={{
+                messages: chatMessages,
+                targetLanguage: session.sourceLanguage,
+                sendAction: sendChatAction,
+                viewerIsFacilitator: true,
+              }}
+              captions={{
+                entries: transcriptEntries,
+                emptyLabel: dict.transcriptEmpty,
+                jumpToLatestLabel: commonDict.jumpToLatest,
+              }}
+              captionsHeader={
+                textToSpeechProvider.isConfigured && (
+                  <TranslatedAudioPlayer
+                    segments={session.transcript.map((segment) => ({
+                      id: segment.id,
+                      hasTranslation:
+                        segment.language === session.sourceLanguage ||
+                        segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+                      isTyped: segment.isTyped,
+                    }))}
+                    preferredLanguage={session.sourceLanguage}
+                  />
+                )
+              }
+              captionComposer={
+                <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+                  <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
+                  <textarea
+                    id="facilitator-caption"
+                    className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    name="captionText"
+                    rows={2}
+                    required
+                    maxLength={3000}
+                    placeholder={dict.captionPlaceholder}
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">{dict.captionAudioHint}</p>
+                    <ChatSendButton label={dict.publish} sendingLabel={dict.publishing} />
+                  </div>
+                </form>
+              }
+              chatTabLabel={commonDict.chatTab}
+              captionsTabLabel={commonDict.captionsTab}
             />
           </div>
         </section>
@@ -223,30 +276,6 @@ export default async function FacilitatorSessionPage({
           <Card eyebrow={dict.noInterventionYet}>
             <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
-        )}
-      </section>
-      <section className="flex flex-col gap-3" aria-live="polite">
-        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
-        {session.transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {session.transcript.map((segment) => {
-              const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
-                  <p className="italic text-muted-foreground" lang={segment.language}>
-                    {segment.originalText}
-                  </p>
-                  {translation && (
-                    <p className="mt-2" lang={session.sourceLanguage}>
-                      {translation.text}
-                    </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{dict.transcriptEmpty}</p>
         )}
       </section>
       <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>

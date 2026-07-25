@@ -65,7 +65,15 @@ const MIN_REFRESH_GAP_MS = 5 * 60 * 1000;
  * get the control. Controls are hand-rolled (rather than LiveKit's stock
  * `ControlBar`) so each button's aria-label can come from `dict`.
  */
-function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
+function WorkshopVideoStage({
+  role,
+  dict,
+  captionText,
+}: {
+  role: Role;
+  dict: RoomDict;
+  captionText?: string;
+}) {
   // LiveKitRoom auto-publishes video but never audio (`audio={false}` below),
   // so the browser only ever prompts for camera permission on connect. Without
   // mic permission, `navigator.mediaDevices.enumerateDevices()` — which
@@ -97,10 +105,11 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
   ]);
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
+  const [showCaptions, setShowCaptions] = useState(true);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-hidden p-3">
+      <div className="relative flex-1 overflow-hidden p-3">
         {screenShareTrack ? (
           <FocusLayoutContainer className="h-full">
             <FocusLayout trackRef={screenShareTrack} />
@@ -112,6 +121,13 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
           <GridLayout tracks={cameraTracks} className="h-full">
             <ParticipantTile />
           </GridLayout>
+        )}
+        {showCaptions && captionText && (
+          <div className="pointer-events-none absolute inset-x-6 bottom-4 flex justify-center">
+            <p className="max-w-full rounded-md bg-black/75 px-3 py-1.5 text-center text-sm text-white">
+              {captionText}
+            </p>
+          </div>
         )}
       </div>
       <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
@@ -130,6 +146,17 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
         {role === "facilitator" && (
           <TrackToggle source={Track.Source.ScreenShare} aria-label={dict.toggleScreenShare} />
         )}
+        <button
+          type="button"
+          className="lk-button"
+          aria-pressed={showCaptions}
+          aria-label={dict.toggleCaptions}
+          onClick={() => setShowCaptions((current) => !current)}
+        >
+          <span className="font-data text-[11px] font-bold leading-none tracking-tight" aria-hidden="true">
+            CC
+          </span>
+        </button>
         <DisconnectButton aria-label={dict.leaveCall}>
           <LeaveIcon />
         </DisconnectButton>
@@ -138,7 +165,17 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
   );
 }
 
-export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; role: Role; lang: SupportedLanguage }) {
+export function LiveSessionRoom({
+  sessionId,
+  role,
+  lang,
+  captionText,
+}: {
+  sessionId: string;
+  role: Role;
+  lang: SupportedLanguage;
+  captionText?: string;
+}) {
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -218,7 +255,7 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         video
         data-lk-theme="default"
       >
-        <WorkshopVideoStage role={role} dict={dict} />
+        <WorkshopVideoStage role={role} dict={dict} captionText={captionText} />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

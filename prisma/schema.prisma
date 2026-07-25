@@ -116,6 +116,8 @@ model TranscriptSegment {
   startedAt    DateTime
   endedAt      DateTime
   isFinal      Boolean   @default(true)
+  /// True for the facilitator's typed-caption composer, false for anything transcribed from live audio.
+  isTyped      Boolean   @default(false)
   createdAt    DateTime  @default(now())
   session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   translations Translation[]
@@ -154,6 +156,7 @@ model Message {
   originalText String
   language     String
   kind         String
+  isAnonymous  Boolean  @default(false)
   sentAt       DateTime @default(now())
   session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sender       User     @relation(fields: [senderId], references: [id])

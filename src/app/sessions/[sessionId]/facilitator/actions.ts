@@ -61,6 +61,7 @@ export async function publishCaption(sessionId: string, formData: FormData) {
     language: session.sourceLanguage as SupportedLanguage,
     startedAt: now,
     endedAt: now,
+    isTyped: true,
   });
 }
 

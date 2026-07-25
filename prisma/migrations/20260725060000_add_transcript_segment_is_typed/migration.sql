@@ -1,0 +1,1 @@
+ALTER TABLE "TranscriptSegment" ADD COLUMN "isTyped" BOOLEAN NOT NULL DEFAULT false;

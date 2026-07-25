@@ -16,7 +16,14 @@ import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contr
  */
 export async function publishTranslatedCaption(
   session: Session,
-  input: { speakerId: string | null; originalText: string; language: SupportedLanguage; startedAt: Date; endedAt: Date },
+  input: {
+    speakerId: string | null;
+    originalText: string;
+    language: SupportedLanguage;
+    startedAt: Date;
+    endedAt: Date;
+    isTyped?: boolean;
+  },
 ) {
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations = await Promise.all(
@@ -41,6 +48,7 @@ export async function publishTranslatedCaption(
       language: input.language,
       startedAt: input.startedAt,
       endedAt: input.endedAt,
+      isTyped: input.isTyped ?? false,
       translations: {
         create: translations.filter(
           (translation): translation is NonNullable<typeof translation> => translation !== null,

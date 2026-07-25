@@ -84,7 +84,7 @@ export default async function JoinPage({
           />
         </label>
         <label className="flex items-start gap-3 text-sm text-muted-foreground">
-          <input className="mt-1" type="checkbox" name="consent" required />
+          <input className="mt-1 h-3.5 w-3.5 accent-[var(--accent)]" type="checkbox" name="consent" required />
           <span>{dict.join.consent}</span>
         </label>
         <Button type="submit">{dict.join.submit}</Button>
