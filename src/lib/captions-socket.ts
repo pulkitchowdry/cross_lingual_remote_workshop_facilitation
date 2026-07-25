@@ -10,9 +10,34 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * to the STT stream for a live session. Shared so the socket-handling logic
  * lives in one place regardless of how the upgrade itself happened.
  */
+/** How often to re-check whether the caption-agent worker has started capturing this
+ * same facilitator's mic elsewhere — see the `duplicateGuardInterval` comment below. */
+const DUPLICATE_CAPTURE_CHECK_MS = 3_000;
+
 export function attachCaptionSocket(ws: WebSocket, session: Session) {
   const sourceLanguage = session.sourceLanguage as SupportedLanguage;
   let segmentStartedAt = new Date();
+
+  // server.ts's upgrade handler only checks `captionAgentActive` once, at handshake
+  // time. If the LiveKit caption-agent worker starts capturing this same
+  // facilitator's mic while this browser-mic socket is already open (a real race:
+  // click "Start" here, then unmute the ControlBar mic moments later), both
+  // pipelines run and duplicate every caption until the *client's own* ~2s poll
+  // notices `captionAgentActive` flipped true and stops itself
+  // (LiveCaptionStream.tsx) — a window that can stretch further if the tab is
+  // backgrounded and its interval gets throttled. Re-checking here closes the
+  // redundant stream promptly and authoritatively from the server side too,
+  // instead of relying solely on that client-side polling.
+  const duplicateGuardInterval = setInterval(() => {
+    void prisma.session
+      .findUnique({ where: { id: session.id }, select: { captionAgentActive: true } })
+      .then((current) => {
+        if (current?.captionAgentActive) {
+          ws.close(1011, "Captions are already being captured automatically for this session.");
+        }
+      })
+      .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
+  }, DUPLICATE_CAPTURE_CHECK_MS);
 
   const sttStream = speechToTextProvider.openStream!({
     expectedLanguage: sourceLanguage,
@@ -39,13 +64,13 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
         const current = await prisma.session.findUnique({ where: { id: session.id } });
         if (!current || current.status !== SessionStatus.LIVE) return;
         await publishTranslatedCaption(current, {
-          speakerId: "Facilitator",
+          speakerId: null,
           originalText: event.text,
           language: current.sourceLanguage as SupportedLanguage,
           startedAt,
           endedAt,
         });
-      })();
+      })().catch((error) => console.error(`[captions/stream] failed to publish a segment for ${session.id}:`, error));
     },
     onError: (error) => {
       // Send the error, then close — without closing, the STT stream is dead (its
@@ -61,6 +86,12 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
   ws.on("message", (data) => {
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });
-  ws.on("close", () => sttStream.close());
-  ws.on("error", () => sttStream.close());
+  ws.on("close", () => {
+    clearInterval(duplicateGuardInterval);
+    sttStream.close();
+  });
+  ws.on("error", () => {
+    clearInterval(duplicateGuardInterval);
+    sttStream.close();
+  });
 }

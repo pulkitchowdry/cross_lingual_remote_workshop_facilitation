@@ -73,7 +73,7 @@ async function main() {
       nextUpgradeHandler(req, socket, head);
       return;
     }
-
+    let session: Awaited<ReturnType<typeof prisma.session.findUnique>>;
     try {
       const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
       if (!sessionId) throw new Error("sessionId is required.");
@@ -87,8 +87,8 @@ async function main() {
         throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY or configure local-inference.");
       }
 
-      const session = await prisma.session.findUnique({ where: { id: sessionId } });
-      if (!session || session.status !== SessionStatus.LIVE) {
+      const found = await prisma.session.findUnique({ where: { id: sessionId } });
+      if (!found || found.status !== SessionStatus.LIVE) {
         throw new Error("Start the session before streaming captions.");
       }
       // Authoritative server-side backstop against a duplicate STT pipeline: the
@@ -101,13 +101,10 @@ async function main() {
       // lands — without this check, that would open a second, independent Deepgram
       // stream for the same audio and duplicate/interleave every caption line
       // (the same class of bug issue #95 fixed client-side, now backstopped here too).
-      if (session.captionAgentActive) {
+      if (found.captionAgentActive) {
         throw new Error("Captions are already being captured automatically for this session.");
       }
-
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        attachCaptionSocket(ws, session);
-      });
+      session = found;
     } catch (error) {
       // Completing the handshake and closing with a reason (rather than
       // destroying the raw TCP socket) lets the browser's `WebSocket.onclose`
@@ -126,7 +123,35 @@ async function main() {
       wss.handleUpgrade(req, socket, head, (ws) => {
         ws.close(1011, reason);
       });
+      return;
     }
+
+    // `wss.handleUpgrade`'s callback fires *after* the wire-level handshake is
+    // already complete — the 101 response is written and the socket is bound to
+    // `ws` before this runs. A throw from `attachCaptionSocket` (e.g. a
+    // streaming-STT provider whose constructor validates its own credentials
+    // synchronously, like `ws`'s `WebSocket` rejecting a header value with
+    // invalid characters) used to propagate out of this callback and back into
+    // the `try` block above, which — believing the socket was still a pending
+    // HTTP upgrade — called `wss.handleUpgrade` on it a *second* time. That
+    // wrote a second "101 Switching Protocols" response into a socket already
+    // mid-WebSocket-framing, corrupting the handshake from the browser's
+    // perspective: it never saw a clean `onopen`, only an abrupt, reasonless
+    // closure — indistinguishable from a VPN/proxy/firewall mangling the
+    // upgrade (LiveCaptionStream.tsx's "opaque" case), even though the real
+    // cause was a same-origin, post-handshake server error with a perfectly
+    // good message to report. Once we're in this callback, `ws` is a real,
+    // already-open connection — the only safe way to report a failure is a
+    // normal close on it, never another `handleUpgrade` call on the raw socket.
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      try {
+        attachCaptionSocket(ws, session);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "Unable to start captions.";
+        console.error(`[captions/stream] attachCaptionSocket failed after upgrade: ${reason}`);
+        ws.close(1011, reason);
+      }
+    });
   });
 
   server.listen(port, () => {

@@ -182,6 +182,68 @@ describe("LocalBufferingSpeechToTextStream", () => {
     stream.close();
   });
 
+  it("prepends the captured WebM header when forwarding a second-or-later failed window to the cloud fallback", async () => {
+    // Window 1 succeeds locally and captures the WebM container header.
+    localTranscribeMock.mockResolvedValueOnce({ text: "ok" });
+    const fallbackStream = { sendAudio: vi.fn(), close: vi.fn() };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+    });
+
+    const firstWindow = new Uint8Array([0xaa, 0xbb, 0xcc, 0x1f, 0x43, 0xb6, 0x75, 0x01]);
+    stream.sendAudio(firstWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(openCloudFallback).not.toHaveBeenCalled();
+
+    // Window 2 fails locally — its raw chunk is headerless (no EBML/Segment/Tracks),
+    // matching every real second-or-later MediaRecorder chunk.
+    localTranscribeMock.mockRejectedValueOnce(new Error("local down"));
+    const secondWindow = new Uint8Array([0x1f, 0x43, 0xb6, 0x75, 0x02]);
+    stream.sendAudio(secondWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    expect(openCloudFallback).toHaveBeenCalledTimes(1);
+    // The fallback must receive the header-prepended bytes (the captured header plus
+    // the raw second window), not the raw headerless chunk — otherwise Deepgram,
+    // opening a brand-new connection with no container header of its own, can't
+    // decode it and the "seamless" fallback goes silently, permanently dead.
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[0][0] as Uint8Array)).toEqual([
+      0xaa, 0xbb, 0xcc, 0x1f, 0x43, 0xb6, 0x75, 0x02,
+    ]);
+
+    stream.close();
+  });
+
+  it("forwards raw PCM chunks (not WAV-wrapped) to the cloud fallback when encoding is provided", async () => {
+    localTranscribeMock.mockRejectedValue(new Error("local down"));
+    const fallbackStream = { sendAudio: vi.fn(), close: vi.fn() };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+      encoding: { format: "linear16", sampleRate: 16_000, channels: 1 },
+    });
+
+    stream.sendAudio(new Uint8Array([1, 2, 3, 4]));
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    expect(openCloudFallback).toHaveBeenCalledTimes(1);
+    // Deepgram is told the exact raw format via URL params for this path (see
+    // openDeepgramStream's `encoding`) — a WAV header here would corrupt the first 44
+    // bytes of what it expects to be headerless raw PCM.
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[0][0] as Uint8Array)).toEqual([1, 2, 3, 4]);
+
+    stream.close();
+  });
+
   it("calls onError and drops audio when local fails and cloud fallback is disallowed", async () => {
     localTranscribeMock.mockRejectedValue(new Error("local down"));
     const onError = vi.fn();

@@ -108,7 +108,19 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       const { text } = await localTranscribe(bytes, mimeType, this.options.expectedLanguage);
       if (text.trim()) this.options.onSegment({ text: text.trim(), isFinal: true });
     } catch (error) {
-      this.switchToFallback(error, chunks);
+      // The cloud fallback needs different framing depending on how this stream was
+      // opened. With an explicit `encoding` (the LiveKit agent's raw PCM path),
+      // Deepgram is told the exact raw format via URL params (see openDeepgramStream),
+      // so headerless `chunks` — the original, unwrapped audio — is exactly what it
+      // expects; encodeWindow's WAV-wrapping above is only for the *local*
+      // transcription call in that path. Without an `encoding` (the browser-mic WebM
+      // path), Deepgram must auto-detect the container from the byte stream itself,
+      // so it needs `bytes` — the header-prepended version — not the raw, headerless
+      // Cluster-only `chunks` a second-or-later window is. Forwarding the wrong one
+      // for either path sends the newly-opened Deepgram stream audio it can't decode,
+      // so the "seamless" fallback the class doc promises instead goes silently,
+      // permanently dead for the rest of this connection.
+      this.switchToFallback(error, this.options.encoding ? chunks : [bytes]);
     } finally {
       this.flushing = false;
     }

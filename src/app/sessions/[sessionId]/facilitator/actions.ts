@@ -22,10 +22,22 @@ export async function updateFacilitatorLanguage(sessionId: string, lang: Support
 export async function startSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { status: SessionStatus.LIVE, startedAt: new Date() },
+  // Guarded to only leave DRAFT — without this, a stale tab's "Start Session"
+  // button (still bound from before the session was ended) or a resubmitted form
+  // could flip an already-LIVE or already-ENDED session back to LIVE. Clearing
+  // `endedAt` matters even more than the status guard alone: isSessionRetentionExpired
+  // anchors its deadline on `endedAt` when present, so a session restarted without
+  // clearing a stale `endedAt` could immediately compute as retention-expired and
+  // 404 for everyone — including the facilitator who just "restarted" it — while the
+  // retention cleanup cron itself skips it outright (it excludes status=LIVE), an
+  // inconsistent, self-locking state.
+  const { count } = await prisma.session.updateMany({
+    where: { id: sessionId, status: SessionStatus.DRAFT },
+    data: { status: SessionStatus.LIVE, startedAt: new Date(), endedAt: null },
   });
+  if (count === 0) {
+    throw new Error("This session has already started or ended.");
+  }
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
 }
@@ -56,12 +68,33 @@ export async function publishCaption(sessionId: string, formData: FormData) {
 
   const now = new Date();
   await publishTranslatedCaption(session, {
-    speakerId: "Facilitator",
+    speakerId: null,
     originalText: captionText.trim(),
     language: session.sourceLanguage as SupportedLanguage,
     startedAt: now,
     endedAt: now,
   });
+}
+
+/**
+ * Marks a BLOCKER (or any) insight resolved so it stops showing under "Act now" —
+ * the `Insight.status` column and the `DashboardUpdateEvent.status` union
+ * ("ACTIVE"|"RESOLVED"|"SUPERSEDED", session-contracts.ts) already anticipated this;
+ * nothing ever actually set it to anything but its "ACTIVE" default, so a resolved
+ * blocker had no way to stop being shown, indistinguishable from one raised seconds
+ * ago for the rest of the session.
+ */
+export async function resolveInsight(sessionId: string, insightId: string) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+
+  // Scoped by both ids together — an insight id alone isn't enough to prove it
+  // belongs to *this* session, and `updateMany` silently no-ops (rather than
+  // throwing) if the pair doesn't match, so a mismatched id just does nothing.
+  await prisma.insight.updateMany({
+    where: { id: insightId, sessionId },
+    data: { status: "RESOLVED" },
+  });
+  revalidatePath(`/sessions/${sessionId}/facilitator`);
 }
 
 /** Invalidates the learner invite link immediately — a leaked or no-longer-needed link stops working right away, rather than waiting out its expiry. */

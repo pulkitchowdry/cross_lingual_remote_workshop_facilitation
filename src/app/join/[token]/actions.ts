@@ -1,16 +1,28 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ParticipantRole } from "@/generated/prisma/client";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerCookieName, hashToken, createOpaqueToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { isRateLimited } from "@/lib/rate-limit";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
+/** 5 join attempts per minute per IP — generous for a real learner (who joins once)
+ * or a facilitator testing the flow, but bounds a scripted loop hitting the publicly
+ * shared learner invite link (a QR code/copyable link meant for a whole room) to mint
+ * unlimited learner identities. */
+const JOIN_RATE_LIMIT = { max: 5, windowMs: 60_000 };
+
 export async function joinSession(formData: FormData) {
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (isRateLimited(`join:${ip}`, JOIN_RATE_LIMIT.max, JOIN_RATE_LIMIT.windowMs)) {
+    throw new Error("Too many join attempts. Please wait a moment and try again.");
+  }
+
   const token = formData.get("token");
   const displayName = formData.get("displayName");
   const preferredLanguage = formData.get("preferredLanguage");
@@ -43,7 +55,15 @@ export async function joinSession(formData: FormData) {
   // already passed but hasn't been physically purged yet (the cleanup cron runs
   // hourly at most), immediately hitting a broken "session not found" on the very
   // next page instead of a clear "this invitation is no longer available" here.
-  if (!session || isSessionRetentionExpired(session)) {
+  //
+  // `status === ENDED` is checked separately from retention: a facilitator ending a
+  // session never revokes its (separately-optional) learner invite link, so a leaked
+  // or bookmarked link would otherwise keep admitting brand-new learners into an
+  // already-concluded workshop for the rest of its (up to 30-day) retention window —
+  // landing them on a read-only historical transcript/chat archive they were never
+  // part of. DRAFT sessions are intentionally still joinable (learners pre-join and
+  // see "Waiting for the facilitator to start" — see learn/page.tsx).
+  if (!session || session.status === SessionStatus.ENDED || isSessionRetentionExpired(session)) {
     throw new Error("This session is no longer available.");
   }
 

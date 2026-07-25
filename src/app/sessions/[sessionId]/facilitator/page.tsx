@@ -16,11 +16,13 @@ import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { CaptionPublishButton } from "@/components/CaptionPublishButton";
 import {
   endSession,
   publishCaption,
+  resolveInsight,
   revokeLearnerInvite,
   startSession,
   updateFacilitatorLanguage,
@@ -51,11 +53,25 @@ export default async function FacilitatorSessionPage({
     where: { id: sessionId },
     include: {
       participants: { where: { role: ParticipantRole.LEARNER } },
-      transcript: { include: { translations: true }, orderBy: { startedAt: "desc" }, take: TRANSCRIPT_HISTORY_LIMIT },
-      insights: { include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } } },
+      // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
+      // timestamps, so two rows created within the same millisecond (e.g. several
+      // learners' chat messages committing at once) have Postgres-undefined relative
+      // order under a single-column sort — without a stable tiebreaker, two tied rows
+      // can come back in a different relative order on one 2s poll than the next,
+      // visibly swapping position on an auto-refreshing page.
+      transcript: {
+        include: { translations: true },
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        take: TRANSCRIPT_HISTORY_LIMIT,
+      },
+      insights: {
+        include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+        orderBy: { createdAt: "desc" },
+        take: INSIGHT_HISTORY_LIMIT,
+      },
       messages: {
         include: { sender: true, translations: true },
-        orderBy: { sentAt: "desc" },
+        orderBy: [{ sentAt: "desc" }, { id: "desc" }],
         take: MESSAGE_HISTORY_LIMIT,
       },
       joinLinks: { where: { role: ParticipantRole.LEARNER } },
@@ -92,7 +108,7 @@ export default async function FacilitatorSessionPage({
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
-  const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
+  const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER" && insight.status === "ACTIVE");
   const chatMessages = [...session.messages].reverse();
   const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
@@ -112,6 +128,14 @@ export default async function FacilitatorSessionPage({
       {(session.status === SessionStatus.DRAFT || session.status === SessionStatus.LIVE) && <SessionAutoRefresh />}
       {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
       <LanguageMenu current={lang} onSelect={changeLanguageAction} />
+      {session.status === SessionStatus.LIVE && (
+        // updateFacilitatorLanguage only updates the session's language label/translation
+        // target — it doesn't (and safely can't, without risking dropped audio mid-utterance)
+        // reopen the underlying Deepgram/local-inference recognition stream, which stays
+        // configured for whatever language it was opened with for the rest of its life. See
+        // updateFacilitatorLanguage's own doc comment.
+        <p className="text-xs text-muted-foreground">{dict.languageChangeLiveWarning}</p>
+      )}
       <div>
         <div className="flex flex-wrap items-center gap-3" aria-live="polite">
           <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
@@ -165,9 +189,7 @@ export default async function FacilitatorSessionPage({
                     maxLength={3000}
                     placeholder={dict.captionPlaceholder}
                   />
-                  <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                    {dict.publish}
-                  </button>
+                  <CaptionPublishButton label={dict.publish} publishingLabel={dict.publishing} />
                 </form>
                 {speechToTextProvider.isConfigured && (
                   <LiveCaptionStream
@@ -205,6 +227,7 @@ export default async function FacilitatorSessionPage({
               // is itself localized to `lang`, not fixed English copy — tag it `lang`,
               // not "en".
               const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
+              const resolveAction = resolveInsight.bind(null, sessionId, blocker.id);
               return (
                 <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
@@ -216,13 +239,18 @@ export default async function FacilitatorSessionPage({
                       “{evidenceText}”
                     </p>
                   )}
+                  <form action={resolveAction} className="mt-2">
+                    <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                      {dict.resolveBlocker}
+                    </button>
+                  </form>
                 </Card>
               );
             })}
           </div>
         ) : transcript.length === 0 ? (
-          <Card eyebrow={dict.noInterventionYet}>
-            <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
+          <Card eyebrow={dict.waitingToStart}>
+            <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
           </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>
