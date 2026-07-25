@@ -3,6 +3,7 @@ import { AudioStream, RemoteAudioTrack, RoomEvent, type RemoteParticipant, type 
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
+import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -50,6 +51,11 @@ async function streamFacilitatorAudio(
     return;
   }
   activeIdentities.add(identity);
+  // Surfaced to the facilitator dashboard (see caption-source-state.ts) so it can
+  // hide/disable the redundant "Start live captions from mic" button — that button
+  // opens a second, independent STT pipeline for the same facilitator audio, which
+  // was silently duplicating every caption (issue #95).
+  markCaptionAgentCapturing(sessionId);
 
   let segmentStartedAt = new Date();
   const sttStream = speechToTextProvider.openStream({
@@ -87,6 +93,7 @@ async function streamFacilitatorAudio(
   } finally {
     sttStream.close();
     activeIdentities.delete(identity);
+    clearCaptionAgentCapturing(sessionId);
   }
 }
 
