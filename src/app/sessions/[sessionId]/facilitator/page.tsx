@@ -192,7 +192,7 @@ export default async function FacilitatorSessionPage({
             <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</p>
             <h2 className="font-heading text-lg font-semibold">{dict.interventionQueue}</h2>
           </div>
-          {session.transcript.length === 0 && (
+          {session.status === SessionStatus.LIVE && session.transcript.length === 0 && (
             <form action={demoAction}>
               <button className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
                 {dict.loadDemo}
