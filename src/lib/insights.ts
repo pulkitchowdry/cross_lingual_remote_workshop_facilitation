@@ -32,6 +32,14 @@ const DUPLICATE_SUMMARY_SIMILARITY = 0.6;
  */
 export async function generateSessionInsights(session: Session): Promise<void> {
   if (!insightProvider.isConfigured) return;
+  // Unlike TranslationProvider/SpeechToTextProvider/TextToSpeechProvider, InsightProvider
+  // has no local-inference tier at all — ClaudeInsightProvider always calls Anthropic's
+  // cloud API directly, with no `allowCloudFallback` gate to honor. A Strict Privacy Mode
+  // session (translationMode LOCAL_ONLY) choosing to never send audio/text to external
+  // providers must not have its transcript sent to Claude here either; skipping outright
+  // (not just degrading empty on failure, this repo's existing pattern for the *other*
+  // providers) is the only correct behavior since there's no local fallback to try first.
+  if (session.translationMode === "LOCAL_ONLY") return;
 
   try {
     await prisma.$transaction(

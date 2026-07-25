@@ -1,26 +1,37 @@
+import { prisma } from "@/lib/db";
+
 /**
  * Tracks which sessions the server-side caption agent (`caption-agent.ts`) is
  * actively streaming facilitator audio for, so the facilitator dashboard can
  * decide whether to still offer the browser-driven `LiveCaptionStream`
- * WebSocket path. Split into its own module (rather than exporting from
- * `caption-agent.ts` directly) so a Server Component can read this state
- * without pulling `@livekit/agents`/`@livekit/rtc-node` into its bundle.
+ * WebSocket path.
  *
- * In-memory only — correct as long as the app runs as a single Node process
- * (see `docs/DEPLOYMENT.md`; the caption agent is registered in-process from
- * `server.ts`, not run as a separate worker). A multi-instance deployment
- * would need this shared through the database or a pub/sub channel instead.
+ * Backed by `Session.captionAgentActive` in Postgres, not in-process memory —
+ * an in-memory `Set` here was silently always empty on the read side: the
+ * LiveKit Agents worker that calls `markCaptionAgentCapturing` runs inside a
+ * per-job forked OS process (`@livekit/agents`' `JobProcExecutor`, see
+ * server.ts's `startCaptionAgent` comment), a different process, with its own
+ * module registry, from the one serving the facilitator dashboard that calls
+ * `isCaptionAgentCapturing` — a `Set` mutated in one is invisible in the
+ * other. The database is the one thing both processes actually share.
+ *
+ * Failures here are logged but never thrown — `caption-agent.ts` streams
+ * live audio to Deepgram regardless of whether the dashboard's "already
+ * capturing" indicator updates correctly, so a transient DB error must not
+ * interrupt that.
  */
-const capturingSessionIds = new Set<string>();
-
-export function markCaptionAgentCapturing(sessionId: string): void {
-  capturingSessionIds.add(sessionId);
+export async function markCaptionAgentCapturing(sessionId: string): Promise<void> {
+  try {
+    await prisma.session.update({ where: { id: sessionId }, data: { captionAgentActive: true } });
+  } catch (error) {
+    console.error(`[caption-source-state] failed to mark session ${sessionId} as capturing:`, error);
+  }
 }
 
-export function clearCaptionAgentCapturing(sessionId: string): void {
-  capturingSessionIds.delete(sessionId);
-}
-
-export function isCaptionAgentCapturing(sessionId: string): boolean {
-  return capturingSessionIds.has(sessionId);
+export async function clearCaptionAgentCapturing(sessionId: string): Promise<void> {
+  try {
+    await prisma.session.update({ where: { id: sessionId }, data: { captionAgentActive: false } });
+  } catch (error) {
+    console.error(`[caption-source-state] failed to clear session ${sessionId} as capturing:`, error);
+  }
 }

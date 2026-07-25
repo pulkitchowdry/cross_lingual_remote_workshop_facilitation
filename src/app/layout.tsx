@@ -73,6 +73,18 @@ export default async function RootLayout({
       className={`${heading.variable} ${bodyFont.variable} ${dataFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/*
+          A plain <script> tag here reliably runs (the browser executes a <script> it parses
+          from the initial HTML before React ever hydrates, avoiding a theme flash) — but React's
+          DEV-mode renderer warns regardless ("Encountered a script tag while rendering React
+          component"), and `next/script`'s `beforeInteractive` strategy doesn't avoid it either:
+          for an inline (no `src`) script under the App Router, its own implementation
+          (node_modules/next/dist/client/script.js) still returns a real `<script>` JSX element,
+          just with the content wrapped for Next's runtime — so the exact same warning fires,
+          just pointing at that line instead. See dev-console-filter.ts (imported from AppShell,
+          which every route mounts) for why this specific, otherwise-unavoidable warning is
+          filtered rather than "fixed" by switching components.
+        */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <AppShell>{children}</AppShell>
       </body>

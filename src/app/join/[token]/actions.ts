@@ -6,6 +6,7 @@ import { ParticipantRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerCookieName, hashToken, createOpaqueToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
@@ -36,7 +37,13 @@ export async function joinSession(formData: FormData) {
   }
 
   const session = await prisma.session.findUnique({ where: { id: joinLink.sessionId } });
-  if (!session) {
+  // The join link's own expiry (checked above) is a much longer, independent window
+  // (30 days by default) than the session's own retention deadline — a learner could
+  // otherwise complete consent and join a session whose data-retention deadline has
+  // already passed but hasn't been physically purged yet (the cleanup cron runs
+  // hourly at most), immediately hitting a broken "session not found" on the very
+  // next page instead of a clear "this invitation is no longer available" here.
+  if (!session || isSessionRetentionExpired(session)) {
     throw new Error("This session is no longer available.");
   }
 

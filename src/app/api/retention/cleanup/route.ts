@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { secureCompare } from "@/lib/session-security";
@@ -25,13 +26,20 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date();
-  // Every session, not just ENDED ones: a facilitator who starts a session and
-  // then never clicks "End" (browser crash, closed laptop, lost connectivity)
-  // would otherwise keep its full transcript/chat/participant data forever,
-  // since nothing else ever sets `status: ENDED` / `endedAt`. isSessionRetentionExpired
-  // falls back to `createdAt` for a session that never ended, giving every session a
-  // hard retention cap regardless of how it stopped being live.
+  // Every non-LIVE session, not just ENDED ones: a facilitator who starts a session
+  // and then never clicks "End" (browser crash, closed laptop, lost connectivity)
+  // would otherwise keep its full transcript/chat/participant data forever, since
+  // nothing else ever sets `status: ENDED` / `endedAt`. isSessionRetentionExpired
+  // falls back to `createdAt` for a session that never ended, giving every DRAFT/ENDED
+  // session a hard retention cap regardless of how it stopped being live. A currently
+  // LIVE session is excluded outright, though — its participants are actively using it
+  // right now, and `createdAt` alone says nothing about that; a workshop running longer
+  // than its own `retentionDays` (a facilitator's transcript-retention choice, not a
+  // session-length limit) must not have its data deleted out from under it mid-session.
+  // The tradeoff is that a session stuck LIVE forever (never explicitly ended) keeps its
+  // data indefinitely too — an acceptable cost next to deleting an active session's data.
   const sessions = await prisma.session.findMany({
+    where: { status: { not: SessionStatus.LIVE } },
     select: { id: true, createdAt: true, endedAt: true, retentionDays: true },
   });
 
@@ -68,7 +76,14 @@ export async function POST(request: NextRequest) {
           where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
         });
       }
-    });
+      // Prisma's default 5s interactive-transaction timeout is tuned for a single
+      // small write; a backlog of many expired sessions (each cascading across
+      // TranscriptSegment/Message/Insight/GlossaryTerm/SessionParticipant/JoinLink)
+      // can take longer, and a timed-out transaction rolls back entirely — so a
+      // large-enough backlog would make every cron run fail the exact same way
+      // forever, permanently stalling retention purging. Matches the timeout
+      // insights.ts's own transaction already uses for the same reason.
+    }, { timeout: 20_000 });
   }
 
   return Response.json({ deletedSessionIds: expiredIds });

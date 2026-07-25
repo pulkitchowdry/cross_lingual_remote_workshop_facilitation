@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { detectBrowserLanguage, getDictionary, resolveLanguage } from "@/lib/i18n";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 
@@ -32,7 +33,13 @@ export default async function JoinPage({
     invite.role !== ParticipantRole.LEARNER ||
     invite.revokedAt ||
     (invite.expiresAt && invite.expiresAt < new Date()) ||
-    (invite.maxUses !== null && invite.useCount >= invite.maxUses)
+    (invite.maxUses !== null && invite.useCount >= invite.maxUses) ||
+    // The join link's own expiry above is a much longer, independent window (30 days
+    // by default) than the session's own retention deadline — without this, the join
+    // form would render normally for a session that's already past retention (the
+    // hourly cleanup cron hasn't physically deleted it yet), and only fail once the
+    // learner submits (see the matching check in actions.ts's `joinSession`).
+    isSessionRetentionExpired(invite.session)
   ) {
     notFound();
   }

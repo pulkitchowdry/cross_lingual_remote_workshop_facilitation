@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import "@/lib/dev-console-filter";
 import { getDictionary } from "@/lib/i18n";
 import { useUiLanguage } from "@/lib/use-ui-language";
 import { logoutFacilitator } from "@/app/sessions/[sessionId]/facilitator/actions";
@@ -17,6 +18,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isLearnerRoute = pathname?.startsWith("/join") || /^\/sessions\/[^/]+\/learn/.test(pathname ?? "");
   const navLinks = isLearnerRoute ? [] : ([{ href: "/setup", label: dict.shell.newSession }] as const);
   const facilitatorSessionId = pathname?.match(/^\/sessions\/([^/]+)\/facilitator/)?.[1];
+  // The live workshop room (video/screen-share + chat) is the one view where the
+  // 1600px cap actively wastes space — a facilitator or learner running this on a
+  // wide monitor was left with large idle margins on both sides of the video feed.
+  // Every other page (setup forms, history, the join flow) reads better narrower,
+  // so only these two routes drop the cap rather than lifting it globally.
+  const isWorkshopRoomRoute = isLearnerRoute || facilitatorSessionId !== undefined;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -75,7 +82,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </header>
-      <main id="main-content" className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-8">
+      <main
+        id="main-content"
+        className={
+          isWorkshopRoomRoute
+            ? "mx-auto w-full flex-1 px-3 py-6 sm:px-4"
+            : "mx-auto w-full max-w-[1600px] flex-1 px-6 py-8"
+        }
+      >
         {children}
       </main>
     </div>

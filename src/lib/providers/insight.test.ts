@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { parseInsightDraftsResponse, validateInsightDraft, type InsightDraft } from "./insight";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { insightProvider, parseInsightDraftsResponse, validateInsightDraft, type InsightDraft } from "./insight";
+
+const ORIGINAL_ENV = { ...process.env };
+
+function restoreEnv() {
+  process.env = { ...ORIGINAL_ENV };
+}
 
 function draft(overrides: Partial<InsightDraft> = {}): InsightDraft {
   return { type: "BLOCKER", summary: "Group still sees a 500 error.", sourceSegmentIds: ["seg-1"], ...overrides };
@@ -86,5 +92,42 @@ describe("parseInsightDraftsResponse", () => {
 
   it("drops a non-array top-level JSON value", () => {
     expect(parseInsightDraftsResponse(claudeResponse(JSON.stringify({ oops: true })))).toEqual([]);
+  });
+});
+
+describe("ClaudeInsightProvider.generateInsights", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    restoreEnv();
+  });
+
+  it("logs the status and body and returns [] on a non-OK response, instead of failing silently", async () => {
+    process.env.INSIGHT_MODEL_API_KEY = "insight-key";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => "rate limited" });
+    vi.stubGlobal("fetch", fetchMock);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await insightProvider.generateInsights({
+      sessionGoal: "Ship the endpoint",
+      finalSegments: [{ id: "seg-1", originalText: "Still getting a 500." }],
+    });
+
+    expect(result).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("429"));
+    errorSpy.mockRestore();
+  });
+
+  it("passes an abort signal so a hung request fails fast rather than riding the caller's own transaction timeout", async () => {
+    process.env.INSIGHT_MODEL_API_KEY = "insight-key";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await insightProvider.generateInsights({
+      sessionGoal: "Ship the endpoint",
+      finalSegments: [{ id: "seg-1", originalText: "Still getting a 500." }],
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(requestInit.signal).toBeInstanceOf(AbortSignal);
   });
 });

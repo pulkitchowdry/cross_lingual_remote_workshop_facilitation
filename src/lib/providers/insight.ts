@@ -114,9 +114,19 @@ class ClaudeInsightProvider implements InsightProvider {
         messages: [{ role: "user", content: buildUserContent(input) }],
       }),
       cache: "no-store",
+      // Matches translateWithClaude's timeout — without it, a hung Claude response rides
+      // this call's own Postgres advisory-lock transaction all the way to its 20s
+      // timeout (see insights.ts) instead of failing fast.
+      signal: AbortSignal.timeout(8_000),
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      // Matches translateWithClaude's logging — without it, a broken but *configured*
+      // provider (bad key, rate limit, model deprecation) is silently indistinguishable
+      // from "working, nothing new to report" every single time.
+      console.error(`ClaudeInsightProvider: Claude API responded ${response.status} ${await response.text()}`);
+      return [];
+    }
     return parseInsightDraftsResponse(await response.json());
   }
 }

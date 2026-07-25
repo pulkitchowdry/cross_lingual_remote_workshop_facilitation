@@ -92,7 +92,7 @@ export default async function LearnerSessionPage({
             <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
             <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
             <LiveSessionRoom sessionId={participant.session.id} role="learner" lang={lang} />
             <SessionChatPanel
               messages={[...participant.session.messages].reverse()}
@@ -135,9 +135,11 @@ export default async function LearnerSessionPage({
               const primaryText = isOwnLanguage
                 ? segment.originalText
                 : (translation?.text ?? dict.common.translationUnavailable);
-              // The fallback "Translation unavailable." string is fixed English UI copy, not a
-              // translation — tag it "en" rather than the learner's preferred language.
-              const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+              // Both non-own-language branches resolve to the learner's preferred
+              // language: `translation.text` is translated *into* it, and the
+              // dict.common.translationUnavailable fallback is itself localized to it
+              // (see i18n.ts's `common` dictionary) — neither is fixed English copy.
+              const primaryLang = isOwnLanguage ? segment.language : participant.preferredLanguage;
               return (
                 <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
                   <p
