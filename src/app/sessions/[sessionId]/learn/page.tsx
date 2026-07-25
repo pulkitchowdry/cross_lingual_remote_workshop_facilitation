@@ -101,18 +101,24 @@ export default async function LearnerSessionPage({
         <SessionAutoRefresh />
       )}
       <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
-      <div>
-        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {learnerDict.welcome(participant.user.displayName)}
-        </p>
-        <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
-        <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+      {/* Narrower than the page's workshop-room-wide shell (see AppShell) — before the
+          video room renders below, this is just two lines of text and a small card, which
+          read as oddly sparse stretched across a wide monitor with nothing else to fill
+          it. The video room and transcript grid further down keep the full page width. */}
+      <div className="flex max-w-2xl flex-col gap-6">
+        <div>
+          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {learnerDict.welcome(participant.user.displayName)}
+          </p>
+          <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
+          <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+        </div>
+        <Card eyebrow={learnerDict.preferencesCard}>
+          <p>
+            {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
+          </p>
+        </Card>
       </div>
-      <Card eyebrow={learnerDict.preferencesCard}>
-        <p>
-          {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
-        </p>
-      </Card>
       {participant.session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">

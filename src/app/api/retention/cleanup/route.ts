@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   // too — an acceptable cost next to deleting an active session's data.
   const sessions = await prisma.session.findMany({
     where: { status: { not: SessionStatus.LIVE } },
-    select: { id: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true },
+    select: { id: true, status: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true },
   });
 
   const expiredIds = sessions.filter((session) => isSessionRetentionExpired(session, now)).map((session) => session.id);
