@@ -266,7 +266,7 @@ const en: Dictionary = {
     start: "Start live captions from mic",
     stop: "Stop live captions",
     connectionFailed:
-      "Live caption connection failed. In local development this endpoint needs a Vercel deployment (or `vercel dev`) — use the typed caption box above instead.",
+      "Live caption connection failed. Use the typed caption box above instead.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -399,7 +399,7 @@ const zh: Dictionary = {
     start: "从麦克风开始实时字幕",
     stop: "停止实时字幕",
     connectionFailed:
-      "实时字幕连接失败。本地开发环境下此功能需要 Vercel 部署（或 `vercel dev`）——请改用上方的手动输入字幕框。",
+      "实时字幕连接失败。请改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -534,7 +534,7 @@ const es: Dictionary = {
     start: "Iniciar subtítulos en vivo desde el micrófono",
     stop: "Detener subtítulos en vivo",
     connectionFailed:
-      "Falló la conexión de subtítulos en vivo. En desarrollo local este endpoint requiere un despliegue en Vercel (o `vercel dev`) — usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",

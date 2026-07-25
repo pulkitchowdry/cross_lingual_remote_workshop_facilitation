@@ -46,7 +46,7 @@ const ENV_SPEC: EnvSpec[] = [
   {
     key: "CRON_SECRET",
     required: false,
-    description: "Shared secret authorizing Vercel Cron's /api/retention/cleanup calls",
+    description: "Shared secret authorizing scheduled /api/retention/cleanup calls",
   },
 ];
 

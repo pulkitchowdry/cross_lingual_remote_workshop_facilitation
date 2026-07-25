@@ -36,7 +36,7 @@ flowchart LR
         Auth["Session + JWT\nusers, orgs, invitations"]
     end
 
-    subgraph App[Next.js app — Vercel]
+    subgraph App[Next.js app — Railway]
         MW["Clerk middleware\n(replaces cookie checks in\nsession-access.ts)"]
         API["API routes / server actions"]
         Legacy["JoinLink / SessionParticipant\nlearner access (kept as-is)"]
@@ -77,9 +77,11 @@ Railway's `DATABASE_URL` output is a drop-in replacement for what
   Learners join via QR/link, no account, no Clerk — this is a deliberate
   low-friction design already built and shipped; Clerk only covers
   facilitator (and future org-admin) accounts.
-- **Hosting stays Vercel** (see `README.md#architecture`). Railway is scoped
-  to the database only in this decision, not app hosting — keeping the app on
-  Vercel's Fluid Compute avoids a second deploy target for zero benefit.
+- **Hosting is Railway** (see `README.md#architecture`) — both the app and the
+  database now live on the same platform, so there's only one deploy target.
+  (At the time this ADR was written the app hosting decision was still
+  Vercel, scoped separately from this database decision; that has since
+  changed.)
 - **Prisma stays the data-access layer.** Moving `DATABASE_URL` to a Railway
   connection string is a config change, not a code change.
 
@@ -122,11 +124,13 @@ provider decision plus the DB connection being live, per #53.
    the Railway dashboard).
 2. Add a PostgreSQL plugin/service to the project.
 3. Copy the generated connection string into `DATABASE_URL` — Railway exposes
-   it as `${{Postgres.DATABASE_URL}}` for service-to-service reference, or as
-   a plain `postgresql://user:pass@host:port/db` string for external clients
-   (Vercel-hosted app connecting in).
-4. On Vercel: `vercel env add DATABASE_URL` (production + preview), pasting
-   the Railway external connection string.
+   it as `${{Postgres.DATABASE_URL}}` for service-to-service reference (the
+   app service and the Postgres service are both on Railway, so this
+   internal reference is what you want), or as a plain
+   `postgresql://user:pass@host:port/db` string for external clients.
+4. Set `DATABASE_URL` as an environment variable on the app's Railway
+   service, pasting the Postgres service's connection string (or the
+   `${{Postgres.DATABASE_URL}}` reference above).
 5. Run `npx prisma migrate deploy` once against the Railway database to
    create the schema.
 
