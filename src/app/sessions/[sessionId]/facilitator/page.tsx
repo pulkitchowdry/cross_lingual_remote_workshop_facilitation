@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
 import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -16,6 +18,7 @@ import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { insightProvider } from "@/lib/providers/insight";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
@@ -106,6 +109,28 @@ export default async function FacilitatorSessionPage({
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
+  const commonDict = getDictionary(lang).common;
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  const transcriptEntries: TranscriptFeedEntry[] = session.transcript.map((segment) => {
+    // Segments used to always be facilitator-authored (always in sourceLanguage), but
+    // learners can now type captions too, in their own preferredLanguage — so this can no
+    // longer just show originalText and assume it's already the facilitator's language.
+    const isSourceLanguage = segment.language === session.sourceLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+    const primaryText = isSourceLanguage ? segment.originalText : (translation?.text ?? commonDict.translationUnavailable);
+    const primaryLang = isSourceLanguage ? segment.language : translation ? session.sourceLanguage : "en";
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? commonDict.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isSourceLanguage && !translation,
+      secondaryText: !isSourceLanguage ? segment.originalText : undefined,
+      secondaryLang: !isSourceLanguage ? segment.language : undefined,
+    };
+  });
+  const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
   const statusLabel = {
     [SessionStatus.DRAFT]: dict.statusDraft,
     [SessionStatus.LIVE]: dict.statusLive,
@@ -200,31 +225,57 @@ export default async function FacilitatorSessionPage({
             sessionId={session.id}
             role="facilitator"
             lang={lang}
+            captionText={latestCaptionText}
             belowVideo={
-              <>
-                <CaptionPublishForm
-                  action={publishCaptionAction}
-                  dict={{
-                    captionLabel: dict.captionLabel,
-                    captionPlaceholder: dict.captionPlaceholder,
-                    publish: dict.publish,
-                    publishing: dict.publishing,
-                  }}
+              speechToTextProvider.isConfigured && (
+                <LiveCaptionStream
+                  sessionId={session.id}
+                  lang={lang}
+                  agentCapturing={session.captionAgentActive}
                 />
-                {speechToTextProvider.isConfigured && (
-                  <LiveCaptionStream
-                    sessionId={session.id}
-                    lang={lang}
-                    agentCapturing={session.captionAgentActive}
-                  />
-                )}
-              </>
+              )
             }
             sidebar={
-              <SessionChatPanel
-                messages={chatMessages}
-                targetLanguage={session.sourceLanguage}
-                sendAction={sendChatAction}
+              <SessionSidePanel
+                chat={{
+                  messages: chatMessages,
+                  targetLanguage: session.sourceLanguage,
+                  sendAction: sendChatAction,
+                  viewerIsFacilitator: true,
+                }}
+                captions={{
+                  entries: transcriptEntries,
+                  emptyLabel: dict.transcriptEmpty,
+                  jumpToLatestLabel: commonDict.jumpToLatest,
+                }}
+                captionsHeader={
+                  textToSpeechProvider.isConfigured && (
+                    <TranslatedAudioPlayer
+                      segments={session.transcript.map((segment) => ({
+                        id: segment.id,
+                        hasTranslation:
+                          segment.language === session.sourceLanguage ||
+                          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+                        isTyped: segment.isTyped,
+                      }))}
+                      preferredLanguage={session.sourceLanguage}
+                    />
+                  )
+                }
+                captionComposer={
+                  <CaptionPublishForm
+                    action={publishCaptionAction}
+                    dict={{
+                      captionLabel: dict.captionLabel,
+                      captionPlaceholder: dict.captionPlaceholder,
+                      captionAudioHint: dict.captionAudioHint,
+                      publish: dict.publish,
+                      publishing: dict.publishing,
+                    }}
+                  />
+                }
+                chatTabLabel={commonDict.chatTab}
+                captionsTabLabel={commonDict.captionsTab}
               />
             }
           />
@@ -323,30 +374,11 @@ export default async function FacilitatorSessionPage({
           );
         })()}
       </section>
-      <section className="flex flex-col gap-3" aria-live="polite">
-        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
-        {transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {transcript.map((segment) => {
-              const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
-                  <p className="whitespace-pre-wrap italic text-muted-foreground" lang={segment.language}>
-                    {segment.originalText}
-                  </p>
-                  {translation && (
-                    <p className="mt-2 whitespace-pre-wrap" lang={session.sourceLanguage}>
-                      {translation.text}
-                    </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{dict.transcriptEmpty}</p>
-        )}
-      </section>
+      {/* The old standalone "Live transcript" section (a flat stacked-card list) was
+          removed here — superseded by the tabbed SessionSidePanel above, whose
+          "captions" tab (LiveTranscriptFeed) renders the exact same transcript data
+          as a YouTube-live-chat-style auto-scrolling feed instead, so keeping both
+          would just show the transcript twice. */}
       <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>
         {learnerInviteRevoked ? (
           <p className="text-muted-foreground">{dict.linkRevokedMsg}</p>

@@ -22,12 +22,15 @@ export function WorkshopRoomLayout({
   sessionId,
   role,
   lang,
+  captionText,
   belowVideo,
   sidebar,
 }: {
   sessionId: string;
   role: "facilitator" | "learner";
   lang: SupportedLanguage;
+  /** Latest caption text overlaid on the video itself — see the matching prop on `LiveSessionRoom`. */
+  captionText?: string;
   /** Extra controls rendered under the video room, inside the same column (e.g. the facilitator's typed-caption form and mic-capture button) — stays with the video column at every width instead of becoming a separate grid item. */
   belowVideo?: ReactNode;
   sidebar: ReactNode;
@@ -44,7 +47,13 @@ export function WorkshopRoomLayout({
       }
     >
       <div className="flex flex-col gap-3">
-        <LiveSessionRoom sessionId={sessionId} role={role} lang={lang} onScreenShareActiveChange={handleScreenShareActiveChange} />
+        <LiveSessionRoom
+          sessionId={sessionId}
+          role={role}
+          lang={lang}
+          captionText={captionText}
+          onScreenShareActiveChange={handleScreenShareActiveChange}
+        />
         {belowVideo}
       </div>
       {sidebar}

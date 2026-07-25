@@ -78,6 +78,7 @@ export async function publishCaption(
       language: session.sourceLanguage as SupportedLanguage,
       startedAt: now,
       endedAt: now,
+      isTyped: true,
     });
   } catch (error) {
     // publishTranslatedCaption's own translation fan-out can take up to ~16s —

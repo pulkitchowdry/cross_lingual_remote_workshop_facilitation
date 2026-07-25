@@ -31,6 +31,10 @@
 .DS_Store
 *.pem
 
+# google cloud sdk (local install, not project code)
+/google-cloud-sdk/
+google-cloud-cli-linux-x86_64.tar.gz
+
 # debug
 npm-debug.log*
 yarn-debug.log*

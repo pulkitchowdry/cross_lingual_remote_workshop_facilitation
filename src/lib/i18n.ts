@@ -67,10 +67,9 @@ export interface Dictionary {
     learnersJoinedCard: string;
     learnersJoinedHint: string;
     workshopRoom: string;
-    liveAudioVideo: string;
-    micCameraHint: string;
     captionLabel: string;
     captionPlaceholder: string;
+    captionAudioHint: string;
     publish: string;
     publishing: string;
     actNow: string;
@@ -107,23 +106,26 @@ export interface Dictionary {
     subtitle: string;
     preferencesCard: string;
     preferredLanguageLabel: string;
-    liveCaptions: string;
-    followExplanation: string;
-    sessionEnded: string;
-    waitingForFacilitator: string;
-    captionStream: string;
     captionsWillAppear: string;
     playTranslatedAudio: string;
+    typedCaptionsAlwaysAudible: string;
     audioBlocked: string;
     audioSkipped: string;
+    captionComposerLabel: string;
+    captionComposerPlaceholder: string;
+    captionAudioHint: string;
+    publish: string;
+    publishing: string;
   };
   chat: {
-    translatedChat: string;
     noMessages: string;
     question: string;
     sendMessageLabel: string;
     placeholder: string;
     flagQuestion: string;
+    askAnonymously: string;
+    anonymousLearner: string;
+    anonymousBadge: string;
     send: string;
     sending: string;
   };
@@ -146,6 +148,7 @@ export interface Dictionary {
     selectMicrophone: string;
     selectCamera: string;
     leaveCall: string;
+    toggleCaptions: string;
     screenShareInterrupted: string;
     disconnectedDuplicate: string;
     disconnectedOther: string;
@@ -159,6 +162,9 @@ export interface Dictionary {
     translationUnavailable: string;
     confirm: string;
     cancel: string;
+    jumpToLatest: string;
+    chatTab: string;
+    captionsTab: string;
   };
   notFound: {
     title: string;
@@ -226,10 +232,9 @@ const en: Dictionary = {
     learnersJoinedCard: "Learners joined",
     learnersJoinedHint: "Learners have completed consent and joined.",
     workshopRoom: "Workshop room",
-    liveAudioVideo: "Live audio and video",
-    micCameraHint: "Your camera joins live; your microphone starts muted — click the microphone icon below to turn it on.",
     captionLabel: "Type a caption for learners",
     captionPlaceholder: "Type a caption for learners in their selected language…",
+    captionAudioHint: "Read aloud to every learner in their language, even if they haven't turned on translated audio.",
     publish: "Publish",
     publishing: "Publishing…",
     actNow: "Act now",
@@ -266,23 +271,26 @@ const en: Dictionary = {
     subtitle: "Your captions and facilitator replies will appear in your selected language.",
     preferencesCard: "Your learning preferences",
     preferredLanguageLabel: "Preferred language:",
-    liveCaptions: "Live captions",
-    followExplanation: "Follow the explanation in your language",
-    sessionEnded: "Session ended",
-    waitingForFacilitator: "Waiting for the facilitator to start",
-    captionStream: "Caption stream",
     captionsWillAppear: "Captions will appear here as soon as the facilitator starts speaking.",
     playTranslatedAudio: "Play translated audio for new captions",
+    typedCaptionsAlwaysAudible: "The facilitator's typed captions are always read aloud, even if this is off.",
     audioBlocked: "Translated audio playback was blocked by the browser.",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
+    captionComposerLabel: "Type a caption for everyone",
+    captionComposerPlaceholder: "Type something to be read aloud to everyone…",
+    captionAudioHint: "Read aloud to everyone in their language, even if they haven't turned on translated audio — useful if you can't speak.",
+    publish: "Publish",
+    publishing: "Publishing…",
   },
   chat: {
-    translatedChat: "Translated chat",
     noMessages: "No messages yet. Say hello or ask for help.",
     question: "Question",
     sendMessageLabel: "Send a message",
     placeholder: "Write in your own language…",
     flagQuestion: "Flag as a question for the facilitator",
+    askAnonymously: "Ask anonymously",
+    anonymousLearner: "Anonymous learner",
+    anonymousBadge: "Anonymous",
     send: "Send",
     sending: "Sending…",
   },
@@ -307,6 +315,7 @@ const en: Dictionary = {
     selectMicrophone: "Select microphone",
     selectCamera: "Select camera",
     leaveCall: "Leave call",
+    toggleCaptions: "Toggle captions",
     screenShareInterrupted: "Your screen share was interrupted by a reconnect — click Share screen again to resume.",
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
@@ -315,7 +324,15 @@ const en: Dictionary = {
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
   },
-  common: { speaker: "Speaker", translationUnavailable: "Translation unavailable.", confirm: "Confirm", cancel: "Cancel" },
+  common: {
+    speaker: "Speaker",
+    translationUnavailable: "Translation unavailable.",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    jumpToLatest: "Jump to latest",
+    chatTab: "Chat",
+    captionsTab: "Captions",
+  },
   notFound: {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
@@ -381,10 +398,9 @@ const zh: Dictionary = {
     learnersJoinedCard: "已加入学员",
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
     workshopRoom: "活动室",
-    liveAudioVideo: "实时音视频",
-    micCameraHint: "你的摄像头会立即接入；麦克风默认静音——点击下方麦克风图标可开启。",
     captionLabel: "为学员输入字幕",
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
+    captionAudioHint: "会以每位学员的语言朗读给他们听，即使他们未开启翻译语音。",
     publish: "发布",
     publishing: "发布中……",
     actNow: "立即处理",
@@ -421,23 +437,26 @@ const zh: Dictionary = {
     subtitle: "字幕与主持人回复都会以你所选的语言显示。",
     preferencesCard: "你的学习偏好",
     preferredLanguageLabel: "偏好语言：",
-    liveCaptions: "实时字幕",
-    followExplanation: "以你的语言跟随讲解",
-    sessionEnded: "场次已结束",
-    waitingForFacilitator: "等待主持人开始",
-    captionStream: "字幕流",
     captionsWillAppear: "主持人开始发言后，字幕会显示在这里。",
     playTranslatedAudio: "为新字幕播放翻译语音",
+    typedCaptionsAlwaysAudible: "主持人输入的字幕始终会朗读，即使此项关闭。",
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
+    captionComposerLabel: "为所有人输入字幕",
+    captionComposerPlaceholder: "输入内容，将朗读给所有人听……",
+    captionAudioHint: "会以每个人的语言朗读给他们听，即使他们未开启翻译语音——适合无法说话时使用。",
+    publish: "发布",
+    publishing: "发布中……",
   },
   chat: {
-    translatedChat: "翻译聊天",
     noMessages: "暂无消息。打个招呼或提出问题吧。",
     question: "提问",
     sendMessageLabel: "发送消息",
     placeholder: "用你自己的语言书写……",
     flagQuestion: "标记为向主持人提出的问题",
+    askAnonymously: "匿名提问",
+    anonymousLearner: "匿名学员",
+    anonymousBadge: "匿名",
     send: "发送",
     sending: "发送中……",
   },
@@ -462,6 +481,7 @@ const zh: Dictionary = {
     selectMicrophone: "选择麦克风",
     selectCamera: "选择摄像头",
     leaveCall: "离开通话",
+    toggleCaptions: "开关字幕",
     screenShareInterrupted: "屏幕共享因重新连接而中断——请点击“共享屏幕”以恢复。",
     disconnectedDuplicate: "你已断开连接，因为此链接同时在另一个标签页或窗口中被打开。",
     disconnectedOther: "你已从媒体房间断开连接。",
@@ -470,7 +490,15 @@ const zh: Dictionary = {
     microphoneUnavailable: "麦克风不可用（权限被拒绝、被占用或未找到）——将不使用麦克风继续。",
     rejoin: "重新加入",
   },
-  common: { speaker: "发言者", translationUnavailable: "暂无译文。", confirm: "确认", cancel: "取消" },
+  common: {
+    speaker: "发言者",
+    translationUnavailable: "暂无译文。",
+    confirm: "确认",
+    cancel: "取消",
+    jumpToLatest: "跳到最新",
+    chatTab: "聊天",
+    captionsTab: "字幕",
+  },
   notFound: {
     title: "未找到该链接",
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
@@ -537,10 +565,9 @@ const es: Dictionary = {
     learnersJoinedCard: "Alumnos conectados",
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
     workshopRoom: "Sala del taller",
-    liveAudioVideo: "Audio y video en vivo",
-    micCameraHint: "Tu cámara se conecta en vivo; tu micrófono empieza silenciado — haz clic en el ícono de micrófono para activarlo.",
     captionLabel: "Escribe un subtítulo para los alumnos",
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
+    captionAudioHint: "Se leerá en voz alta a cada alumno en su idioma, aunque no hayan activado el audio traducido.",
     publish: "Publicar",
     publishing: "Publicando…",
     actNow: "Actuar ahora",
@@ -577,23 +604,26 @@ const es: Dictionary = {
     subtitle: "Tus subtítulos y las respuestas del facilitador aparecerán en tu idioma seleccionado.",
     preferencesCard: "Tus preferencias de aprendizaje",
     preferredLanguageLabel: "Idioma preferido:",
-    liveCaptions: "Subtítulos en vivo",
-    followExplanation: "Sigue la explicación en tu idioma",
-    sessionEnded: "Sesión finalizada",
-    waitingForFacilitator: "Esperando a que el facilitador comience",
-    captionStream: "Flujo de subtítulos",
     captionsWillAppear: "Los subtítulos aparecerán aquí en cuanto el facilitador empiece a hablar.",
     playTranslatedAudio: "Reproducir audio traducido para los nuevos subtítulos",
+    typedCaptionsAlwaysAudible: "Los subtítulos escritos por el facilitador siempre se leen en voz alta, aunque esto esté desactivado.",
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
+    captionComposerLabel: "Escribe un subtítulo para todos",
+    captionComposerPlaceholder: "Escribe algo para que se lea en voz alta a todos…",
+    captionAudioHint: "Se leerá en voz alta a todos en su idioma, aunque no hayan activado el audio traducido — útil si no puedes hablar.",
+    publish: "Publicar",
+    publishing: "Publicando…",
   },
   chat: {
-    translatedChat: "Chat traducido",
     noMessages: "Aún no hay mensajes. Saluda o pide ayuda.",
     question: "Pregunta",
     sendMessageLabel: "Enviar un mensaje",
     placeholder: "Escribe en tu propio idioma…",
     flagQuestion: "Marcar como pregunta para el facilitador",
+    askAnonymously: "Preguntar de forma anónima",
+    anonymousLearner: "Estudiante anónimo",
+    anonymousBadge: "Anónimo",
     send: "Enviar",
     sending: "Enviando…",
   },
@@ -618,6 +648,7 @@ const es: Dictionary = {
     selectMicrophone: "Seleccionar micrófono",
     selectCamera: "Seleccionar cámara",
     leaveCall: "Salir de la llamada",
+    toggleCaptions: "Activar o desactivar subtítulos",
     screenShareInterrupted: "Tu pantalla compartida se interrumpió por una reconexión — haz clic en Compartir pantalla para reanudarla.",
     disconnectedDuplicate: "Te has desconectado porque este enlace se abrió al mismo tiempo en otra pestaña o ventana.",
     disconnectedOther: "Te has desconectado de la sala multimedia.",
@@ -626,7 +657,15 @@ const es: Dictionary = {
     microphoneUnavailable: "Tu micrófono no está disponible (permiso denegado, en uso, o no encontrado) — continuando sin él.",
     rejoin: "Reincorporarse",
   },
-  common: { speaker: "Orador", translationUnavailable: "Traducción no disponible.", confirm: "Confirmar", cancel: "Cancelar" },
+  common: {
+    speaker: "Orador",
+    translationUnavailable: "Traducción no disponible.",
+    confirm: "Confirmar",
+    cancel: "Cancelar",
+    jumpToLatest: "Ir a lo último",
+    chatTab: "Chat",
+    captionsTab: "Subtítulos",
+  },
   notFound: {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",

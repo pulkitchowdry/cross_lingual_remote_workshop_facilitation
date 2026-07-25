@@ -6,13 +6,17 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 interface CaptionForPlayback {
   id: string;
   hasTranslation: boolean;
+  isTyped: boolean;
 }
 
 /**
- * Opt-in translated-audio playback for the learner's caption feed — Part 3 of
- * `docs/TRANSLATION_ARCHITECTURE.md`. Never autoplays: nothing is synthesized
- * or played until the learner explicitly enables it, per the doc's privacy
- * decision. Fetches `/api/captions/[segmentId]/audio` on demand for each new
+ * Translated-audio playback for the learner's caption feed — Part 3 of
+ * `docs/TRANSLATION_ARCHITECTURE.md`. Spoken captions stay opt-in: nothing is
+ * synthesized or played until the learner explicitly enables it, per the
+ * doc's privacy decision. Facilitator-typed captions are the exception —
+ * they stand in for the facilitator's voice (typed because they can't speak,
+ * not as a translation nicety), so those always play regardless of the
+ * opt-in. Fetches `/api/captions/[segmentId]/audio` on demand for each new
  * segment and queues playback so overlapping captions don't talk over each
  * other.
  */
@@ -30,6 +34,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   const [errorKind, setErrorKind] = useState<PlaybackErrorKind | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const hasMountedRef = useRef(false);
   const queueRef = useRef<string[]>([]);
   const playingRef = useRef(false);
 
@@ -62,11 +67,28 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   const error = errorKind === "blocked" ? dict.audioBlocked : errorKind === "skipped" ? dict.audioSkipped : null;
 
   useEffect(() => {
-    const unseen = segments.filter((segment) => segment.hasTranslation && !seenIdsRef.current.has(segment.id));
-    segments.forEach((segment) => seenIdsRef.current.add(segment.id));
-    if (!enabled || unseen.length === 0) return;
+    // Only mark a segment "seen" once it actually has a translation, not the moment
+    // its id first shows up in `segments` — translation runs asynchronously (up to
+    // ~16s, see `publishCaption`) and SessionAutoRefresh polls every 2s, so a segment
+    // routinely appears here several times *before* its translation lands. Marking it
+    // seen on that first, translation-less appearance permanently disqualified it: by
+    // the time `hasTranslation` flipped to true on a later poll, `unseen` had already
+    // excluded it, so its audio silently never queued — the caption played nothing.
+    const newlyTranslated = segments.filter(
+      (segment) => segment.hasTranslation && !seenIdsRef.current.has(segment.id),
+    );
+    newlyTranslated.forEach((segment) => seenIdsRef.current.add(segment.id));
+    // Skip the initial mount's batch — otherwise every typed caption already
+    // in the transcript before this learner loaded the page would replay as
+    // audio the instant the component mounts.
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || enabled);
+    if (toQueue.length === 0) return;
 
-    queueRef.current.push(...unseen.map((segment) => segment.id));
+    queueRef.current.push(...toQueue.map((segment) => segment.id));
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments, enabled]);
@@ -82,17 +104,25 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   }, [enabled]);
 
   return (
-    <div className="flex items-center gap-2">
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        {dict.playTranslatedAudio}
-      </label>
-      <audio ref={audioRef} onEnded={playNext} onError={handlePlaybackError} className="hidden" />
-      {error && (
-        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
-          {error}
-        </p>
-      )}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => setEnabled(event.target.checked)}
+            className="h-3.5 w-3.5 accent-[var(--accent)]"
+          />
+          {dict.playTranslatedAudio}
+        </label>
+        <audio ref={audioRef} onEnded={playNext} onError={handlePlaybackError} className="hidden" />
+        {error && (
+          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+            {error}
+          </p>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{dict.typedCaptionsAlwaysAudible}</p>
     </div>
   );
 }

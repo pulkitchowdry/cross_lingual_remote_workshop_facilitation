@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/Card";
 import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { ChatSendButton } from "@/components/ChatSendButton";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
@@ -15,7 +17,7 @@ import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } 
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
-import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
+import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
 
@@ -64,7 +66,27 @@ export default async function LearnerSessionPage({
     participant.session.learnerLanguages.includes(language.value),
   );
   const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
-  const transcript = [...participant.session.transcript].reverse();
+  const publishCaptionAction = publishLearnerCaption.bind(null, sessionId);
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  const transcriptEntries: TranscriptFeedEntry[] = participant.session.transcript.map((segment) => {
+    const isOwnLanguage = segment.language === participant.preferredLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
+    const primaryText = isOwnLanguage ? segment.originalText : (translation?.text ?? dict.common.translationUnavailable);
+    // The fallback "Translation unavailable." string is fixed English UI copy, not a
+    // translation — tag it "en" rather than the learner's preferred language.
+    const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? dict.common.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isOwnLanguage && !translation,
+      secondaryText: !isOwnLanguage ? segment.originalText : undefined,
+      secondaryLang: !isOwnLanguage ? segment.language : undefined,
+    };
+  });
+  const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
 
   return (
     <div className="flex flex-col gap-6">
@@ -99,89 +121,66 @@ export default async function LearnerSessionPage({
       </div>
       {participant.session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {dict.facilitator.workshopRoom}
-            </p>
-            <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
-            <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
-          </div>
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {dict.facilitator.workshopRoom}
+          </h2>
           <WorkshopRoomLayout
             sessionId={participant.session.id}
             role="learner"
             lang={lang}
+            captionText={latestCaptionText}
             sidebar={
-              <SessionChatPanel
-                messages={[...participant.session.messages].reverse()}
-                targetLanguage={participant.preferredLanguage}
-                sendAction={sendChatAction}
-                allowQuestions
+              <SessionSidePanel
+                chat={{
+                  messages: [...participant.session.messages].reverse(),
+                  targetLanguage: participant.preferredLanguage,
+                  sendAction: sendChatAction,
+                  allowQuestions: true,
+                }}
+                captions={{
+                  entries: transcriptEntries,
+                  emptyLabel: learnerDict.captionsWillAppear,
+                  jumpToLatestLabel: dict.common.jumpToLatest,
+                }}
+                captionsHeader={
+                  textToSpeechProvider.isConfigured && (
+                    <TranslatedAudioPlayer
+                      segments={participant.session.transcript.map((segment) => ({
+                        id: segment.id,
+                        hasTranslation:
+                          segment.language === participant.preferredLanguage ||
+                          segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+                        isTyped: segment.isTyped,
+                      }))}
+                      preferredLanguage={participant.preferredLanguage}
+                    />
+                  )
+                }
+                captionComposer={
+                  <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+                    <label className="sr-only" htmlFor="learner-caption">{learnerDict.captionComposerLabel}</label>
+                    <textarea
+                      id="learner-caption"
+                      className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      name="captionText"
+                      rows={2}
+                      required
+                      maxLength={3000}
+                      placeholder={learnerDict.captionComposerPlaceholder}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">{learnerDict.captionAudioHint}</p>
+                      <ChatSendButton label={learnerDict.publish} sendingLabel={learnerDict.publishing} />
+                    </div>
+                  </form>
+                }
+                chatTabLabel={dict.common.chatTab}
+                captionsTabLabel={dict.common.captionsTab}
               />
             }
           />
         </section>
       )}
-      <section className="flex flex-col gap-3" aria-live="polite">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{learnerDict.liveCaptions}</p>
-          <h2 className="font-heading text-lg font-semibold">
-            {participant.session.status === SessionStatus.LIVE
-              ? learnerDict.followExplanation
-              : participant.session.status === SessionStatus.ENDED
-                ? learnerDict.sessionEnded
-                : learnerDict.waitingForFacilitator}
-          </h2>
-        </div>
-        {textToSpeechProvider.isConfigured && (
-          <TranslatedAudioPlayer
-            segments={transcript.map((segment) => ({
-              id: segment.id,
-              hasTranslation:
-                segment.language === participant.preferredLanguage ||
-                segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-            }))}
-            preferredLanguage={participant.preferredLanguage}
-          />
-        )}
-        {transcript.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {transcript.map((segment) => {
-              const isOwnLanguage = segment.language === participant.preferredLanguage;
-              const translation = segment.translations.find(
-                (item) => item.targetLanguage === participant.preferredLanguage,
-              );
-              const primaryText = isOwnLanguage
-                ? segment.originalText
-                : (translation?.text ?? dict.common.translationUnavailable);
-              // Both non-own-language branches resolve to the learner's preferred
-              // language: `translation.text` is translated *into* it, and the
-              // dict.common.translationUnavailable fallback is itself localized to it
-              // (see i18n.ts's `common` dictionary) — neither is fixed English copy.
-              const primaryLang = isOwnLanguage ? segment.language : participant.preferredLanguage;
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
-                  <p
-                    className="whitespace-pre-wrap text-base leading-relaxed"
-                    lang={primaryLang}
-                    style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
-                  >
-                    {primaryText}
-                  </p>
-                  {!isOwnLanguage && (
-                    <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={segment.language}>
-                      {segment.originalText}
-                    </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card eyebrow={learnerDict.captionStream}>
-            <p className="text-muted-foreground">{learnerDict.captionsWillAppear}</p>
-          </Card>
-        )}
-      </section>
     </div>
   );
 }

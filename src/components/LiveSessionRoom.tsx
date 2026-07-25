@@ -85,12 +85,14 @@ const MAX_BACKGROUND_REFRESH_RETRIES = 3;
 function WorkshopVideoStage({
   role,
   dict,
+  captionText,
   onPublishStateChange,
   onScreenShareActiveChange,
   onLeave,
 }: {
   role: Role;
   dict: RoomDict;
+  captionText?: string;
   /** Reports the local participant's actual mic/camera/screen-share state after every change, so a later forced reconnect (see `publishState` below) can restore it instead of resetting to fixed defaults. */
   onPublishStateChange: (patch: Partial<PublishState>) => void;
   /** Reports whether ANY participant's screen share is currently live in the room (not just the local one) — the page grid uses this to let the video column grow toward full width while something is actively being presented, instead of staying capped at its idle share. */
@@ -129,6 +131,7 @@ function WorkshopVideoStage({
   ]);
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
+  const [showCaptions, setShowCaptions] = useState(true);
 
   const isScreenShareActive = Boolean(screenShareTrack);
   useEffect(() => {
@@ -159,7 +162,7 @@ function WorkshopVideoStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-hidden p-2">
+      <div className="relative flex-1 overflow-hidden p-2">
         {screenShareTrack ? (
           // FocusLayoutContainer expects its FIRST child to be the small side
           // carousel and its SECOND child to be the large focused tile — its
@@ -178,6 +181,13 @@ function WorkshopVideoStage({
           <GridLayout tracks={cameraTracks} className="h-full">
             <ParticipantTile />
           </GridLayout>
+        )}
+        {showCaptions && captionText && (
+          <div className="pointer-events-none absolute inset-x-6 bottom-4 flex justify-center">
+            <p className="max-w-full rounded-md bg-black/75 px-3 py-1.5 text-center text-sm text-white">
+              {captionText}
+            </p>
+          </div>
         )}
       </div>
       <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
@@ -205,6 +215,17 @@ function WorkshopVideoStage({
             captureOptions={{ audio: true }}
           />
         )}
+        <button
+          type="button"
+          className="lk-button"
+          aria-pressed={showCaptions}
+          aria-label={dict.toggleCaptions}
+          onClick={() => setShowCaptions((current) => !current)}
+        >
+          <span className="font-data text-[11px] font-bold leading-none tracking-tight" aria-hidden="true">
+            CC
+          </span>
+        </button>
         <DisconnectButton aria-label={dict.leaveCall} onClick={onLeave}>
           <LeaveIcon />
         </DisconnectButton>
@@ -217,11 +238,13 @@ export function LiveSessionRoom({
   sessionId,
   role,
   lang,
+  captionText,
   onScreenShareActiveChange,
 }: {
   sessionId: string;
   role: Role;
   lang: SupportedLanguage;
+  captionText?: string;
   /** See the matching prop on `WorkshopVideoStage` — bubbled straight through so the page grid wrapping this component can react to it. */
   onScreenShareActiveChange?: (active: boolean) => void;
 }) {
@@ -535,6 +558,7 @@ export function LiveSessionRoom({
         <WorkshopVideoStage
           role={role}
           dict={dict}
+          captionText={captionText}
           onPublishStateChange={handlePublishStateChange}
           onScreenShareActiveChange={onScreenShareActiveChange}
           onLeave={handleLeave}
