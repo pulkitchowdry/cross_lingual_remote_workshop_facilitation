@@ -67,8 +67,17 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   const error = errorKind === "blocked" ? dict.audioBlocked : errorKind === "skipped" ? dict.audioSkipped : null;
 
   useEffect(() => {
-    const unseen = segments.filter((segment) => !seenIdsRef.current.has(segment.id));
-    segments.forEach((segment) => seenIdsRef.current.add(segment.id));
+    // Only mark a segment "seen" once it actually has a translation, not the moment
+    // its id first shows up in `segments` — translation runs asynchronously (up to
+    // ~16s, see `publishCaption`) and SessionAutoRefresh polls every 2s, so a segment
+    // routinely appears here several times *before* its translation lands. Marking it
+    // seen on that first, translation-less appearance permanently disqualified it: by
+    // the time `hasTranslation` flipped to true on a later poll, `unseen` had already
+    // excluded it, so its audio silently never queued — the caption played nothing.
+    const newlyTranslated = segments.filter(
+      (segment) => segment.hasTranslation && !seenIdsRef.current.has(segment.id),
+    );
+    newlyTranslated.forEach((segment) => seenIdsRef.current.add(segment.id));
     // Skip the initial mount's batch — otherwise every typed caption already
     // in the transcript before this learner loaded the page would replay as
     // audio the instant the component mounts.
@@ -76,7 +85,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       hasMountedRef.current = true;
       return;
     }
-    const toQueue = unseen.filter((segment) => segment.hasTranslation && (segment.isTyped || enabled));
+    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || enabled);
     if (toQueue.length === 0) return;
 
     queueRef.current.push(...toQueue.map((segment) => segment.id));
