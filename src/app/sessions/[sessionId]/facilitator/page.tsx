@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
@@ -16,7 +16,7 @@ import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import {
   endSession,
@@ -51,7 +51,7 @@ export default async function FacilitatorSessionPage({
     where: { id: sessionId },
     include: {
       participants: { where: { role: ParticipantRole.LEARNER } },
-      transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+      transcript: { include: { translations: true }, orderBy: { startedAt: "desc" }, take: TRANSCRIPT_HISTORY_LIMIT },
       insights: { include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } } },
       messages: {
         include: { sender: true, translations: true },
@@ -94,6 +94,7 @@ export default async function FacilitatorSessionPage({
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
+  const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
@@ -147,38 +148,44 @@ export default async function FacilitatorSessionPage({
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
-            <div className="flex flex-col gap-3">
-              <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} />
-              <form action={publishCaptionAction} className="flex gap-2">
-                <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
-                <textarea
-                  id="facilitator-caption"
-                  className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                  name="captionText"
-                  rows={1}
-                  required
-                  maxLength={3000}
-                  placeholder={dict.captionPlaceholder}
-                />
-                <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-                  {dict.publish}
-                </button>
-              </form>
-              {speechToTextProvider.isConfigured && (
-                <LiveCaptionStream
-                  sessionId={session.id}
-                  lang={lang}
-                  agentCapturing={session.captionAgentActive}
-                />
-              )}
-            </div>
-            <SessionChatPanel
-              messages={chatMessages}
-              targetLanguage={session.sourceLanguage}
-              sendAction={sendChatAction}
-            />
-          </div>
+          <WorkshopRoomLayout
+            sessionId={session.id}
+            role="facilitator"
+            lang={lang}
+            belowVideo={
+              <>
+                <form action={publishCaptionAction} className="flex gap-2">
+                  <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
+                  <textarea
+                    id="facilitator-caption"
+                    className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    name="captionText"
+                    rows={1}
+                    required
+                    maxLength={3000}
+                    placeholder={dict.captionPlaceholder}
+                  />
+                  <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
+                    {dict.publish}
+                  </button>
+                </form>
+                {speechToTextProvider.isConfigured && (
+                  <LiveCaptionStream
+                    sessionId={session.id}
+                    lang={lang}
+                    agentCapturing={session.captionAgentActive}
+                  />
+                )}
+              </>
+            }
+            sidebar={
+              <SessionChatPanel
+                messages={chatMessages}
+                targetLanguage={session.sourceLanguage}
+                sendAction={sendChatAction}
+              />
+            }
+          />
         </section>
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
@@ -213,7 +220,7 @@ export default async function FacilitatorSessionPage({
               );
             })}
           </div>
-        ) : session.transcript.length === 0 ? (
+        ) : transcript.length === 0 ? (
           <Card eyebrow={dict.noInterventionYet}>
             <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
           </Card>
@@ -225,9 +232,9 @@ export default async function FacilitatorSessionPage({
       </section>
       <section className="flex flex-col gap-3" aria-live="polite">
         <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
-        {session.transcript.length > 0 ? (
+        {transcript.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {session.transcript.map((segment) => {
+            {transcript.map((segment) => {
               const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
               return (
                 <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
