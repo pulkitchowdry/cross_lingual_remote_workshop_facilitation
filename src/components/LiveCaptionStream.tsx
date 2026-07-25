@@ -14,7 +14,23 @@ const NORMAL_CLOSURE_CODE = 1000;
  * enough for near-real-time transcription; the server persists and
  * DataChannel-pushes each final transcript as it arrives.
  */
-export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang: SupportedLanguage }) {
+export function LiveCaptionStream({
+  sessionId,
+  lang,
+  agentCapturing = false,
+}: {
+  sessionId: string;
+  lang: SupportedLanguage;
+  /**
+   * True when the server-side caption agent (`caption-agent.ts`) is already
+   * streaming this facilitator's mic track — it auto-subscribes as soon as
+   * the ControlBar mic is unmuted. Starting this WebSocket path on top of
+   * that would open a second, independent STT pipeline for the same audio,
+   * duplicating every caption line (issue #95). When true, replace the
+   * "Start" button with a status notice instead of letting it be clicked.
+   */
+  agentCapturing?: boolean;
+}) {
   const dict = getDictionary(lang).captions;
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -36,6 +52,16 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
   }, []);
 
   useEffect(() => stop, [stop]);
+
+  // The agent can start capturing (mic unmuted in ControlBar) after this WS path was
+  // already streaming — e.g. the facilitator clicked "Start" before turning their mic
+  // on. Without this, both pipelines would keep running and duplicating captions.
+  useEffect(() => {
+    // `stop()` tears down the socket/recorder/mic stream (external systems), not just
+    // local state — a legitimate effect, not state that could be computed during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (agentCapturing && isStreaming) stop();
+  }, [agentCapturing, isStreaming, stop]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -107,6 +133,20 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       setIsConnecting(false);
     }
   }, [sessionId, stop, dict.connectionFailed, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+
+  if (agentCapturing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
+          role="status"
+        >
+          {dict.agentCapturing}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">

@@ -126,6 +126,7 @@ export interface Dictionary {
   captions: {
     start: string;
     stop: string;
+    agentCapturing: string;
     connectionFailed: string;
     sttError: string;
     micRecordingFailed: string;
@@ -261,6 +262,7 @@ const en: Dictionary = {
   captions: {
     start: "Start live captions from mic",
     stop: "Stop live captions",
+    agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
       "Live caption connection failed. Use the typed caption box above instead.",
     sttError: "Speech-to-text error.",
@@ -392,6 +394,7 @@ const zh: Dictionary = {
   captions: {
     start: "从麦克风开始实时字幕",
     stop: "停止实时字幕",
+    agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
       "实时字幕连接失败。请改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
@@ -525,6 +528,7 @@ const es: Dictionary = {
   captions: {
     start: "Iniciar subtítulos en vivo desde el micrófono",
     stop: "Detener subtítulos en vivo",
+    agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
       "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     sttError: "Error de conversión de voz a texto.",

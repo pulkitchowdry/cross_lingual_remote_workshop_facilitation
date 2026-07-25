@@ -12,6 +12,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { isCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
@@ -174,7 +175,13 @@ export default async function FacilitatorSessionPage({
                   {dict.publish}
                 </button>
               </form>
-              {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} lang={lang} />}
+              {speechToTextProvider.isConfigured && (
+                <LiveCaptionStream
+                  sessionId={session.id}
+                  lang={lang}
+                  agentCapturing={isCaptionAgentCapturing(session.id)}
+                />
+              )}
             </div>
             <SessionChatPanel
               messages={chatMessages}
