@@ -45,19 +45,20 @@ interface RoomCredentials {
  * don't get the control.
  */
 function WorkshopVideoStage({ role }: { role: Role }) {
-  // LiveKitRoom never auto-publishes a mic track (`audio={false}` below), so
-  // the browser never prompts for microphone permission on connect. Without
-  // that permission, `navigator.mediaDevices.enumerateDevices()` — which
-  // ControlBar's microphone device menu calls internally — returns every
-  // audio input with the same blank label and the same browser-anonymized
-  // deviceId hash. React then renders that device menu's <li> entries keyed
-  // by that repeated hash, producing the "two children with the same key"
-  // warning. Requesting (and immediately releasing) a mic permission here
-  // makes the browser report real per-device IDs, which is the actual fix —
-  // publishing stays off, only the permission prompt changes.
+  // LiveKitRoom auto-publishes video but never audio (`audio={false}` below),
+  // so the browser only ever prompts for camera permission on connect. Without
+  // mic permission, `navigator.mediaDevices.enumerateDevices()` — which
+  // ControlBar's device menus call internally — returns every audio input
+  // with the same blank label and the same browser-anonymized deviceId hash,
+  // and the same happens for video inputs if camera permission is denied.
+  // React then renders those device menus' <li> entries keyed by the
+  // repeated hash, producing the "two children with the same key" warning.
+  // Requesting (and immediately releasing) both permissions here makes the
+  // browser report real per-device IDs — publishing stays governed by the
+  // `audio`/`video` props above, only the permission prompts change.
   useEffect(() => {
     navigator.mediaDevices
-      ?.getUserMedia({ audio: true })
+      ?.getUserMedia({ audio: true, video: true })
       .then((stream) => stream.getTracks().forEach((track) => track.stop()))
       .catch(() => {
         // Permission denial only degrades device-menu labels, not the call.
