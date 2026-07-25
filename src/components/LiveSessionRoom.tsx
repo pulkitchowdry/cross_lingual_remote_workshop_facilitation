@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ControlBar,
+  DisconnectButton,
   GridLayout,
+  LeaveIcon,
   LiveKitRoom,
+  MediaDeviceMenu,
   ParticipantTile,
   RoomAudioRenderer,
+  TrackToggle,
   useDataChannel,
   useTracks,
 } from "@livekit/components-react";
@@ -15,6 +18,8 @@ import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+
+type RoomDict = ReturnType<typeof getDictionary>["room"];
 
 /**
  * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
@@ -35,21 +40,33 @@ interface RoomCredentials {
   token: string;
 }
 
-function WorkshopVideoStage() {
+function WorkshopVideoStage({ dict }: { dict: RoomDict }) {
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-hidden p-3">
+      <div className="flex-1 overflow-hidden rounded-t-lg p-3">
         <GridLayout tracks={tracks} className="h-full">
           <ParticipantTile />
         </GridLayout>
       </div>
-      <div className="overflow-x-auto border-t border-border-subtle p-2">
-        <ControlBar
-          variation="minimal"
-          controls={{ microphone: true, camera: true, chat: false, screenShare: true, leave: true }}
-        />
+      <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
+        <div className="lk-button-group">
+          <TrackToggle source={Track.Source.Microphone} aria-label={dict.toggleMicrophone} />
+          <div className="lk-button-group-menu">
+            <MediaDeviceMenu kind="audioinput" aria-label={dict.selectMicrophone} />
+          </div>
+        </div>
+        <div className="lk-button-group">
+          <TrackToggle source={Track.Source.Camera} aria-label={dict.toggleCamera} />
+          <div className="lk-button-group-menu">
+            <MediaDeviceMenu kind="videoinput" aria-label={dict.selectCamera} />
+          </div>
+        </div>
+        <TrackToggle source={Track.Source.ScreenShare} aria-label={dict.toggleScreenShare} />
+        <DisconnectButton aria-label={dict.leaveCall}>
+          <LeaveIcon />
+        </DisconnectButton>
       </div>
     </div>
   );
@@ -91,7 +108,7 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
   }
 
   return (
-    <div className="h-[38rem] overflow-hidden rounded-lg border border-border-subtle bg-surface">
+    <div className="h-[38rem] rounded-lg border border-border-subtle bg-surface">
       <LiveKitRoom
         token={credentials.token}
         serverUrl={credentials.serverUrl}
@@ -100,7 +117,7 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         video={false}
         data-lk-theme="default"
       >
-        <WorkshopVideoStage />
+        <WorkshopVideoStage dict={dict} />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

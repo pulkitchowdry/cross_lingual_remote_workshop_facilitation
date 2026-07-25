@@ -9,6 +9,15 @@ import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { isSupportedLanguage } from "@/lib/i18n";
+
+export async function updateFacilitatorLanguage(sessionId: string, lang: SupportedLanguage) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+  if (!isSupportedLanguage(lang)) return;
+
+  await prisma.session.update({ where: { id: sessionId }, data: { sourceLanguage: lang } });
+  revalidatePath(`/sessions/${sessionId}/facilitator`);
+}
 
 export async function startSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");

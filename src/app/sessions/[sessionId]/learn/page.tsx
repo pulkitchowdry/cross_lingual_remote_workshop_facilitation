@@ -5,13 +5,16 @@ import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { sendChatMessage } from "@/app/sessions/actions";
+import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
 
@@ -41,11 +44,16 @@ export default async function LearnerSessionPage({
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
   const learnerDict = dict.learner;
+  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
+    participant.session.learnerLanguages.includes(language.value),
+  );
+  const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
       {participant.session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {learnerDict.welcome(participant.user.displayName)}

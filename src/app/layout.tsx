@@ -31,12 +31,13 @@ export const metadata: Metadata = {
 };
 
 // Runs before paint so a returning visitor's stored theme and accessibility
-// preferences apply with no flash. Dark / normal text / standard contrast are
-// the defaults whenever nothing is stored yet.
+// preferences apply with no flash. Slate Night / normal text / standard
+// contrast are the defaults whenever nothing is stored yet.
 const THEME_INIT_SCRIPT = `
 try {
   var stored = localStorage.getItem("theme");
-  var theme = stored === "light" ? "light" : "dark";
+  var validThemes = ["beige", "ink-copper", "slate-night", "warm-dusk"];
+  var theme = validThemes.indexOf(stored) !== -1 ? stored : "slate-night";
   document.documentElement.setAttribute("data-theme", theme);
 
   var fontSize = localStorage.getItem("accessibility-font-size");

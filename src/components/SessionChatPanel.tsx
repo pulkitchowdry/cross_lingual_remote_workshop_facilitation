@@ -34,7 +34,6 @@ export function SessionChatPanel({
     <aside className="flex min-h-[38rem] flex-col rounded-lg border border-border-subtle bg-surface-raised">
       <div className="border-b border-border-subtle px-4 py-3">
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.translatedChat}</p>
-        <p className="mt-1 text-sm text-foreground">{dict.appearsInLanguage}</p>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
         {messages.length > 0 ? (

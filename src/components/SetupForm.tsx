@@ -9,6 +9,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
 
   return (
     <form className="flex max-w-xl flex-col gap-4" action={createSession}>
+      <input type="hidden" name="sourceLanguage" value={lang} />
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.yourName}
         <input
@@ -39,20 +40,6 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
           maxLength={1000}
           placeholder={dict.setup.workshopGoalPlaceholder}
         />
-      </label>
-      <label className="flex flex-col gap-2 text-sm font-medium">
-        {dict.setup.facilitatorLanguage}
-        <select
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          name="sourceLanguage"
-          defaultValue={lang}
-        >
-          {SUPPORTED_LANGUAGES.map((language) => (
-            <option key={language.value} value={language.value}>
-              {languageNames[language.value]}
-            </option>
-          ))}
-        </select>
       </label>
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">{dict.setup.learnerLanguages}</legend>

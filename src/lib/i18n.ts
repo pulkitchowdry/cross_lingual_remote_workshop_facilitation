@@ -1,5 +1,6 @@
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import type { ContrastMode, FontSize } from "@/lib/accessibility-preferences";
+import type { ThemeName } from "@/lib/theme-preferences";
 
 /**
  * Full interface-chrome dictionary (not just live caption/chat content, which is already
@@ -15,6 +16,7 @@ export interface Dictionary {
     newSession: string;
     skipToContent: string;
     interfaceLanguage: string;
+    language: string;
   };
   a11y: {
     fontSizeLabel: Record<FontSize, string>;
@@ -23,9 +25,8 @@ export interface Dictionary {
     contrastAriaLabel: (mode: ContrastMode) => string;
     contrastOn: string;
     contrastOff: string;
-    themeDark: string;
-    themeLight: string;
-    themeAriaLabel: (next: "light" | "dark") => string;
+    themeNames: Record<ThemeName, string>;
+    themeAriaLabel: (nextLabel: string) => string;
   };
   languageNames: Record<SupportedLanguage, string>;
   setup: {
@@ -37,7 +38,6 @@ export interface Dictionary {
     sessionTitlePlaceholder: string;
     workshopGoal: string;
     workshopGoalPlaceholder: string;
-    facilitatorLanguage: string;
     learnerLanguages: string;
     learnerLanguagesHint: string;
     retention: string;
@@ -51,20 +51,16 @@ export interface Dictionary {
     invitedTo: string;
     subtitle: string;
     yourName: string;
-    preferredLanguage: string;
     consent: string;
     submit: string;
   };
   facilitator: {
-    sessionCreated: string;
-    subtitle: string;
     statusDraft: string;
     statusLive: string;
     statusEnded: string;
     startSession: string;
     endSession: string;
     logOut: string;
-    workshopGoalCard: string;
     learnersJoinedCard: string;
     learnersJoinedHint: string;
     workshopRoom: string;
@@ -74,28 +70,22 @@ export interface Dictionary {
     captionPlaceholder: string;
     publish: string;
     actNow: string;
-    interventionQueue: string;
     loadDemo: string;
     blocker: string;
     noInterventionYet: string;
     noInterventionHintEmpty: string;
     noInterventionHintOnTrack: string;
     liveTranscript: string;
-    whatGroupSaying: string;
     transcriptEmpty: string;
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
-    linkInstructions: string;
     learnerLinkAriaLabel: string;
+    copyLink: string;
+    linkCopied: string;
     revokeInvite: string;
     linkMissingMsg: string;
     qrAlt: string;
-    whatsNext: string;
-    liveWorkspace: string;
-    step1: string;
-    step2: string;
-    step3: string;
   };
   learner: {
     welcome: (name: string) => string;
@@ -114,7 +104,6 @@ export interface Dictionary {
   };
   chat: {
     translatedChat: string;
-    appearsInLanguage: string;
     noMessages: string;
     question: string;
     sendMessageLabel: string;
@@ -133,6 +122,12 @@ export interface Dictionary {
   room: {
     connecting: string;
     unableToJoin: string;
+    toggleMicrophone: string;
+    toggleCamera: string;
+    toggleScreenShare: string;
+    selectMicrophone: string;
+    selectCamera: string;
+    leaveCall: string;
   };
   common: {
     speaker: string;
@@ -146,7 +141,7 @@ export interface Dictionary {
 }
 
 const en: Dictionary = {
-  shell: { newSession: "New session", skipToContent: "Skip to main content", interfaceLanguage: "Interface language" },
+  shell: { newSession: "New session", skipToContent: "Skip to main content", interfaceLanguage: "Interface language", language: "Language" },
   a11y: {
     fontSizeLabel: { normal: "Normal text", large: "Large text", "x-large": "Extra-large text" },
     textSizeAriaLabel: (label) => `Aa. Text size: ${label}. Activate to change.`,
@@ -154,9 +149,8 @@ const en: Dictionary = {
     contrastAriaLabel: (mode) => `High contrast mode: ${mode === "high" ? "on" : "off"}. Activate to toggle.`,
     contrastOn: "on",
     contrastOff: "off",
-    themeDark: "Dark",
-    themeLight: "Light",
-    themeAriaLabel: (next) => `Switch to ${next} mode`,
+    themeNames: { beige: "Beige", "ink-copper": "Ink & Copper", "slate-night": "Slate Night", "warm-dusk": "Warm Dusk" },
+    themeAriaLabel: (next) => `Switch to ${next} theme`,
   },
   languageNames: { en: "English", zh: "Chinese", es: "Spanish" },
   setup: {
@@ -169,7 +163,6 @@ const en: Dictionary = {
     sessionTitlePlaceholder: "e.g. REST endpoint workshop",
     workshopGoal: "Workshop goal",
     workshopGoalPlaceholder: "e.g. Implement a working REST endpoint for user signup, including input validation.",
-    facilitatorLanguage: "Facilitator's language",
     learnerLanguages: "Learner languages",
     learnerLanguagesHint: "Learners choose one of these when they join. Start with the languages you can support.",
     retention: "Transcript retention",
@@ -183,21 +176,17 @@ const en: Dictionary = {
     invitedTo: "You're invited to learn",
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
     yourName: "Your name",
-    preferredLanguage: "Preferred language",
     consent:
       "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My microphone will join the workshop room live (audible to other participants) as soon as I enter — my camera stays off until I turn it on.",
     submit: "Join session",
   },
   facilitator: {
-    sessionCreated: "Session created",
-    subtitle: "Invite learners first, then start live captions and the intervention dashboard.",
     statusDraft: "draft",
     statusLive: "live",
     statusEnded: "ended",
     startSession: "Start session",
     endSession: "End session",
     logOut: "Log out",
-    workshopGoalCard: "Workshop goal",
     learnersJoinedCard: "Learners joined",
     learnersJoinedHint: "Learners have completed consent and joined.",
     workshopRoom: "Workshop room",
@@ -207,28 +196,22 @@ const en: Dictionary = {
     captionPlaceholder: "Type a caption for learners in their selected language…",
     publish: "Publish",
     actNow: "Act now",
-    interventionQueue: "Evidence-backed intervention queue",
     loadDemo: "Load demo scenario",
     blocker: "Blocker",
     noInterventionYet: "No intervention needed yet",
     noInterventionHintEmpty: "Load the demo scenario to test the grounded intervention experience.",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
     liveTranscript: "Live transcript",
-    whatGroupSaying: "What the group is saying",
     transcriptEmpty: "Captions will arrive here when the session is live.",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
-    linkInstructions: "Learners will choose a language and consent before entering the session. Scan the QR code or share the link below.",
     learnerLinkAriaLabel: "Learner invitation link",
+    copyLink: "Copy link",
+    linkCopied: "Copied!",
     revokeInvite: "Revoke invite link",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
-    whatsNext: "What's next",
-    liveWorkspace: "Live learning workspace",
-    step1: "Start the session and connect live captions.",
-    step2: "Show translated captions in each learner's chosen language.",
-    step3: "Enable the evidence-backed intervention queue for the facilitator.",
   },
   learner: {
     welcome: (name) => `Welcome, ${name}`,
@@ -247,7 +230,6 @@ const en: Dictionary = {
   },
   chat: {
     translatedChat: "Translated chat",
-    appearsInLanguage: "Messages appear in your selected language.",
     noMessages: "No messages yet. Say hello or ask for help.",
     question: "Question",
     sendMessageLabel: "Send a message",
@@ -267,6 +249,12 @@ const en: Dictionary = {
   room: {
     connecting: "Connecting your secure audio/video room…",
     unableToJoin: "Unable to join the media room.",
+    toggleMicrophone: "Toggle microphone",
+    toggleCamera: "Toggle camera",
+    toggleScreenShare: "Toggle screen share",
+    selectMicrophone: "Select microphone",
+    selectCamera: "Select camera",
+    leaveCall: "Leave call",
   },
   common: { speaker: "Speaker", translationUnavailable: "Translation unavailable." },
   notFound: {
@@ -277,7 +265,7 @@ const en: Dictionary = {
 };
 
 const zh: Dictionary = {
-  shell: { newSession: "新建场次", skipToContent: "跳转到主要内容", interfaceLanguage: "界面语言" },
+  shell: { newSession: "新建场次", skipToContent: "跳转到主要内容", interfaceLanguage: "界面语言", language: "语言" },
   a11y: {
     fontSizeLabel: { normal: "标准字号", large: "大字号", "x-large": "特大字号" },
     textSizeAriaLabel: (label) => `Aa。字号：${label}。点击切换。`,
@@ -285,9 +273,8 @@ const zh: Dictionary = {
     contrastAriaLabel: (mode) => `高对比度模式：${mode === "high" ? "开启" : "关闭"}。点击切换。`,
     contrastOn: "开启",
     contrastOff: "关闭",
-    themeDark: "深色",
-    themeLight: "浅色",
-    themeAriaLabel: (next) => `切换为${next === "dark" ? "深色" : "浅色"}模式`,
+    themeNames: { beige: "米色", "ink-copper": "墨铜色", "slate-night": "板岩夜色", "warm-dusk": "暖暮色" },
+    themeAriaLabel: (next) => `切换为${next}主题`,
   },
   languageNames: { en: "英语", zh: "中文", es: "西班牙语" },
   setup: {
@@ -299,7 +286,6 @@ const zh: Dictionary = {
     sessionTitlePlaceholder: "例如：REST 接口工作坊",
     workshopGoal: "工作坊目标",
     workshopGoalPlaceholder: "例如：实现一个可用的用户注册 REST 接口，并包含输入校验。",
-    facilitatorLanguage: "主持人使用的语言",
     learnerLanguages: "学员可选语言",
     learnerLanguagesHint: "学员加入时会从中选择一种。请先勾选你能够支持的语言。",
     retention: "转录保留时长",
@@ -313,21 +299,17 @@ const zh: Dictionary = {
     invitedTo: "你被邀请加入学习",
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
     yourName: "你的姓名",
-    preferredLanguage: "偏好语言",
     consent:
       "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的麦克风会立即接入活动室（其他参与者可以听到），摄像头会保持关闭，直到我手动开启。",
     submit: "加入场次",
   },
   facilitator: {
-    sessionCreated: "场次已创建",
-    subtitle: "请先邀请学员，然后开启实时字幕与干预看板。",
     statusDraft: "草稿",
     statusLive: "进行中",
     statusEnded: "已结束",
     startSession: "开始场次",
     endSession: "结束场次",
     logOut: "退出登录",
-    workshopGoalCard: "工作坊目标",
     learnersJoinedCard: "已加入学员",
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
     workshopRoom: "活动室",
@@ -337,28 +319,22 @@ const zh: Dictionary = {
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
     publish: "发布",
     actNow: "立即处理",
-    interventionQueue: "有据可查的干预队列",
     loadDemo: "加载演示场景",
     blocker: "障碍",
     noInterventionYet: "暂无需要干预的事项",
     noInterventionHintEmpty: "加载演示场景以体验基于证据的干预功能。",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
     liveTranscript: "实时转录",
-    whatGroupSaying: "小组正在讨论的内容",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
-    linkInstructions: "学员进入前需要选择语言并同意条款。扫描二维码或分享下方链接即可邀请。",
     learnerLinkAriaLabel: "学员邀请链接",
+    copyLink: "复制链接",
+    linkCopied: "已复制！",
     revokeInvite: "撤销邀请链接",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
-    whatsNext: "接下来",
-    liveWorkspace: "实时学习空间",
-    step1: "开始场次并接入实时字幕。",
-    step2: "以每位学员所选语言显示翻译字幕。",
-    step3: "为主持人启用有据可查的干预队列。",
   },
   learner: {
     welcome: (name) => `欢迎，${name}`,
@@ -377,7 +353,6 @@ const zh: Dictionary = {
   },
   chat: {
     translatedChat: "翻译聊天",
-    appearsInLanguage: "消息会以你所选的语言显示。",
     noMessages: "暂无消息。打个招呼或提出问题吧。",
     question: "提问",
     sendMessageLabel: "发送消息",
@@ -397,6 +372,12 @@ const zh: Dictionary = {
   room: {
     connecting: "正在连接安全音视频房间……",
     unableToJoin: "无法加入媒体房间。",
+    toggleMicrophone: "开关麦克风",
+    toggleCamera: "开关摄像头",
+    toggleScreenShare: "开关屏幕共享",
+    selectMicrophone: "选择麦克风",
+    selectCamera: "选择摄像头",
+    leaveCall: "离开通话",
   },
   common: { speaker: "发言者", translationUnavailable: "暂无译文。" },
   notFound: {
@@ -407,7 +388,7 @@ const zh: Dictionary = {
 };
 
 const es: Dictionary = {
-  shell: { newSession: "Nueva sesión", skipToContent: "Saltar al contenido principal", interfaceLanguage: "Idioma de la interfaz" },
+  shell: { newSession: "Nueva sesión", skipToContent: "Saltar al contenido principal", interfaceLanguage: "Idioma de la interfaz", language: "Idioma" },
   a11y: {
     fontSizeLabel: { normal: "Texto normal", large: "Texto grande", "x-large": "Texto extra grande" },
     textSizeAriaLabel: (label) => `Aa. Tamaño de texto: ${label}. Actívalo para cambiarlo.`,
@@ -415,9 +396,8 @@ const es: Dictionary = {
     contrastAriaLabel: (mode) => `Modo de alto contraste: ${mode === "high" ? "activado" : "desactivado"}. Actívalo para alternar.`,
     contrastOn: "activado",
     contrastOff: "desactivado",
-    themeDark: "Oscuro",
-    themeLight: "Claro",
-    themeAriaLabel: (next) => `Cambiar a modo ${next === "dark" ? "oscuro" : "claro"}`,
+    themeNames: { beige: "Beige", "ink-copper": "Tinta y cobre", "slate-night": "Noche de pizarra", "warm-dusk": "Ocaso cálido" },
+    themeAriaLabel: (next) => `Cambiar al tema ${next}`,
   },
   languageNames: { en: "Inglés", zh: "Chino", es: "Español" },
   setup: {
@@ -430,7 +410,6 @@ const es: Dictionary = {
     sessionTitlePlaceholder: "p. ej. Taller de endpoints REST",
     workshopGoal: "Objetivo del taller",
     workshopGoalPlaceholder: "p. ej. Implementar un endpoint REST funcional para el registro de usuarios, con validación de datos.",
-    facilitatorLanguage: "Idioma del facilitador",
     learnerLanguages: "Idiomas para los alumnos",
     learnerLanguagesHint: "Los alumnos elegirán uno de estos al unirse. Empieza con los idiomas que puedas ofrecer.",
     retention: "Retención de la transcripción",
@@ -444,21 +423,17 @@ const es: Dictionary = {
     invitedTo: "Estás invitado a aprender",
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
     yourName: "Tu nombre",
-    preferredLanguage: "Idioma preferido",
     consent:
       "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi micrófono se conectará a la sala del taller en vivo (audible para el resto de participantes) en cuanto entre; mi cámara permanecerá apagada hasta que yo la active.",
     submit: "Unirse a la sesión",
   },
   facilitator: {
-    sessionCreated: "Sesión creada",
-    subtitle: "Invita primero a los alumnos y luego inicia los subtítulos en vivo y el panel de intervención.",
     statusDraft: "borrador",
     statusLive: "en vivo",
     statusEnded: "finalizada",
     startSession: "Iniciar sesión",
     endSession: "Finalizar sesión",
     logOut: "Cerrar sesión",
-    workshopGoalCard: "Objetivo del taller",
     learnersJoinedCard: "Alumnos conectados",
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
     workshopRoom: "Sala del taller",
@@ -468,28 +443,22 @@ const es: Dictionary = {
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
     publish: "Publicar",
     actNow: "Actuar ahora",
-    interventionQueue: "Cola de intervención respaldada por evidencia",
     loadDemo: "Cargar escenario de demostración",
     blocker: "Bloqueo",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
     noInterventionHintEmpty: "Carga el escenario de demostración para probar la experiencia de intervención con evidencia.",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
     liveTranscript: "Transcripción en vivo",
-    whatGroupSaying: "Lo que el grupo está diciendo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
-    linkInstructions: "Los alumnos elegirán un idioma y darán su consentimiento antes de entrar a la sesión. Escanea el código QR o comparte el enlace de abajo.",
     learnerLinkAriaLabel: "Enlace de invitación para alumnos",
+    copyLink: "Copiar enlace",
+    linkCopied: "¡Copiado!",
     revokeInvite: "Revocar enlace de invitación",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",
-    whatsNext: "Qué sigue",
-    liveWorkspace: "Espacio de aprendizaje en vivo",
-    step1: "Inicia la sesión y conecta los subtítulos en vivo.",
-    step2: "Muestra subtítulos traducidos en el idioma elegido por cada alumno.",
-    step3: "Activa la cola de intervención respaldada por evidencia para el facilitador.",
   },
   learner: {
     welcome: (name) => `Bienvenido/a, ${name}`,
@@ -508,7 +477,6 @@ const es: Dictionary = {
   },
   chat: {
     translatedChat: "Chat traducido",
-    appearsInLanguage: "Los mensajes aparecen en tu idioma seleccionado.",
     noMessages: "Aún no hay mensajes. Saluda o pide ayuda.",
     question: "Pregunta",
     sendMessageLabel: "Enviar un mensaje",
@@ -528,6 +496,12 @@ const es: Dictionary = {
   room: {
     connecting: "Conectando tu sala segura de audio y video…",
     unableToJoin: "No se pudo unir a la sala multimedia.",
+    toggleMicrophone: "Activar o desactivar micrófono",
+    toggleCamera: "Activar o desactivar cámara",
+    toggleScreenShare: "Activar o desactivar compartir pantalla",
+    selectMicrophone: "Seleccionar micrófono",
+    selectCamera: "Seleccionar cámara",
+    leaveCall: "Salir de la llamada",
   },
   common: { speaker: "Orador", translationUnavailable: "Traducción no disponible." },
   notFound: {
@@ -550,6 +524,24 @@ export function isSupportedLanguage(value: unknown): value is SupportedLanguage 
 
 export function resolveLanguage(value: unknown, fallback: SupportedLanguage = "en"): SupportedLanguage {
   return isSupportedLanguage(value) ? value : fallback;
+}
+
+/**
+ * Parses an `Accept-Language` header (e.g. `"es-MX,es;q=0.9,en;q=0.8"`) and picks the
+ * first supported language it names, in the browser's own preference order. Used to pick
+ * the initial UI language for pages with no session yet (setup/join before a `?lang=` is
+ * set), so a first-time visitor sees their own language instead of always English.
+ */
+export function detectBrowserLanguage(acceptLanguageHeader: string | null, fallback: SupportedLanguage = "en"): SupportedLanguage {
+  if (!acceptLanguageHeader) return fallback;
+  const preferred = acceptLanguageHeader
+    .split(",")
+    .map((part) => part.trim().split(";")[0]?.split("-")[0]?.toLowerCase())
+    .filter(Boolean);
+  for (const tag of preferred) {
+    if (isSupportedLanguage(tag)) return tag;
+  }
+  return fallback;
 }
 
 export function getDictionary(lang: SupportedLanguage): Dictionary {

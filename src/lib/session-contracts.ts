@@ -1,7 +1,10 @@
+/** `nativeLabel` is the language's own autonym (e.g. "中文" for Chinese) — used as-is
+ * regardless of UI language, unlike `label`/the translated `languageNames` dictionary
+ * in `@/lib/i18n`. */
 export const SUPPORTED_LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "zh", label: "Chinese" },
-  { value: "es", label: "Spanish" },
+  { value: "en", label: "English", nativeLabel: "English" },
+  { value: "zh", label: "Chinese", nativeLabel: "中文" },
+  { value: "es", label: "Spanish", nativeLabel: "Español" },
 ] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];

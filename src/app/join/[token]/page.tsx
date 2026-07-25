@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Button } from "@/components/ui/Button";
 import { notFound } from "next/navigation";
 import { ParticipantRole } from "@/generated/prisma/client";
 import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/session-security";
-import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
-import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { detectBrowserLanguage, getDictionary, resolveLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 
@@ -21,8 +22,6 @@ export default async function JoinPage({
 }) {
   const { token } = await params;
   const { lang: langParam } = await searchParams;
-  const lang = resolveLanguage(langParam);
-  const dict = getDictionary(lang);
   const invite = await prisma.joinLink.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { session: true },
@@ -45,25 +44,32 @@ export default async function JoinPage({
   // actually one of the enabled learner languages — otherwise fall back to
   // the first enabled option explicitly, rather than relying on the browser
   // to silently pick something when defaultValue matches no <option>.
-  const defaultLanguage = learnerLanguageOptions.some((language) => language.value === invite.session.sourceLanguage)
-    ? invite.session.sourceLanguage
+  const sourceLanguageDefault: SupportedLanguage | undefined = learnerLanguageOptions.some(
+    (language) => language.value === invite.session.sourceLanguage,
+  )
+    ? (invite.session.sourceLanguage as SupportedLanguage)
     : learnerLanguageOptions[0]?.value;
+  // No `?lang=` yet (first visit) — fall back to the browser's own language
+  // instead of always defaulting to English, so the invite reads naturally
+  // for whoever opens the link before they've clicked anything.
+  const browserDefault = langParam ? undefined : detectBrowserLanguage((await headers()).get("accept-language"), sourceLanguageDefault);
+  const lang = resolveLanguage(langParam, browserDefault ?? sourceLanguageDefault);
+  const dict = getDictionary(lang);
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {dict.join.invitedTo}
-          </p>
-          <h1 className="font-heading text-2xl font-semibold">{invite.session.title}</h1>
-          <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
-        </div>
-        <LanguageSwitcher current={lang} basePath={`/join/${token}`} />
+      <LanguageSwitcher current={lang} basePath={`/join/${token}`} languages={learnerLanguageOptions} />
+      <div>
+        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {dict.join.invitedTo}
+        </p>
+        <h1 className="font-heading text-2xl font-semibold">{invite.session.title}</h1>
+        <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
         <input type="hidden" name="token" value={token} />
+        <input type="hidden" name="preferredLanguage" value={lang} />
         <label className="flex flex-col gap-2 text-sm font-medium">
           {dict.join.yourName}
           <input
@@ -73,20 +79,6 @@ export default async function JoinPage({
             maxLength={80}
             autoComplete="name"
           />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {dict.join.preferredLanguage}
-          <select
-            className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            name="preferredLanguage"
-            defaultValue={defaultLanguage}
-          >
-            {learnerLanguageOptions.map((language) => (
-              <option key={language.value} value={language.value}>
-                {dict.languageNames[language.value]}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="flex items-start gap-3 text-sm text-muted-foreground">
           <input className="mt-1" type="checkbox" name="consent" required />

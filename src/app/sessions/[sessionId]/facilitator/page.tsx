@@ -6,6 +6,8 @@ import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { LanguageMenu } from "@/components/LanguageMenu";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
@@ -17,10 +19,10 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import {
   endSession,
   loadDemoScenario,
-  logoutFacilitator,
   publishCaption,
   revokeLearnerInvite,
   startSession,
+  updateFacilitatorLanguage,
 } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
 
@@ -72,8 +74,8 @@ export default async function FacilitatorSessionPage({
   const demoAction = loadDemoScenario.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
-  const logoutAction = logoutFacilitator.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
+  const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
@@ -82,20 +84,22 @@ export default async function FacilitatorSessionPage({
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
       {session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      <LanguageMenu current={lang} onSelect={changeLanguageAction} />
       <div>
-        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {dict.sessionCreated}
-        </p>
-        <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
-        <p className="text-sm text-muted-foreground">{dict.subtitle}</p>
+        <div className="flex flex-wrap items-center gap-3" aria-live="polite">
+          <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
+          {session.status !== SessionStatus.DRAFT && (
+            <span
+              className="font-data rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider"
+              style={{ color: session.status === SessionStatus.LIVE ? "var(--tick-high)" : "var(--muted-foreground)" }}
+            >
+              {statusLabel}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">{session.goal}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3" aria-live="polite">
-        <span
-          className="font-data rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider"
-          style={{ color: session.status === SessionStatus.LIVE ? "var(--tick-high)" : "var(--muted-foreground)" }}
-        >
-          {statusLabel}
-        </span>
         {session.status === SessionStatus.DRAFT && (
           <form action={startAction}>
             <button className="font-data rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
@@ -110,26 +114,13 @@ export default async function FacilitatorSessionPage({
             </button>
           </form>
         )}
-        <form action={logoutAction}>
-          <button className="font-data rounded-md border border-border-subtle px-5 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
-            {dict.logOut}
-          </button>
-        </form>
-      </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card eyebrow={dict.workshopGoalCard}>{session.goal}</Card>
-        <Card eyebrow={dict.learnersJoinedCard}>
-          <span className="font-heading text-3xl font-semibold">{session.participants.length}</span>
-          <p className="mt-1 text-sm text-muted-foreground">{dict.learnersJoinedHint}</p>
-        </Card>
+        <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
+          {session.participants.length} {dict.learnersJoinedCard.toLowerCase()}
+        </span>
       </div>
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</p>
-            <h2 className="font-heading text-lg font-semibold">{dict.liveAudioVideo}</h2>
-            <p className="text-sm text-muted-foreground">{dict.micCameraHint}</p>
-          </div>
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="flex flex-col gap-3">
               <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} />
@@ -160,10 +151,7 @@ export default async function FacilitatorSessionPage({
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</p>
-            <h2 className="font-heading text-lg font-semibold">{dict.interventionQueue}</h2>
-          </div>
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
           {session.transcript.length === 0 && (
             <form action={demoAction}>
               <button className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
@@ -212,10 +200,7 @@ export default async function FacilitatorSessionPage({
         )}
       </section>
       <section className="flex flex-col gap-3" aria-live="polite">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</p>
-          <h2 className="font-heading text-lg font-semibold">{dict.whatGroupSaying}</h2>
-        </div>
+        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
         {session.transcript.length > 0 ? (
           <div className="flex flex-col gap-3">
             {session.transcript.map((segment) => {
@@ -254,14 +239,14 @@ export default async function FacilitatorSessionPage({
                   width={96}
                 />
               )}
-              <div className="flex flex-1 flex-col gap-2">
-                <p className="text-muted-foreground">{dict.linkInstructions}</p>
+              <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   aria-label={dict.learnerLinkAriaLabel}
-                  className="w-full rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
+                  className="w-full flex-1 rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
                   readOnly
                   value={learnerLink}
                 />
+                <CopyLinkButton value={learnerLink} label={dict.copyLink} copiedLabel={dict.linkCopied} />
               </div>
             </div>
             <form action={revokeInviteAction}>
@@ -273,13 +258,6 @@ export default async function FacilitatorSessionPage({
         ) : (
           <p className="text-muted-foreground">{dict.linkMissingMsg}</p>
         )}
-      </Card>
-      <Card eyebrow={dict.whatsNext} title={dict.liveWorkspace}>
-        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
-          <li>{dict.step1}</li>
-          <li>{dict.step2}</li>
-          <li>{dict.step3}</li>
-        </ol>
       </Card>
     </div>
   );

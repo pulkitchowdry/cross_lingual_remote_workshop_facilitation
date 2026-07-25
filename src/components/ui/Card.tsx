@@ -15,7 +15,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm ${className}`}
+      className={`flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface-raised p-4 ${className}`}
       style={accent ? { borderLeft: `3px solid ${accent}` } : undefined}
     >
       {(eyebrow || title || meta) && (
