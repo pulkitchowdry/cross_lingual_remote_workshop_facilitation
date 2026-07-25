@@ -103,7 +103,12 @@ export default async function FacilitatorSessionPage({
   return (
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      {session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {/*
+        Poll during DRAFT too, not just LIVE: while waiting to start, the
+        facilitator needs the "learners joined" count (Card below) to update
+        as people use the QR/link, without a manual reload.
+      */}
+      {(session.status === SessionStatus.DRAFT || session.status === SessionStatus.LIVE) && <SessionAutoRefresh />}
       {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">

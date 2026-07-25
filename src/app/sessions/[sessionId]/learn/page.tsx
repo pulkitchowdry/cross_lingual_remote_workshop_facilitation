@@ -55,7 +55,15 @@ export default async function LearnerSessionPage({
   return (
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      {participant.session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {/*
+        Poll during DRAFT too, not just LIVE: while the learner is on
+        "waiting for facilitator", nothing else on this page triggers a
+        refetch — without polling here, the transition to LIVE (and the
+        video room it unlocks below) is invisible until a manual reload.
+      */}
+      {(participant.session.status === SessionStatus.DRAFT || participant.session.status === SessionStatus.LIVE) && (
+        <SessionAutoRefresh />
+      )}
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {learnerDict.welcome(participant.user.displayName)}
