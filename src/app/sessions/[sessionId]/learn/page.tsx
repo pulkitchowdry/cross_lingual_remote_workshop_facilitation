@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { notFound, redirect } from "next/navigation";
@@ -11,7 +10,6 @@ import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { sendChatMessage } from "@/app/sessions/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
 
@@ -30,14 +28,12 @@ export default async function LearnerSessionPage({
       session: {
         include: {
           transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-          messages: { include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
         },
       },
       user: true,
     },
   });
   if (!participant) notFound();
-  const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
   const learnerDict = dict.learner;
@@ -59,24 +55,15 @@ export default async function LearnerSessionPage({
         </p>
       </Card>
       {participant.session.status === SessionStatus.LIVE && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {dict.facilitator.workshopRoom}
-            </p>
-            <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
-            <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <LiveSessionRoom sessionId={participant.session.id} role="learner" lang={lang} />
-            <SessionChatPanel
-              messages={[...participant.session.messages].reverse()}
-              targetLanguage={participant.preferredLanguage}
-              sendAction={sendChatAction}
-              allowQuestions
-            />
-          </div>
-        </section>
+        <Card eyebrow={dict.common.liveNowTitle} title={dict.facilitator.liveAudioVideo} accent="var(--tick-high)">
+          <p className="text-muted-foreground">{dict.common.liveNowHint}</p>
+          <Link
+            href={`/sessions/${sessionId}/learn/room`}
+            className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+          >
+            {dict.common.joinLiveSession}
+          </Link>
+        </Card>
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
         <div>

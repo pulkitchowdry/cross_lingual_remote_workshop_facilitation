@@ -13,7 +13,10 @@
 # returns it verbatim as the LiveKit client's connect URL), so it must be
 # reachable from the host, not just from inside the Compose network — hence
 # `localhost`. `agent` only ever calls it from inside the Compose network, so
-# it uses the internal service hostname.
+# it uses the internal service hostname. `web` additionally needs
+# LIVEKIT_INTERNAL_URL for its own *server-side* RoomServiceClient calls (room
+# metadata, DataChannel pushes) — those run from inside the container too, so
+# they need `http://livekit:7880`, not the browser-facing `localhost` value.
 
 services:
   postgres:
@@ -76,6 +79,7 @@ services:
       # published host port above) — see the comment on postgres's `ports`.
       DATABASE_URL: postgresql://${POSTGRES_USER:-workshop}:${POSTGRES_PASSWORD:-workshop}@postgres:5432/${POSTGRES_DB:-workshop_copilot}?schema=public
       LIVEKIT_URL: ${LIVEKIT_URL:-http://localhost:7880}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
       STT_API_KEY: ${STT_API_KEY:-}

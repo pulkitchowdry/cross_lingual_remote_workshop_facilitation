@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono, Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 
@@ -63,7 +64,10 @@ export default function RootLayout({
       className={`${heading.variable} ${bodyFont.variable} ${dataFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {/* next/script's beforeInteractive strategy runs this before hydration (avoiding the
+            theme-flash) via Next's own injection path, rather than a raw <script> tag React's
+            renderer isn't designed to manage. */}
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <AppShell>{children}</AppShell>
       </body>
     </html>

@@ -3,6 +3,7 @@ import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { roomProvider, type RoomRole } from "@/lib/providers/room";
+import { resolveLanguage } from "@/lib/i18n";
 
 function isRequestedRole(value: unknown): value is RoomRole {
   return value === "facilitator" || value === "learner";
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
 
   let identity: string;
   let name: string;
+  let preferredLanguage: string;
   if (body.role === "facilitator") {
     if (!(await hasFacilitatorAccess(session.id))) {
       return Response.json({ error: "Not authorized for this facilitator room." }, { status: 403 });
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
     if (!facilitator) return Response.json({ error: "Facilitator not found." }, { status: 404 });
     identity = facilitator.id;
     name = facilitator.displayName;
+    preferredLanguage = session.sourceLanguage;
   } else {
     const participantId = await learnerParticipantId(session.id);
     if (!participantId) return Response.json({ error: "Not authorized for this learner room." }, { status: 403 });
@@ -46,6 +49,7 @@ export async function POST(request: NextRequest) {
     }
     identity = participant.id;
     name = participant.user.displayName;
+    preferredLanguage = participant.preferredLanguage;
   }
 
   const credential = await roomProvider.issueCredential({
@@ -53,6 +57,7 @@ export async function POST(request: NextRequest) {
     role: body.role,
     identity,
     displayName: name,
+    preferredLanguage: resolveLanguage(preferredLanguage),
   });
 
   return Response.json(credential);

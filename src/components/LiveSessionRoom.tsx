@@ -2,20 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  CarouselLayout,
-  ControlBar,
-  FocusLayout,
-  FocusLayoutContainer,
-  GridLayout,
-  LiveKitRoom,
-  ParticipantTile,
-  RoomAudioRenderer,
-  useDataChannel,
-  useTracks,
-} from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, useDataChannel } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { Track } from "livekit-client";
+import { MeetingRoom } from "@/components/meeting/MeetingRoom";
+import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -38,47 +28,29 @@ interface RoomCredentials {
   token: string;
 }
 
-/**
- * Only the facilitator's ControlBar exposes the screen-share toggle — the
- * room stays bidirectional for audio/video (see room.ts), but screen sharing
- * is a facilitator-to-group broadcast, not a peer-to-peer one, so learners
- * don't get the control.
- */
-function WorkshopVideoStage({ role }: { role: Role }) {
-  const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
-    { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]);
-  const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
-  const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-hidden p-3">
-        {screenShareTrack ? (
-          <FocusLayoutContainer className="h-full">
-            <FocusLayout trackRef={screenShareTrack} />
-            <CarouselLayout tracks={cameraTracks}>
-              <ParticipantTile />
-            </CarouselLayout>
-          </FocusLayoutContainer>
-        ) : (
-          <GridLayout tracks={cameraTracks} className="h-full">
-            <ParticipantTile />
-          </GridLayout>
-        )}
-      </div>
-      <div className="overflow-x-auto border-t border-border-subtle p-2">
-        <ControlBar
-          variation="minimal"
-          controls={{ microphone: true, camera: true, chat: false, screenShare: role === "facilitator", leave: true }}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; role: Role; lang: SupportedLanguage }) {
+export function LiveSessionRoom({
+  sessionId,
+  role,
+  lang,
+  targetLanguage,
+  transcript,
+  messages,
+  sendChatAction,
+  allowQuestions,
+  title,
+  inviteLink,
+}: {
+  sessionId: string;
+  role: Role;
+  lang: SupportedLanguage;
+  targetLanguage: string;
+  transcript: MeetingTranscriptSegment[];
+  messages: MeetingChatMessage[];
+  sendChatAction: (formData: FormData) => void | Promise<void>;
+  allowQuestions?: boolean;
+  title: string;
+  inviteLink?: string | null;
+}) {
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,8 +85,10 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
     return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
   }
 
+  const dashboardHref = `/sessions/${sessionId}/${role === "facilitator" ? "facilitator" : "learn"}`;
+
   return (
-    <div className="h-[38rem] overflow-hidden rounded-lg border border-border-subtle bg-surface">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       <LiveKitRoom
         token={credentials.token}
         serverUrl={credentials.serverUrl}
@@ -122,8 +96,21 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         audio={false}
         video
         data-lk-theme="default"
+        className="flex h-full min-h-0 flex-col"
       >
-        <WorkshopVideoStage role={role} />
+        <MeetingRoom
+          sessionId={sessionId}
+          role={role}
+          uiLang={lang}
+          targetLanguage={targetLanguage}
+          transcript={transcript}
+          messages={messages}
+          sendChatAction={sendChatAction}
+          allowQuestions={allowQuestions}
+          dashboardHref={dashboardHref}
+          title={title}
+          inviteLink={inviteLink}
+        />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

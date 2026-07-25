@@ -136,9 +136,49 @@ export interface Dictionary {
     connecting: string;
     unableToJoin: string;
   };
+  meeting: {
+    raisedHandTitle: (name: string) => string;
+    connectionQualityTitle: (quality: string) => string;
+    toolbarLabel: string;
+    muteMic: string;
+    unmuteMic: string;
+    stopCamera: string;
+    startCamera: string;
+    lowerHand: string;
+    raiseHand: string;
+    raiseHandFailed: string;
+    stopShareScreen: string;
+    shareScreen: string;
+    presentingLocked: string;
+    switchToVideo: string;
+    switchToWhiteboard: string;
+    settings: string;
+    showCaptions: string;
+    captionContentLabel: string;
+    captionModeBoth: string;
+    captionModeTranslatedOnly: string;
+    captionPositionLabel: string;
+    captionPositionBottom: string;
+    captionPositionTop: string;
+    allowLearnerPresenting: string;
+    leave: string;
+    expandSidebar: string;
+    resizeSidebar: string;
+    collapseSidebar: string;
+    chatLabel: string;
+    shrinkCaptionFont: string;
+    growCaptionFont: string;
+    whiteboardLoading: string;
+    pictureInPicture: string;
+    copyInviteLink: string;
+    linkCopied: string;
+  };
   common: {
     speaker: string;
     translationUnavailable: string;
+    liveNowTitle: string;
+    liveNowHint: string;
+    joinLiveSession: string;
   };
   notFound: {
     title: string;
@@ -273,7 +313,50 @@ const en: Dictionary = {
     connecting: "Connecting your secure audio/video room…",
     unableToJoin: "Unable to join the media room.",
   },
-  common: { speaker: "Speaker", translationUnavailable: "Translation unavailable." },
+  meeting: {
+    raisedHandTitle: (name) => `${name} raised their hand`,
+    connectionQualityTitle: (quality) => `Connection: ${quality}`,
+    toolbarLabel: "Meeting controls",
+    muteMic: "Mute microphone",
+    unmuteMic: "Unmute microphone",
+    stopCamera: "Turn off camera",
+    startCamera: "Turn on camera",
+    lowerHand: "Lower hand",
+    raiseHand: "Raise hand",
+    raiseHandFailed: "Couldn't raise hand — check your connection and try again",
+    stopShareScreen: "Stop sharing screen",
+    shareScreen: "Share screen",
+    presentingLocked: "The facilitator hasn't turned this on for participants yet",
+    switchToVideo: "Switch to video",
+    switchToWhiteboard: "Switch to whiteboard",
+    settings: "Settings",
+    showCaptions: "Show captions",
+    captionContentLabel: "Caption content",
+    captionModeBoth: "Original + translated",
+    captionModeTranslatedOnly: "Translated only",
+    captionPositionLabel: "Caption position",
+    captionPositionBottom: "Bottom",
+    captionPositionTop: "Top",
+    allowLearnerPresenting: "Allow participants to share screen & use whiteboard",
+    leave: "Leave meeting",
+    expandSidebar: "Show chat",
+    resizeSidebar: "Resize chat panel",
+    collapseSidebar: "Hide chat",
+    chatLabel: "Chat",
+    shrinkCaptionFont: "Decrease caption text size",
+    growCaptionFont: "Increase caption text size",
+    whiteboardLoading: "Loading whiteboard…",
+    pictureInPicture: "Picture-in-picture",
+    copyInviteLink: "Copy invite link",
+    linkCopied: "Link copied!",
+  },
+  common: {
+    speaker: "Speaker",
+    translationUnavailable: "Translation unavailable.",
+    liveNowTitle: "Live now",
+    liveNowHint: "The workshop room is live. Join to see and hear the group.",
+    joinLiveSession: "Join live session",
+  },
   notFound: {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
@@ -405,7 +488,50 @@ const zh: Dictionary = {
     connecting: "正在连接安全音视频房间……",
     unableToJoin: "无法加入媒体房间。",
   },
-  common: { speaker: "发言者", translationUnavailable: "暂无译文。" },
+  meeting: {
+    raisedHandTitle: (name) => `${name} 举手了`,
+    connectionQualityTitle: (quality) => `连接质量：${quality}`,
+    toolbarLabel: "会议控制",
+    muteMic: "静音麦克风",
+    unmuteMic: "取消静音",
+    stopCamera: "关闭摄像头",
+    startCamera: "打开摄像头",
+    lowerHand: "放下手",
+    raiseHand: "举手",
+    raiseHandFailed: "举手失败——请检查网络连接后重试",
+    stopShareScreen: "停止共享屏幕",
+    shareScreen: "共享屏幕",
+    presentingLocked: "主持人尚未为参与者开启此功能",
+    switchToVideo: "切换到视频",
+    switchToWhiteboard: "切换到白板",
+    settings: "设置",
+    showCaptions: "显示字幕",
+    captionContentLabel: "字幕内容",
+    captionModeBoth: "原文 + 译文",
+    captionModeTranslatedOnly: "仅译文",
+    captionPositionLabel: "字幕位置",
+    captionPositionBottom: "底部",
+    captionPositionTop: "顶部",
+    allowLearnerPresenting: "允许参与者共享屏幕和使用白板",
+    leave: "离开会议",
+    expandSidebar: "显示聊天",
+    resizeSidebar: "调整聊天面板大小",
+    collapseSidebar: "隐藏聊天",
+    chatLabel: "聊天",
+    shrinkCaptionFont: "减小字幕字号",
+    growCaptionFont: "增大字幕字号",
+    whiteboardLoading: "正在加载白板…",
+    pictureInPicture: "画中画",
+    copyInviteLink: "复制邀请链接",
+    linkCopied: "链接已复制！",
+  },
+  common: {
+    speaker: "发言者",
+    translationUnavailable: "暂无译文。",
+    liveNowTitle: "正在直播",
+    liveNowHint: "活动室已开始直播。加入即可看到并听到大家。",
+    joinLiveSession: "加入直播会议",
+  },
   notFound: {
     title: "未找到该链接",
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
@@ -539,7 +665,50 @@ const es: Dictionary = {
     connecting: "Conectando tu sala segura de audio y video…",
     unableToJoin: "No se pudo unir a la sala multimedia.",
   },
-  common: { speaker: "Orador", translationUnavailable: "Traducción no disponible." },
+  meeting: {
+    raisedHandTitle: (name) => `${name} levantó la mano`,
+    connectionQualityTitle: (quality) => `Conexión: ${quality}`,
+    toolbarLabel: "Controles de la reunión",
+    muteMic: "Silenciar micrófono",
+    unmuteMic: "Activar micrófono",
+    stopCamera: "Apagar cámara",
+    startCamera: "Encender cámara",
+    lowerHand: "Bajar la mano",
+    raiseHand: "Levantar la mano",
+    raiseHandFailed: "No se pudo levantar la mano — revisa tu conexión e inténtalo de nuevo",
+    stopShareScreen: "Dejar de compartir pantalla",
+    shareScreen: "Compartir pantalla",
+    presentingLocked: "El facilitador aún no ha activado esto para los participantes",
+    switchToVideo: "Cambiar a video",
+    switchToWhiteboard: "Cambiar a pizarra",
+    settings: "Ajustes",
+    showCaptions: "Mostrar subtítulos",
+    captionContentLabel: "Contenido de subtítulos",
+    captionModeBoth: "Original + traducido",
+    captionModeTranslatedOnly: "Solo traducido",
+    captionPositionLabel: "Posición de subtítulos",
+    captionPositionBottom: "Abajo",
+    captionPositionTop: "Arriba",
+    allowLearnerPresenting: "Permitir que los participantes compartan pantalla y usen la pizarra",
+    leave: "Salir de la reunión",
+    expandSidebar: "Mostrar chat",
+    resizeSidebar: "Cambiar tamaño del panel de chat",
+    collapseSidebar: "Ocultar chat",
+    chatLabel: "Chat",
+    shrinkCaptionFont: "Reducir tamaño de texto de subtítulos",
+    growCaptionFont: "Aumentar tamaño de texto de subtítulos",
+    whiteboardLoading: "Cargando pizarra…",
+    pictureInPicture: "Imagen en imagen",
+    copyInviteLink: "Copiar enlace de invitación",
+    linkCopied: "¡Enlace copiado!",
+  },
+  common: {
+    speaker: "Orador",
+    translationUnavailable: "Traducción no disponible.",
+    liveNowTitle: "En vivo ahora",
+    liveNowHint: "La sala del taller está en vivo. Únete para ver y escuchar al grupo.",
+    joinLiveSession: "Unirse a la sesión en vivo",
+  },
   notFound: {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",

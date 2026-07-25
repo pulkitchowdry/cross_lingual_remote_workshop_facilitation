@@ -48,16 +48,29 @@ async function translateWithClaude(
       signal: AbortSignal.timeout(8_000),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(
+        `[translation] Claude translate failed with status ${response.status} (${sourceLanguage}->${targetLanguage}).`,
+      );
+      return null;
+    }
     const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
     const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
     if (!translated) return null;
 
     return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
-  } catch {
+  } catch (error) {
+    console.error(`[translation] Claude request threw (${sourceLanguage}->${targetLanguage}):`, error);
     return null;
   }
 }
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const LOCAL_TRANSLATE_ATTEMPTS = 2;
+const LOCAL_TRANSLATE_RETRY_DELAY_MS = 400;
 
 /**
  * Tries the self-hosted NLLB tier first (privacy-preserving — nothing leaves
@@ -79,11 +92,20 @@ export async function translateText(
   const allowCloudFallback = options?.allowCloudFallback ?? true;
 
   if (isLocalInferenceConfigured()) {
-    try {
-      const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
-      if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
-    } catch {
-      // Fall through to the cloud tier below (or to null, if disallowed).
+    for (let attempt = 1; attempt <= LOCAL_TRANSLATE_ATTEMPTS; attempt++) {
+      try {
+        const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
+        if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
+        break;
+      } catch (error) {
+        console.error(
+          `[translation] local-inference translate attempt ${attempt}/${LOCAL_TRANSLATE_ATTEMPTS} failed ` +
+            `(${sourceLanguage}->${targetLanguage}):`,
+          error,
+        );
+        if (attempt < LOCAL_TRANSLATE_ATTEMPTS) await delay(LOCAL_TRANSLATE_RETRY_DELAY_MS);
+        // Last attempt exhausted: fall through to the cloud tier below (or to null, if disallowed).
+      }
     }
   }
 

@@ -21,17 +21,21 @@ export function SessionChatPanel({
   targetLanguage,
   sendAction,
   allowQuestions = false,
+  embedded = false,
 }: {
   messages: ChatMessage[];
   targetLanguage: string;
   sendAction: (formData: FormData) => void | Promise<void>;
   allowQuestions?: boolean;
+  /** True when rendered inside the meeting sidebar's Chat tab instead of standalone next to the room. */
+  embedded?: boolean;
 }) {
   const dict = getDictionary(resolveLanguage(targetLanguage)).chat;
   const translationUnavailable = getDictionary(resolveLanguage(targetLanguage)).common.translationUnavailable;
+  const Wrapper = embedded ? "div" : "aside";
 
   return (
-    <aside className="flex min-h-[38rem] flex-col rounded-lg border border-border-subtle bg-surface-raised">
+    <Wrapper className={embedded ? "flex h-full min-h-0 flex-col" : "flex min-h-[38rem] flex-col rounded-lg border border-border-subtle bg-surface-raised"}>
       <div className="border-b border-border-subtle px-4 py-3">
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.translatedChat}</p>
         <p className="mt-1 text-sm text-foreground">{dict.appearsInLanguage}</p>
@@ -39,7 +43,7 @@ export function SessionChatPanel({
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
         {messages.length > 0 ? (
           messages.map((message) => (
-            <article key={message.id} className="rounded-md border border-border-subtle bg-background p-3">
+            <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-data text-xs font-medium text-[var(--accent-text)]">{message.sender.displayName}</p>
                 {message.kind === "QUESTION" && (
@@ -48,7 +52,7 @@ export function SessionChatPanel({
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-sm leading-relaxed" lang={targetLanguage}>
+              <p className="mt-1 text-sm leading-relaxed text-foreground" lang={targetLanguage}>
                 {translatedText(message, targetLanguage, translationUnavailable)}
               </p>
               {message.language !== targetLanguage && (
@@ -87,6 +91,6 @@ export function SessionChatPanel({
           </button>
         </div>
       </form>
-    </aside>
+    </Wrapper>
   );
 }
