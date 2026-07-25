@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.auth import require_secret
@@ -27,7 +28,14 @@ async def transcribe(
     if not audio_bytes:
         return TranscribeResponse(text="")
     try:
-        text = whisper.transcribe(audio_bytes, expectedLanguage)
+        # whisper.transcribe is CPU-bound and blocking; this handler is `async def`
+        # only for `await audio.read()` above, so without run_in_threadpool the
+        # transcription itself would run inline on the single ASGI event-loop
+        # thread and stall every other concurrent request this instance is serving
+        # (other /translate, /tts/synthesize, /stt/transcribe calls, even /health) —
+        # unlike translate.py/tts.py's plain `def` handlers, which FastAPI/Starlette
+        # already offload to a worker thread automatically.
+        text = await run_in_threadpool(whisper.transcribe, audio_bytes, expectedLanguage)
     except Exception as error:
         raise HTTPException(status_code=502, detail=f"Transcription failed: {error}") from error
     return TranscribeResponse(text=text)
