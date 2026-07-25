@@ -103,6 +103,13 @@ async function main() {
       // "connection failed" for every case — see LiveCaptionStream.tsx's
       // `onclose` handler, which surfaces `event.reason` when present.
       const reason = error instanceof Error ? error.message : "Unable to start captions.";
+      // Without this, a rejected upgrade left zero server-side trace — the only
+      // signal was the client's `onclose`, which can't be relied on either (a
+      // proxy/VPN/firewall that mangles the WS Upgrade before it reaches this
+      // handler at all closes the browser socket abnormally with an empty
+      // `reason`, indistinguishable client-side from every other failure —
+      // see LiveCaptionStream.tsx's handling of that case).
+      console.warn(`[captions/stream] rejecting upgrade: ${reason}`);
       wss.handleUpgrade(req, socket, head, (ws) => {
         ws.close(1011, reason);
       });

@@ -148,7 +148,7 @@ export default async function FacilitatorSessionPage({
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
             <div className="flex flex-col gap-3">
               <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} />
               <form action={publishCaptionAction} className="flex gap-2">

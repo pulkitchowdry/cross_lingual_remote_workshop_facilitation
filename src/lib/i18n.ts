@@ -117,6 +117,7 @@ export interface Dictionary {
     stop: string;
     agentCapturing: string;
     connectionFailed: string;
+    connectionBlocked: string;
     sttError: string;
     micRecordingFailed: string;
     micDenied: string;
@@ -247,6 +248,8 @@ const en: Dictionary = {
     agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
       "Live caption connection failed. Use the typed caption box above instead.",
+    connectionBlocked:
+      "Couldn't reach the live caption service — a VPN, proxy, or firewall may be blocking it. Use the typed caption box above instead.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -372,6 +375,8 @@ const zh: Dictionary = {
     agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
       "实时字幕连接失败。请改用上方的手动输入字幕框。",
+    connectionBlocked:
+      "无法直接连接实时字幕服务——可能是 VPN、代理或防火墙阻止了连接。请改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -499,6 +504,8 @@ const es: Dictionary = {
     agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
       "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
+    connectionBlocked:
+      "No se pudo conectar con el servicio de subtítulos en vivo: una VPN, un proxy o un firewall podrían estar bloqueando la conexión. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",

@@ -20,6 +20,7 @@ import {
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
+import "@/lib/livekit-log-filter";
 import "@/lib/media-devices";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -100,7 +101,7 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-hidden p-3">
+      <div className="flex-1 overflow-hidden p-2">
         {screenShareTrack ? (
           <FocusLayoutContainer className="h-full">
             <FocusLayout trackRef={screenShareTrack} />
@@ -208,7 +209,14 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
   }
 
   return (
-    <div className="h-[38rem] rounded-lg border border-border-subtle bg-surface">
+    // Scales with viewport height (up to a point) instead of a flat 38rem, so the
+    // room this component takes ~2/3 of the page width for (see the facilitator/
+    // learner page grids) isn't stuck at a fixed, comparatively short height on
+    // larger displays — clamped on both ends so it stays usable on short viewports
+    // and doesn't grow unbounded on very tall ones. No `overflow-hidden` here (kept
+    // as-is from the hand-rolled controls change) — MediaDeviceMenu's dropdown
+    // needs to render outside these bounds.
+    <div className="h-[clamp(26rem,75vh,54rem)] rounded-lg border border-border-subtle bg-surface">
       <LiveKitRoom
         key={credentials.token}
         token={credentials.token}

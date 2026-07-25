@@ -92,7 +92,7 @@ export default async function LearnerSessionPage({
             <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
             <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
             <LiveSessionRoom sessionId={participant.session.id} role="learner" lang={lang} />
             <SessionChatPanel
               messages={[...participant.session.messages].reverse()}
