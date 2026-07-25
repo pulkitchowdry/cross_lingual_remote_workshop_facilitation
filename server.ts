@@ -74,7 +74,7 @@ async function main() {
       if (!authorized) throw new Error("Not authorized for this session.");
 
       if (!speechToTextProvider.isConfigured || !speechToTextProvider.openStream) {
-        throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY.");
+        throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY or configure local-inference.");
       }
 
       const session = await prisma.session.findUnique({ where: { id: sessionId } });
@@ -119,9 +119,10 @@ async function startCaptionAgent({
   initializeLogger: typeof import("@livekit/agents").initializeLogger;
   dev: boolean;
 }) {
-  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, STT_API_KEY } = process.env;
-  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !STT_API_KEY) {
-    console.warn("[caption-agent] LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET/STT_API_KEY not fully set; caption agent worker not started.");
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !speechToTextProvider.isConfigured) {
+    console.warn("[caption-agent] LiveKit credentials or a speech-to-text tier (STT_API_KEY / local-inference) are not configured; caption agent worker not started.");
     return;
   }
 
