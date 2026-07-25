@@ -6,6 +6,14 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];
 
+/**
+ * Both the facilitator and learner pages poll every 2s (SessionAutoRefresh)
+ * for the life of a LIVE session and re-fetch the full chat/Q&A history each
+ * time with no pagination — bounding it keeps DB read volume and page payload
+ * size from growing linearly with session length/message count.
+ */
+export const MESSAGE_HISTORY_LIMIT = 50;
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
 export type TranslationMode = "AUTO" | "LOCAL_ONLY";

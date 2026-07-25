@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRetentionExpired, retentionDeadline } from "./session-retention";
+import { isRetentionExpired, isSessionRetentionExpired, retentionDeadline } from "./session-retention";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,5 +31,28 @@ describe("isRetentionExpired", () => {
   it("is expired well after the deadline", () => {
     const wellAfter = new Date(endedAt.getTime() + 30 * DAY_MS);
     expect(isRetentionExpired(endedAt, 7, wellAfter)).toBe(true);
+  });
+});
+
+describe("isSessionRetentionExpired", () => {
+  const createdAt = new Date("2026-01-01T00:00:00.000Z");
+
+  it("anchors to endedAt when the session has ended", () => {
+    const endedAt = new Date("2026-01-10T00:00:00.000Z");
+    const justBeforeDeadline = new Date(endedAt.getTime() + 7 * DAY_MS - 1_000);
+    const atDeadline = new Date(endedAt.getTime() + 7 * DAY_MS);
+    expect(isSessionRetentionExpired({ createdAt, endedAt, retentionDays: 7 }, justBeforeDeadline)).toBe(false);
+    expect(isSessionRetentionExpired({ createdAt, endedAt, retentionDays: 7 }, atDeadline)).toBe(true);
+  });
+
+  it("falls back to createdAt for a session that never ended, instead of never expiring", () => {
+    const justBeforeDeadline = new Date(createdAt.getTime() + 7 * DAY_MS - 1_000);
+    const atDeadline = new Date(createdAt.getTime() + 7 * DAY_MS);
+    expect(isSessionRetentionExpired({ createdAt, endedAt: null, retentionDays: 7 }, justBeforeDeadline)).toBe(false);
+    expect(isSessionRetentionExpired({ createdAt, endedAt: null, retentionDays: 7 }, atDeadline)).toBe(true);
+  });
+
+  it("defaults `now` to the current time", () => {
+    expect(isSessionRetentionExpired({ createdAt: new Date(), endedAt: null, retentionDays: 30 })).toBe(false);
   });
 });

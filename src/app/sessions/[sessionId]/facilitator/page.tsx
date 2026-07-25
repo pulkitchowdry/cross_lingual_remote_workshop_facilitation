@@ -14,6 +14,8 @@ import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import {
   endSession,
   loadDemoScenario,
@@ -25,6 +27,15 @@ import {
 import { sendChatMessage } from "@/app/sessions/actions";
 
 export const metadata: Metadata = { title: "Facilitator dashboard" };
+
+/**
+ * A caption published right before "End session" starts a background
+ * `waitUntil(generateSessionInsights(...))` (captions.ts) that can still be
+ * running when the page stops being LIVE. Keep polling for a short grace
+ * period past end so that last insight still reaches the dashboard instead
+ * of silently requiring a manual reload.
+ */
+const POST_SESSION_INSIGHT_GRACE_MS = 30_000;
 
 export default async function FacilitatorSessionPage({
   params,
@@ -44,11 +55,18 @@ export default async function FacilitatorSessionPage({
       messages: {
         include: { sender: true, translations: true },
         orderBy: { sentAt: "desc" },
+        take: MESSAGE_HISTORY_LIMIT,
       },
       joinLinks: { where: { role: ParticipantRole.LEARNER } },
     },
   });
   if (!session) notFound();
+  // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
+  // expired session's data, but nothing stops it being served here in the
+  // meantime — up to an hour after its own retention deadline, or indefinitely
+  // if the cron never runs (e.g. CRON_SECRET was never set). Treat it as gone
+  // as soon as it's due, not just once the delete has actually happened.
+  if (isSessionRetentionExpired(session)) notFound();
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -77,11 +95,16 @@ export default async function FacilitatorSessionPage({
   const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
+  const recentlyEnded =
+    session.status === SessionStatus.ENDED &&
+    session.endedAt !== null &&
+    new Date().getTime() - session.endedAt.getTime() < POST_SESSION_INSIGHT_GRACE_MS;
 
   return (
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
       {session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {dict.sessionCreated}

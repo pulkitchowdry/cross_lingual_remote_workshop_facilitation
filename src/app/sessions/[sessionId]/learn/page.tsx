@@ -11,6 +11,8 @@ import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
@@ -30,13 +32,21 @@ export default async function LearnerSessionPage({
       session: {
         include: {
           transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-          messages: { include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
+          messages: {
+            include: { sender: true, translations: true },
+            orderBy: { sentAt: "desc" },
+            take: MESSAGE_HISTORY_LIMIT,
+          },
         },
       },
       user: true,
     },
   });
   if (!participant) notFound();
+  // See the matching check in facilitator/page.tsx: the hourly cleanup cron
+  // physically deletes an expired session, but nothing else stops it being
+  // served here in the meantime.
+  if (isSessionRetentionExpired(participant.session)) notFound();
   const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
