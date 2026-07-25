@@ -1,0 +1,111 @@
+# One-command local stack: `docker compose up --build`.
+#
+# Everything except DATABASE_URL degrades gracefully (see src/lib/env.ts), so
+# this runs end-to-end with zero secrets — captions/translation fall back to
+# mock providers until you add real keys. Copy .env.example to .env and fill
+# in what you have; Next.js and Docker Compose both read that same file (Next
+# loads plain `.env` in addition to `.env.local`; Compose loads `.env` for the
+# ${VAR} substitutions below), so one file covers `npm run dev` and
+# `docker compose up` alike.
+#
+# LIVEKIT_URL is intentionally set to different values for `web` and `agent`:
+# `web`'s value is handed to the *browser* (RoomProvider.issueCredential
+# returns it verbatim as the LiveKit client's connect URL), so it must be
+# reachable from the host, not just from inside the Compose network — hence
+# `localhost`. `agent` only ever calls it from inside the Compose network, so
+# it uses the internal service hostname.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-workshop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workshop}
+      POSTGRES_DB: ${POSTGRES_DB:-workshop_copilot}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Host side only — Postgres always listens on 5432 *inside* its own
+      # container no matter what. If 5432 is already taken on your machine,
+      # set POSTGRES_PORT in .env (e.g. 5433) to change the host side only;
+      # never edit the "5432" on the right, and never change web's
+      # DATABASE_URL below to match — container-to-container traffic
+      # (web -> postgres) never goes through this published port at all, it
+      # hits the container's real listening port (5432) directly over the
+      # Compose network, regardless of what's published to the host.
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workshop} -d ${POSTGRES_DB:-workshop_copilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  livekit:
+    image: livekit/livekit-server:latest
+    command: ["--dev", "--bind", "0.0.0.0"]
+    ports:
+      - "7880:7880" # WebSocket/HTTP signaling — same port .env.example's LIVEKIT_URL uses
+      - "7881:7881" # RTC over TCP (fallback when UDP is blocked)
+      - "7882:7882/udp" # RTC over UDP
+
+  local-inference:
+    build:
+      context: ./local-inference
+    environment:
+      LOCAL_INFERENCE_SECRET: ${LOCAL_INFERENCE_SECRET:-devsecret}
+      INFERENCE_THREADS: ${INFERENCE_THREADS:-2}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s # first boot loads ~1-1.5GB of models into memory
+
+  web:
+    build:
+      context: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      local-inference:
+        condition: service_started
+    environment:
+      # Always postgres:5432 (Compose-internal hostname:port, not the
+      # published host port above) — see the comment on postgres's `ports`.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-workshop}:${POSTGRES_PASSWORD:-workshop}@postgres:5432/${POSTGRES_DB:-workshop_copilot}?schema=public
+      LIVEKIT_URL: ${LIVEKIT_URL:-http://localhost:7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      STT_API_KEY: ${STT_API_KEY:-}
+      DEEPL_API_KEY: ${DEEPL_API_KEY:-}
+      DEEPL_API_URL: ${DEEPL_API_URL:-}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      CLAUDE_API_URL: ${CLAUDE_API_URL:-https://api.anthropic.com/v1/messages}
+      INSIGHT_MODEL_API_KEY: ${INSIGHT_MODEL_API_KEY:-}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      LOCAL_INFERENCE_URL: http://local-inference:8080
+      LOCAL_INFERENCE_SECRET: ${LOCAL_INFERENCE_SECRET:-devsecret}
+      CAPTION_AGENT_SECRET: ${CAPTION_AGENT_SECRET:-devsecret}
+      CRON_SECRET: ${CRON_SECRET:-}
+    ports:
+      - "3000:3000"
+
+  agent:
+    build:
+      context: . # not ./agent — see agent/Dockerfile's top comment
+      dockerfile: agent/Dockerfile
+    depends_on:
+      - web
+      - livekit
+    environment:
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      STT_API_KEY: ${STT_API_KEY:-}
+      APP_BASE_URL: http://web:3000
+      CAPTION_AGENT_SECRET: ${CAPTION_AGENT_SECRET:-devsecret}
+
+volumes:
+  postgres-data:

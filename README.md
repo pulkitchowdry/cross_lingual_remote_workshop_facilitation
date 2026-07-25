@@ -34,9 +34,26 @@ flowchart LR
 - **Real-time transport:** LiveKit + WebSockets
 - **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
 - **Facilitator authentication:** opaque cookie/token flow (`session-security.ts`) for both facilitator and learner today; migrating the facilitator side to Clerk is a decided-but-not-yet-implemented follow-up (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
-- **Hosting:** Vercel
+- **Hosting:** Vercel (app) — also deployable to Railway alongside `agent/` and `local-inference/`, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 
 ## Getting Started
+
+### Option A: Docker Compose (fastest)
+
+Runs the whole stack — Postgres, a local LiveKit dev server, `local-inference`,
+this app, and the captions `agent/` worker — with one command, no local
+Postgres/LiveKit install required:
+
+```bash
+cp .env.example .env   # optional — fill in real keys, everything else falls back gracefully
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for what each service needs and how
+to run a subset of the stack.
+
+### Option B: Run natively
 
 The app needs four services configured before it runs end to end: **PostgreSQL** (session/message storage), **LiveKit** (real-time audio rooms), **Deepgram** (speech-to-text), and **Claude** (translation + understanding). Everything degrades gracefully — the app runs with only `DATABASE_URL` set, and each feature turns on once its key is added.
 
