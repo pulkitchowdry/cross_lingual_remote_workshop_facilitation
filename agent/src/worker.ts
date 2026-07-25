@@ -104,11 +104,23 @@ async function streamFacilitatorAudio(
   sourceLanguage: SupportedLanguage,
   translationMode: "AUTO" | "LOCAL_ONLY",
   client: CaptionAgentClient,
+  activeIdentities: Set<string>,
+  identity: string,
 ) {
   if (!speechToTextProvider.openStream) {
     console.warn(`[caption-agent] STT provider has no streaming support; not capturing session ${sessionId}.`);
     return;
   }
+  // A network blip/reconnect can republish the facilitator's audio track under the
+  // same identity before the old track's unsubscribe fires, so `RoomEvent.TrackSubscribed`
+  // can arrive twice for one facilitator. Without this guard both would open their own
+  // Deepgram stream and `publishCaption` for the same session, duplicating/interleaving
+  // transcript segments — the caption route has no de-duplication.
+  if (activeIdentities.has(identity)) {
+    console.warn(`[caption-agent] Track already streaming for ${identity} in session ${sessionId}; skipping duplicate subscription.`);
+    return;
+  }
+  activeIdentities.add(identity);
 
   let segmentStartedAt = new Date();
   const sttStream = speechToTextProvider.openStream({
@@ -135,6 +147,7 @@ async function streamFacilitatorAudio(
     }
   } finally {
     sttStream.close();
+    activeIdentities.delete(identity);
   }
 }
 
@@ -155,10 +168,21 @@ export default defineAgent({
 
     await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
 
+    // Scoped to this job/room (one `entry` call per room), so this never leaks
+    // state across sessions — see the guard inside streamFacilitatorAudio.
+    const activeIdentities = new Set<string>();
     ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
       if (!(track instanceof RemoteAudioTrack)) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
-      void streamFacilitatorAudio(track, sessionId, info.sourceLanguage, info.translationMode, client);
+      void streamFacilitatorAudio(
+        track,
+        sessionId,
+        info.sourceLanguage,
+        info.translationMode,
+        client,
+        activeIdentities,
+        participant.identity,
+      );
     });
   },
 });

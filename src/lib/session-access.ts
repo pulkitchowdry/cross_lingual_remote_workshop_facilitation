@@ -18,11 +18,11 @@ export async function hasFacilitatorAccess(sessionId: string) {
 }
 
 export async function learnerParticipantId(sessionId: string) {
-  const participantId = (await cookies()).get(learnerCookieName(sessionId))?.value;
-  if (!participantId) return null;
+  const accessToken = (await cookies()).get(learnerCookieName(sessionId))?.value;
+  if (!accessToken) return null;
 
   const participant = await prisma.sessionParticipant.findFirst({
-    where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
+    where: { accessTokenHash: hashToken(accessToken), sessionId, role: ParticipantRole.LEARNER },
     select: { id: true },
   });
   return participant?.id ?? null;

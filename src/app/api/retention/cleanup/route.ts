@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { isRetentionExpired } from "@/lib/session-retention";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { secureCompare } from "@/lib/session-security";
 
 /**
@@ -26,20 +25,43 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date();
-  const ended = await prisma.session.findMany({
-    where: { status: SessionStatus.ENDED, endedAt: { not: null } },
-    select: { id: true, endedAt: true, retentionDays: true },
+  // Every session, not just ENDED ones: a facilitator who starts a session and
+  // then never clicks "End" (browser crash, closed laptop, lost connectivity)
+  // would otherwise keep its full transcript/chat/participant data forever,
+  // since nothing else ever sets `status: ENDED` / `endedAt`. isSessionRetentionExpired
+  // falls back to `createdAt` for a session that never ended, giving every session a
+  // hard retention cap regardless of how it stopped being live.
+  const sessions = await prisma.session.findMany({
+    select: { id: true, createdAt: true, endedAt: true, retentionDays: true },
   });
 
-  const expiredIds = ended
-    .filter((session) => session.endedAt && isRetentionExpired(session.endedAt, session.retentionDays, now))
-    .map((session) => session.id);
+  const expiredIds = sessions.filter((session) => isSessionRetentionExpired(session, now)).map((session) => session.id);
 
   if (expiredIds.length > 0) {
     // Every content table (TranscriptSegment, Message, Insight, GlossaryTerm,
-    // SessionParticipant, JoinLink) cascades from Session in schema.prisma,
-    // so deleting the session row is sufficient and leaves nothing orphaned.
+    // SessionParticipant, JoinLink) cascades from Session in schema.prisma, so
+    // deleting the session row reclaims those. But the facilitator's and every
+    // learner's `User` row (their real display name + language) is only ever
+    // pointed to *from* SessionParticipant/Session — deleting the session
+    // leaves those User rows orphaned in the database forever unless they're
+    // swept too. `{ none: {} }` only matches a User with zero remaining
+    // sessions/participations, so a User who (in some future flow) is shared
+    // across sessions is never deleted out from under a still-live one.
+    const [facilitators, participants] = await Promise.all([
+      prisma.session.findMany({ where: { id: { in: expiredIds } }, select: { facilitatorId: true } }),
+      prisma.sessionParticipant.findMany({ where: { sessionId: { in: expiredIds } }, select: { userId: true } }),
+    ]);
+    const candidateUserIds = Array.from(
+      new Set([...facilitators.map((f) => f.facilitatorId), ...participants.map((p) => p.userId)]),
+    );
+
     await prisma.session.deleteMany({ where: { id: { in: expiredIds } } });
+
+    if (candidateUserIds.length > 0) {
+      await prisma.user.deleteMany({
+        where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
+      });
+    }
   }
 
   return Response.json({ deletedSessionIds: expiredIds });
