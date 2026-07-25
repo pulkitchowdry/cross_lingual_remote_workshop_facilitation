@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Button } from "@/components/ui/Button";
 import { notFound } from "next/navigation";
-import { ParticipantRole } from "@/generated/prisma/client";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { detectBrowserLanguage, getDictionary, resolveLanguage } from "@/lib/i18n";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { JoinSubmitButton } from "@/components/JoinSubmitButton";
 
 export const metadata: Metadata = { title: "Join session" };
 
@@ -32,7 +33,18 @@ export default async function JoinPage({
     invite.role !== ParticipantRole.LEARNER ||
     invite.revokedAt ||
     (invite.expiresAt && invite.expiresAt < new Date()) ||
-    (invite.maxUses !== null && invite.useCount >= invite.maxUses)
+    (invite.maxUses !== null && invite.useCount >= invite.maxUses) ||
+    // A facilitator ending a session doesn't revoke its (separately-optional) learner
+    // invite link — without this, the join form would keep rendering normally for an
+    // already-concluded workshop (see the matching, more detailed comment in
+    // actions.ts's `joinSession`, which enforces the same check server-side).
+    invite.session.status === SessionStatus.ENDED ||
+    // The join link's own expiry above is a much longer, independent window (30 days
+    // by default) than the session's own retention deadline — without this, the join
+    // form would render normally for a session that's already past retention (the
+    // hourly cleanup cron hasn't physically deleted it yet), and only fail once the
+    // learner submits (see the matching check in actions.ts's `joinSession`).
+    isSessionRetentionExpired(invite.session)
   ) {
     notFound();
   }
@@ -87,7 +99,7 @@ export default async function JoinPage({
           <input className="mt-1 h-3.5 w-3.5 accent-[var(--accent)]" type="checkbox" name="consent" required />
           <span>{dict.join.consent}</span>
         </label>
-        <Button type="submit">{dict.join.submit}</Button>
+        <JoinSubmitButton label={dict.join.submit} submittingLabel={dict.join.submitting} />
       </form>
     </div>
   );

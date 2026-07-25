@@ -21,8 +21,15 @@ export function isRetentionExpired(endedAt: Date, retentionDays: number, now: Da
  * because the physical delete hasn't happened yet.
  */
 export function isSessionRetentionExpired(
-  session: { createdAt: Date; endedAt: Date | null; retentionDays: number },
+  session: { createdAt: Date; startedAt: Date | null; endedAt: Date | null; retentionDays: number },
   now: Date = new Date(),
 ): boolean {
-  return isRetentionExpired(session.endedAt ?? session.createdAt, session.retentionDays, now);
+  // A DRAFT session that was never started (startedAt still null) has no lifecycle
+  // to anchor retention to yet, despite what the docstring above already promises
+  // ("started but never explicitly ended") — falling back to `createdAt` here used
+  // to give every not-yet-started session a hard deletion deadline anyway, so a
+  // workshop prepared ahead of time (and any learners already waiting in it) could
+  // get permanently deleted before it ever ran.
+  if (session.startedAt === null) return false;
+  return isRetentionExpired(session.endedAt ?? session.startedAt, session.retentionDays, now);
 }

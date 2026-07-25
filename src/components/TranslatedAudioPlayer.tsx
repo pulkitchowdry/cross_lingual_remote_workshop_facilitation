@@ -20,10 +20,18 @@ interface CaptionForPlayback {
  * segment and queues playback so overlapping captions don't talk over each
  * other.
  */
+type PlaybackErrorKind = "blocked" | "skipped";
+
 export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segments: CaptionForPlayback[]; preferredLanguage: string }) {
   const dict = getDictionary(resolveLanguage(preferredLanguage)).learner;
   const [enabled, setEnabled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The error *kind*, not the already-resolved dictionary string — `dict` is
+  // recomputed from `preferredLanguage` on every render, so deriving the displayed
+  // text from this kind at render time (below) keeps it in sync when the learner
+  // switches languages mid-session. Storing the resolved string directly (the
+  // previous approach) kept showing the OLD language's error text after a language
+  // switch, since nothing re-derived it once it was already in state.
+  const [errorKind, setErrorKind] = useState<PlaybackErrorKind | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const hasMountedRef = useRef(false);
@@ -43,7 +51,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       // A rejected play() (autoplay block, decode error, aborted load) never
       // fires onEnded/onError, so without this the queue would silently wedge
       // forever on the first failure while the checkbox still reads "on".
-      setError(dict.audioBlocked);
+      setErrorKind("blocked");
       playingRef.current = false;
       playNext();
     });
@@ -53,9 +61,10 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     // <audio onError> covers every failed load (404/502/503 from the audio
     // route, network error) — surface it instead of silently treating a
     // failed segment the same as one that finished normally.
-    setError(dict.audioSkipped);
+    setErrorKind("skipped");
     playNext();
   };
+  const error = errorKind === "blocked" ? dict.audioBlocked : errorKind === "skipped" ? dict.audioSkipped : null;
 
   useEffect(() => {
     const unseen = segments.filter((segment) => !seenIdsRef.current.has(segment.id));
@@ -74,6 +83,16 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments, enabled]);
+
+  useEffect(() => {
+    // Unchecking the box must actually silence playback, not just stop queueing
+    // *new* segments — without this, whatever was already playing (or queued right
+    // behind it) kept right on talking after the learner turned the control off.
+    if (enabled) return;
+    audioRef.current?.pause();
+    queueRef.current = [];
+    playingRef.current = false;
+  }, [enabled]);
 
   return (
     <div className="flex flex-col gap-1">

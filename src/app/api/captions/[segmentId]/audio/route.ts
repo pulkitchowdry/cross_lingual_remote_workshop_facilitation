@@ -14,6 +14,23 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * left as follow-up. This route stays serverless-compatible: no LiveKit
  * publish involved, just synthesize-and-return.
  */
+
+/**
+ * A transcript segment's text/translation never changes once written, so its
+ * synthesized audio is safe to cache indefinitely per (segment, language) — this
+ * process's own memory is a valid place to do that (this app runs as a single
+ * persistent Node process, not per-request serverless instances; see `server.ts`).
+ * `Cache-Control: private, max-age=3600` below only advises the *browser's* own
+ * cache and does nothing to stop a script bypassing it (a raw loop of GETs for the
+ * same segment+language), which — without this — re-synthesized via the paid
+ * ElevenLabs API on every single request. `MAX_CACHE_ENTRIES` bounds memory for a
+ * long-running process; oldest-inserted entries are evicted first (a `Map`'s
+ * natural iteration order), not a true LRU, which is a fine tradeoff for how
+ * infrequently this needs to evict anything in practice.
+ */
+const MAX_CACHE_ENTRIES = 500;
+const audioCache = new Map<string, { audio: Uint8Array; mimeType: string }>();
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ segmentId: string }> }) {
   if (!textToSpeechProvider.isConfigured) {
     return Response.json({ error: "Text-to-speech is not configured: set TTS_API_KEY." }, { status: 503 });
@@ -35,6 +52,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     (await hasFacilitatorAccess(segment.sessionId)) || Boolean(await learnerParticipantId(segment.sessionId));
   if (!isAuthorized) {
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
+  }
+
+  const cacheKey = `${segmentId}:${language}`;
+  const cached = audioCache.get(cacheKey);
+  if (cached) {
+    return new Response(Buffer.from(cached.audio), {
+      headers: { "Content-Type": cached.mimeType, "Cache-Control": "private, max-age=3600" },
+    });
   }
 
   const text =
@@ -66,7 +91,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "Speech synthesis returned no audio." }, { status: 502 });
   }
 
-  return new Response(Buffer.from(speech.audio), {
+  const audioBuffer = Buffer.from(speech.audio);
+  if (audioCache.size >= MAX_CACHE_ENTRIES && !audioCache.has(cacheKey)) {
+    const oldestKey = audioCache.keys().next().value;
+    if (oldestKey !== undefined) audioCache.delete(oldestKey);
+  }
+  audioCache.set(cacheKey, { audio: audioBuffer, mimeType: speech.mimeType });
+
+  return new Response(audioBuffer, {
     headers: { "Content-Type": speech.mimeType, "Cache-Control": "private, max-age=3600" },
   });
 }

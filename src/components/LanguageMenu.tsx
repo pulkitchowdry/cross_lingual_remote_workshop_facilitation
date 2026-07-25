@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
@@ -27,25 +27,73 @@ export function LanguageMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  // Lazy initializer (not an effect): the slot div is server-rendered by AppShell as
-  // part of the same HTML document, so it already exists in the DOM by the time this
-  // client component's first render runs during hydration.
-  const [slot] = useState<HTMLElement | null>(() =>
-    typeof document === "undefined" ? null : document.getElementById(HEADER_SLOT_ID),
-  );
+  // Deliberately `useState(null)` + an effect below, not a lazy initializer — a lazy
+  // initializer runs during render, including the client's *hydration* render, where
+  // `document.getElementById` already finds the slot AppShell server-rendered. That
+  // makes the client's first render produce a portal while the server (which has no
+  // `document` at all) produced nothing for this component, a real server/client
+  // output mismatch React's hydration diffing flags. Starting at `null` and only
+  // looking the slot up in an effect (client-only, always runs after hydration,
+  // never during it) keeps the client's hydration-time render matching the server's
+  // (both render nothing) — the portal then mounts on the very next, ordinary
+  // client-side re-render, which hydration doesn't apply to.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // Reads from `document` (an external system, not derivable during render without
+    // reintroducing the hydration mismatch this effect exists to avoid — see the
+    // comment above) and stores the result; it isn't state that could be computed
+    // during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSlot(document.getElementById(HEADER_SLOT_ID));
+  }, []);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const dict = getDictionary(current).shell;
+  // Which option is highlighted — the thing `aria-activedescendant` points at and arrow
+  // keys move. Kept separate from `current` because a keyboard user can arrow through
+  // options without selecting any of them (selection only commits on Enter/Space/click).
+  const [activeIndex, setActiveIndex] = useState(0);
+  // Scopes option ids to this instance — the menu is portalled into a shared header
+  // slot, so a plain per-language id would collide if two instances ever mounted.
+  const listboxId = useId();
+  const optionId = (value: SupportedLanguage) => `${listboxId}-option-${value}`;
+  // `languages` is caller-supplied (the learn page filters it down to a session's
+  // configured learner languages) and could in principle be empty, unlike the
+  // fixed, non-empty `SUPPORTED_LANGUAGES` default — guard the lookup (`.at` types as
+  // possibly-`undefined`) rather than assume `activeIndex` always indexes something.
+  const activeLanguage = languages.at(activeIndex);
 
   useEffect(() => {
     if (!open) return;
+    // Re-highlight whichever option matches the active language every time the menu
+    // opens, so arrow-key navigation and aria-activedescendant both start from where
+    // selection actually is instead of always resetting to the first option. This reacts
+    // to `open` flipping true (an external, DOM-focus-adjacent event, not a value
+    // derivable during render), the same justification as the `setSlot` effect above.
+    const currentIndex = languages.findIndex((language) => language.value === current);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveIndex(currentIndex === -1 ? 0 : currentIndex);
+    // Move focus onto the listbox itself, not an option — per the WAI-ARIA listbox
+    // pattern, real DOM focus stays on the list and the highlighted option is tracked
+    // virtually via `aria-activedescendant` (set on the list below), so a keyboard user
+    // who opens the menu lands somewhere that's actually announced and behaves like the
+    // listbox it claims to be.
+    listRef.current?.focus();
+
     function handlePointerDown(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // Only Escape (and selecting an option, in `selectLanguage` below) return focus to
+      // the trigger — an outside pointerdown closes the menu but deliberately leaves
+      // focus wherever the user actually clicked, not wherever the menu used to be.
+      triggerRef.current?.focus();
     }
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -53,10 +101,43 @@ export function LanguageMenu({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [open, current, languages]);
+
+  // WAI-ARIA listbox keyboard pattern: arrows/Home/End move the highlighted option
+  // (clamped, not wrapping — matches the APG reference listbox), Enter/Space commit
+  // whatever `aria-activedescendant` is currently pointing at. Escape is handled by the
+  // document-level listener above, not here.
+  function handleListKeyDown(event: React.KeyboardEvent<HTMLUListElement>) {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        setActiveIndex((index) => Math.min(index + 1, languages.length - 1));
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        setActiveIndex((index) => Math.max(index - 1, 0));
+        break;
+      case "Home":
+        event.preventDefault();
+        setActiveIndex(0);
+        break;
+      case "End":
+        event.preventDefault();
+        setActiveIndex(languages.length - 1);
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (activeLanguage) selectLanguage(activeLanguage.value);
+        break;
+      default:
+        break;
+    }
+  }
 
   function selectLanguage(lang: SupportedLanguage) {
     setOpen(false);
+    triggerRef.current?.focus();
     if (lang === current) return;
     startTransition(async () => {
       await onSelect(lang);
@@ -69,6 +150,7 @@ export function LanguageMenu({
   return createPortal(
     <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
@@ -82,20 +164,30 @@ export function LanguageMenu({
       </button>
       {open && (
         <ul
+          ref={listRef}
           role="listbox"
           aria-label={dict.interfaceLanguage}
-          className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg"
+          tabIndex={0}
+          aria-activedescendant={activeLanguage ? optionId(activeLanguage.value) : undefined}
+          onKeyDown={handleListKeyDown}
+          className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg outline-none focus:ring-2 focus:ring-accent/30"
         >
-          {languages.map((language) => (
-            <li key={language.value} role="option" aria-selected={language.value === current}>
+          {languages.map((language, index) => (
+            <li
+              key={language.value}
+              id={optionId(language.value)}
+              role="option"
+              aria-selected={language.value === current}
+            >
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => selectLanguage(language.value)}
                 className={`font-data flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${
                   language.value === current
                     ? "bg-accent/10 text-foreground"
                     : "text-muted-foreground hover:bg-accent/10 hover:text-foreground"
-                }`}
+                } ${index === activeIndex ? "ring-2 ring-inset ring-accent/30" : ""}`}
               >
                 {language.nativeLabel}
               </button>

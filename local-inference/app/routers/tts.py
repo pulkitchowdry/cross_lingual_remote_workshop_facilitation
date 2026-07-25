@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth import require_secret
 from app.languages import is_supported
@@ -7,9 +7,12 @@ from app.models import piper
 
 router = APIRouter()
 
+# See translate.py's MAX_TEXT_LENGTH for why this service bounds request text itself.
+MAX_TEXT_LENGTH = 3000
+
 
 class SynthesizeRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=MAX_TEXT_LENGTH)
     language: str
 
 

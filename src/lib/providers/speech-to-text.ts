@@ -246,8 +246,15 @@ export function parseDeepgramStreamingMessage(raw: string): StreamingTranscriptE
   return { text, isFinal: Boolean(message.is_final) };
 }
 
+/** How long to wait for Deepgram's TCP+TLS+WS handshake before giving up and
+ * reporting an error — see the `connectTimeout` comment below for why this
+ * exists at all. */
+const DEEPGRAM_CONNECT_TIMEOUT_MS = 10_000;
+
 class DeepgramStreamingSession implements SpeechToTextStream {
   private readonly socket: WebSocket;
+  /** Set before we initiate our own close, so the `close` handler below can tell "we hung up" apart from Deepgram's side closing on us. */
+  private closedByUs = false;
 
   constructor(
     apiKey: string,
@@ -271,11 +278,42 @@ class DeepgramStreamingSession implements SpeechToTextStream {
     this.socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, {
       headers: { Authorization: `Token ${apiKey}` },
     });
+    // A network path that silently drops outbound packets instead of actively
+    // rejecting them (a common failure mode for a restrictive VPN/proxy/firewall,
+    // as opposed to one that resets the connection) never fires the socket's
+    // `error` or `close` events at all — Node's own TCP connect timeout is
+    // OS-dependent and can be well over a minute. Without this, that hang is
+    // completely silent: the browser's WS to `/api/captions/stream` already
+    // opened fine, so LiveCaptionStream.tsx shows "streaming" indefinitely with
+    // no captions ever arriving and no error to explain why, which is strictly
+    // worse than a wrong error — the facilitator has nothing to act on at all.
+    const connectTimeout = setTimeout(() => {
+      if (this.socket.readyState !== WebSocket.CONNECTING) return;
+      onError(new Error(`Timed out connecting to the live caption service after ${DEEPGRAM_CONNECT_TIMEOUT_MS / 1000}s.`));
+      this.closedByUs = true;
+      this.socket.terminate();
+    }, DEEPGRAM_CONNECT_TIMEOUT_MS);
+    this.socket.on("open", () => clearTimeout(connectTimeout));
     this.socket.on("message", (data) => {
       const event = parseDeepgramStreamingMessage(data.toString());
       if (event) onSegment(event);
     });
-    this.socket.on("error", (error) => onError(error instanceof Error ? error : new Error(String(error))));
+    this.socket.on("error", (error) => {
+      clearTimeout(connectTimeout);
+      onError(error instanceof Error ? error : new Error(String(error)));
+    });
+    // Without this, a *clean* close (Deepgram's own idle timeout, its max-duration
+    // limit, or an intermediate proxy/load balancer dropping an idle connection —
+    // none of which raise a websocket "error") is invisible: `sendAudio` silently
+    // no-ops once `readyState` leaves OPEN, `onError` never fires, and neither
+    // caller (captions-socket.ts nor caption-agent.ts) has any other signal to
+    // reconnect on — live captions would go silently dead mid-session with the UI
+    // still reporting "streaming".
+    this.socket.on("close", (code, reason) => {
+      clearTimeout(connectTimeout);
+      if (this.closedByUs) return;
+      onError(new Error(`Deepgram streaming connection closed unexpectedly (code ${code}${reason.length > 0 ? `: ${reason.toString()}` : ""}).`));
+    });
   }
 
   sendAudio(chunk: Uint8Array): void {
@@ -283,6 +321,7 @@ class DeepgramStreamingSession implements SpeechToTextStream {
   }
 
   close(): void {
+    this.closedByUs = true;
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
       this.socket.close();
     }

@@ -2,10 +2,21 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { insightProvider, validateInsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CONTEXT_WINDOW = 20;
 /** Word-overlap (Jaccard) threshold above which a new draft is treated as a paraphrase of an already-noted insight, not genuinely new. */
 const DUPLICATE_SUMMARY_SIMILARITY = 0.6;
+/**
+ * Caps how many of a session's own past insight summaries get sent to the model as
+ * "already noted" context. Without a cap, a multi-hour workshop accumulating hundreds
+ * of insights would re-send its *entire* history on every single caption-triggered
+ * call — this background analysis is on the hot path of every final caption
+ * (captions.ts fires it unawaited after each one), so token usage/latency/cost here
+ * would grow linearly and unboundedly with session length instead of staying capped.
+ * Only the most recent ones matter in practice for catching a near-term repeat.
+ */
+const ALREADY_NOTED_LIMIT = 30;
 
 /**
  * Analyzes the session's recent transcript for new facilitator-dashboard
@@ -32,28 +43,55 @@ const DUPLICATE_SUMMARY_SIMILARITY = 0.6;
  */
 export async function generateSessionInsights(session: Session): Promise<void> {
   if (!insightProvider.isConfigured) return;
+  // Unlike TranslationProvider/SpeechToTextProvider/TextToSpeechProvider, InsightProvider
+  // has no local-inference tier at all — ClaudeInsightProvider always calls Anthropic's
+  // cloud API directly, with no `allowCloudFallback` gate to honor. A Strict Privacy Mode
+  // session (translationMode LOCAL_ONLY) choosing to never send audio/text to external
+  // providers must not have its transcript sent to Claude here either; skipping outright
+  // (not just degrading empty on failure, this repo's existing pattern for the *other*
+  // providers) is the only correct behavior since there's no local fallback to try first.
+  if (session.translationMode === "LOCAL_ONLY") return;
 
   try {
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${session.id}))`;
 
-        const recentSegments = await tx.transcriptSegment.findMany({
-          where: { sessionId: session.id, isFinal: true },
-          orderBy: { startedAt: "desc" },
-          take: CONTEXT_WINDOW,
-          select: { id: true, originalText: true },
-        });
+        // `desc` (newest first) is what makes `take: CONTEXT_WINDOW` cheaply grab the
+        // *most recent* segments — but the model needs to read them oldest-first, the
+        // same chronological order the conversation actually happened in, or it can
+        // read a resolution before the problem it resolved and misjudge cause and
+        // effect (e.g. emitting a BLOCKER for an issue that was already fixed earlier
+        // in the same batch). `session.transcript` is reversed the identical way
+        // before rendering (see facilitator/page.tsx) — this is the one place that
+        // reversal was missing.
+        const recentSegments = (
+          await tx.transcriptSegment.findMany({
+            where: { sessionId: session.id, isFinal: true },
+            orderBy: { startedAt: "desc" },
+            take: CONTEXT_WINDOW,
+            select: { id: true, originalText: true },
+          })
+        ).reverse();
         if (recentSegments.length === 0) return;
 
+        // ACTIVE only — a RESOLVED insight (resolveInsight, facilitator/actions.ts) means
+        // the facilitator explicitly dealt with it; a genuine recurrence of that same
+        // issue is new information worth surfacing again, not a duplicate to discard.
+        // Without this filter, an old BLOCKER the facilitator already resolved kept
+        // silently suppressing every later re-report of the exact same problem for the
+        // rest of the session.
         const existingInsights = await tx.insight.findMany({
-          where: { sessionId: session.id },
+          where: { sessionId: session.id, status: "ACTIVE" },
+          orderBy: { createdAt: "desc" },
+          take: ALREADY_NOTED_LIMIT,
           select: { summary: true },
         });
         const alreadyNoted = existingInsights.map((insight) => insight.summary);
 
         const drafts = await insightProvider.generateInsights({
           sessionGoal: session.goal,
+          sourceLanguage: session.sourceLanguage as SupportedLanguage,
           finalSegments: recentSegments.map((segment) => ({ id: segment.id, originalText: segment.originalText })),
           alreadyNoted,
         });

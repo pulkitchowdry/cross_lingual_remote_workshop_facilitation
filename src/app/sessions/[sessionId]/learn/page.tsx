@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
 import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
@@ -13,7 +13,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
@@ -35,10 +35,17 @@ export default async function LearnerSessionPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+          // A secondary `id` tiebreaker: see the matching comment in facilitator/page.tsx —
+          // without one, two rows created within the same millisecond can silently swap
+          // relative order between successive SessionAutoRefresh polls.
+          transcript: {
+            include: { translations: true },
+            orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+            take: TRANSCRIPT_HISTORY_LIMIT,
+          },
           messages: {
             include: { sender: true, translations: true },
-            orderBy: { sentAt: "desc" },
+            orderBy: [{ sentAt: "desc" }, { id: "desc" }],
             take: MESSAGE_HISTORY_LIMIT,
           },
         },
@@ -111,61 +118,61 @@ export default async function LearnerSessionPage({
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {dict.facilitator.workshopRoom}
           </h2>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <LiveSessionRoom
-              sessionId={participant.session.id}
-              role="learner"
-              lang={lang}
-              captionText={latestCaptionText}
-            />
-            <SessionSidePanel
-              chat={{
-                messages: [...participant.session.messages].reverse(),
-                targetLanguage: participant.preferredLanguage,
-                sendAction: sendChatAction,
-                allowQuestions: true,
-              }}
-              captions={{
-                entries: transcriptEntries,
-                emptyLabel: learnerDict.captionsWillAppear,
-                jumpToLatestLabel: dict.common.jumpToLatest,
-              }}
-              captionsHeader={
-                textToSpeechProvider.isConfigured && (
-                  <TranslatedAudioPlayer
-                    segments={participant.session.transcript.map((segment) => ({
-                      id: segment.id,
-                      hasTranslation:
-                        segment.language === participant.preferredLanguage ||
-                        segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-                      isTyped: segment.isTyped,
-                    }))}
-                    preferredLanguage={participant.preferredLanguage}
-                  />
-                )
-              }
-              captionComposer={
-                <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
-                  <label className="sr-only" htmlFor="learner-caption">{learnerDict.captionComposerLabel}</label>
-                  <textarea
-                    id="learner-caption"
-                    className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                    name="captionText"
-                    rows={2}
-                    required
-                    maxLength={3000}
-                    placeholder={learnerDict.captionComposerPlaceholder}
-                  />
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">{learnerDict.captionAudioHint}</p>
-                    <ChatSendButton label={learnerDict.publish} sendingLabel={learnerDict.publishing} />
-                  </div>
-                </form>
-              }
-              chatTabLabel={dict.common.chatTab}
-              captionsTabLabel={dict.common.captionsTab}
-            />
-          </div>
+          <WorkshopRoomLayout
+            sessionId={participant.session.id}
+            role="learner"
+            lang={lang}
+            captionText={latestCaptionText}
+            sidebar={
+              <SessionSidePanel
+                chat={{
+                  messages: [...participant.session.messages].reverse(),
+                  targetLanguage: participant.preferredLanguage,
+                  sendAction: sendChatAction,
+                  allowQuestions: true,
+                }}
+                captions={{
+                  entries: transcriptEntries,
+                  emptyLabel: learnerDict.captionsWillAppear,
+                  jumpToLatestLabel: dict.common.jumpToLatest,
+                }}
+                captionsHeader={
+                  textToSpeechProvider.isConfigured && (
+                    <TranslatedAudioPlayer
+                      segments={participant.session.transcript.map((segment) => ({
+                        id: segment.id,
+                        hasTranslation:
+                          segment.language === participant.preferredLanguage ||
+                          segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+                        isTyped: segment.isTyped,
+                      }))}
+                      preferredLanguage={participant.preferredLanguage}
+                    />
+                  )
+                }
+                captionComposer={
+                  <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+                    <label className="sr-only" htmlFor="learner-caption">{learnerDict.captionComposerLabel}</label>
+                    <textarea
+                      id="learner-caption"
+                      className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      name="captionText"
+                      rows={2}
+                      required
+                      maxLength={3000}
+                      placeholder={learnerDict.captionComposerPlaceholder}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">{learnerDict.captionAudioHint}</p>
+                      <ChatSendButton label={learnerDict.publish} sendingLabel={learnerDict.publishing} />
+                    </div>
+                  </form>
+                }
+                chatTabLabel={dict.common.chatTab}
+                captionsTabLabel={dict.common.captionsTab}
+              />
+            }
+          />
         </section>
       )}
     </div>

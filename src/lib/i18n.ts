@@ -38,8 +38,6 @@ export interface Dictionary {
     sessionTitlePlaceholder: string;
     workshopGoal: string;
     workshopGoalPlaceholder: string;
-    learnerLanguages: string;
-    learnerLanguagesHint: string;
     retention: string;
     retentionDay: string;
     retentionWeek: string;
@@ -55,6 +53,7 @@ export interface Dictionary {
     yourName: string;
     consent: string;
     submit: string;
+    submitting: string;
   };
   facilitator: {
     statusDraft: string;
@@ -73,8 +72,13 @@ export interface Dictionary {
     publishing: string;
     actNow: string;
     blocker: string;
+    resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
+    waitingToStart: string;
+    noInterventionHintWaiting: string;
+    languageChangeLiveWarning: string;
+    liveTranscript: string;
     transcriptEmpty: string;
     learnerInvitation: string;
     shareLink: string;
@@ -82,6 +86,7 @@ export interface Dictionary {
     learnerLinkAriaLabel: string;
     copyLink: string;
     linkCopied: string;
+    copyFailed: string;
     revokeInvite: string;
     linkMissingMsg: string;
     qrAlt: string;
@@ -119,6 +124,7 @@ export interface Dictionary {
     stop: string;
     agentCapturing: string;
     connectionFailed: string;
+    connectionBlocked: string;
     sttError: string;
     micRecordingFailed: string;
     micDenied: string;
@@ -133,6 +139,11 @@ export interface Dictionary {
     selectCamera: string;
     leaveCall: string;
     toggleCaptions: string;
+    screenShareInterrupted: string;
+    disconnectedDuplicate: string;
+    disconnectedOther: string;
+    mediaDeviceError: string;
+    reload: string;
   };
   common: {
     speaker: string;
@@ -145,6 +156,11 @@ export interface Dictionary {
     title: string;
     message: string;
     cta: string;
+  };
+  error: {
+    title: string;
+    message: string;
+    retry: string;
   };
 }
 
@@ -171,8 +187,6 @@ const en: Dictionary = {
     sessionTitlePlaceholder: "e.g. REST endpoint workshop",
     workshopGoal: "Workshop goal",
     workshopGoalPlaceholder: "e.g. Implement a working REST endpoint for user signup, including input validation.",
-    learnerLanguages: "Learner languages",
-    learnerLanguagesHint: "Learners choose one of these when they join. Start with the languages you can support.",
     retention: "Transcript retention",
     retentionDay: "Delete after 1 day",
     retentionWeek: "Delete after 7 days",
@@ -180,7 +194,7 @@ const en: Dictionary = {
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
     strictPrivacyLabel: "Strict privacy mode",
     strictPrivacyHint:
-      "Never send audio or text to external translation providers. If the local translation service is unavailable, captions and translations will show as unavailable instead of falling back to the cloud.",
+      "Nothing is ever sent to Claude or another cloud translation provider — audio and text stay on this server. This requires a local-inference server to be configured; if none is set up (the default for local testing), captions and translations will show as unavailable for the whole session instead of using the cloud, not just when the network is unreliable.",
     submit: "Create session",
   },
   join: {
@@ -190,6 +204,7 @@ const en: Dictionary = {
     consent:
       "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
     submit: "Join session",
+    submitting: "Joining…",
   },
   facilitator: {
     statusDraft: "draft",
@@ -208,8 +223,13 @@ const en: Dictionary = {
     publishing: "Publishing…",
     actNow: "Act now",
     blocker: "Blocker",
+    resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
+    waitingToStart: "Waiting to begin",
+    noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
+    languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
+    liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
@@ -217,6 +237,7 @@ const en: Dictionary = {
     learnerLinkAriaLabel: "Learner invitation link",
     copyLink: "Copy link",
     linkCopied: "Copied!",
+    copyFailed: "Couldn't copy the link. Select and copy it manually instead.",
     revokeInvite: "Revoke invite link",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
@@ -255,6 +276,8 @@ const en: Dictionary = {
     agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
       "Live caption connection failed. Use the typed caption box above instead.",
+    connectionBlocked:
+      "Couldn't open the live caption connection. Try unmuting your microphone in the video room instead — captions will start automatically. You can also use the typed caption box above.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -269,6 +292,11 @@ const en: Dictionary = {
     selectCamera: "Select camera",
     leaveCall: "Leave call",
     toggleCaptions: "Toggle captions",
+    screenShareInterrupted: "Your screen share was interrupted by a reconnect — click Share screen again to resume.",
+    disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
+    disconnectedOther: "You've been disconnected from the media room.",
+    mediaDeviceError: "There was a problem with your microphone or camera.",
+    reload: "Reload",
   },
   common: {
     speaker: "Speaker",
@@ -281,6 +309,11 @@ const en: Dictionary = {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
     cta: "Start a new session",
+  },
+  error: {
+    title: "Something went wrong",
+    message: "An unexpected error occurred. You can try again, or reload the page.",
+    retry: "Try again",
   },
 };
 
@@ -306,15 +339,14 @@ const zh: Dictionary = {
     sessionTitlePlaceholder: "例如：REST 接口工作坊",
     workshopGoal: "工作坊目标",
     workshopGoalPlaceholder: "例如：实现一个可用的用户注册 REST 接口，并包含输入校验。",
-    learnerLanguages: "学员可选语言",
-    learnerLanguagesHint: "学员加入时会从中选择一种。请先勾选你能够支持的语言。",
     retention: "转录保留时长",
     retentionDay: "1 天后删除",
     retentionWeek: "7 天后删除",
     retentionMonth: "30 天后删除",
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
     strictPrivacyLabel: "严格隐私模式",
-    strictPrivacyHint: "绝不将音频或文本发送给外部翻译服务。如果本地翻译服务不可用，字幕和翻译将显示为不可用，而不会回退到云端。",
+    strictPrivacyHint:
+      "绝不会将音频或文本发送给 Claude 或其他云端翻译服务——数据始终留在本服务器上。此选项需要配置本地推理服务器；如果未配置（本地测试的默认情况），整场活动的字幕和翻译都会显示为不可用，而不仅仅是网络不稳定时才会如此。",
     submit: "创建场次",
   },
   join: {
@@ -324,6 +356,7 @@ const zh: Dictionary = {
     consent:
       "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
+    submitting: "加入中……",
   },
   facilitator: {
     statusDraft: "草稿",
@@ -342,8 +375,13 @@ const zh: Dictionary = {
     publishing: "发布中……",
     actNow: "立即处理",
     blocker: "障碍",
+    resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
+    waitingToStart: "等待开始",
+    noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
+    languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
+    liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
@@ -351,6 +389,7 @@ const zh: Dictionary = {
     learnerLinkAriaLabel: "学员邀请链接",
     copyLink: "复制链接",
     linkCopied: "已复制！",
+    copyFailed: "复制链接失败，请手动选择并复制。",
     revokeInvite: "撤销邀请链接",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
@@ -389,6 +428,8 @@ const zh: Dictionary = {
     agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
       "实时字幕连接失败。请改用上方的手动输入字幕框。",
+    connectionBlocked:
+      "无法建立实时字幕连接。可以改为在视频通话中开启麦克风——字幕会自动开始生成。你也可以改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -403,6 +444,11 @@ const zh: Dictionary = {
     selectCamera: "选择摄像头",
     leaveCall: "离开通话",
     toggleCaptions: "开关字幕",
+    screenShareInterrupted: "屏幕共享因重新连接而中断——请点击“共享屏幕”以恢复。",
+    disconnectedDuplicate: "你已断开连接，因为此链接同时在另一个标签页或窗口中被打开。",
+    disconnectedOther: "你已从媒体房间断开连接。",
+    mediaDeviceError: "麦克风或摄像头出现问题。",
+    reload: "重新加载",
   },
   common: {
     speaker: "发言者",
@@ -415,6 +461,11 @@ const zh: Dictionary = {
     title: "未找到该链接",
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
     cta: "创建新场次",
+  },
+  error: {
+    title: "出了点问题",
+    message: "发生了意外错误。你可以重试，或刷新页面。",
+    retry: "重试",
   },
 };
 
@@ -441,8 +492,6 @@ const es: Dictionary = {
     sessionTitlePlaceholder: "p. ej. Taller de endpoints REST",
     workshopGoal: "Objetivo del taller",
     workshopGoalPlaceholder: "p. ej. Implementar un endpoint REST funcional para el registro de usuarios, con validación de datos.",
-    learnerLanguages: "Idiomas para los alumnos",
-    learnerLanguagesHint: "Los alumnos elegirán uno de estos al unirse. Empieza con los idiomas que puedas ofrecer.",
     retention: "Retención de la transcripción",
     retentionDay: "Eliminar después de 1 día",
     retentionWeek: "Eliminar después de 7 días",
@@ -450,7 +499,7 @@ const es: Dictionary = {
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
     strictPrivacyLabel: "Modo de privacidad estricto",
     strictPrivacyHint:
-      "Nunca se enviará audio ni texto a proveedores de traducción externos. Si el servicio de traducción local no está disponible, los subtítulos y traducciones se mostrarán como no disponibles en lugar de recurrir a la nube.",
+      "Nunca se envía audio ni texto a Claude ni a otro proveedor de traducción en la nube: todo permanece en este servidor. Esto requiere un servidor de inferencia local configurado; si no hay uno (lo habitual en pruebas locales), los subtítulos y traducciones se mostrarán como no disponibles durante toda la sesión, no solo cuando la red falle.",
     submit: "Crear sesión",
   },
   join: {
@@ -460,6 +509,7 @@ const es: Dictionary = {
     consent:
       "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
     submit: "Unirse a la sesión",
+    submitting: "Uniéndote…",
   },
   facilitator: {
     statusDraft: "borrador",
@@ -478,8 +528,13 @@ const es: Dictionary = {
     publishing: "Publicando…",
     actNow: "Actuar ahora",
     blocker: "Bloqueo",
+    resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
+    waitingToStart: "Esperando para comenzar",
+    noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
+    languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
+    liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
@@ -487,6 +542,7 @@ const es: Dictionary = {
     learnerLinkAriaLabel: "Enlace de invitación para alumnos",
     copyLink: "Copiar enlace",
     linkCopied: "¡Copiado!",
+    copyFailed: "No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.",
     revokeInvite: "Revocar enlace de invitación",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",
@@ -525,6 +581,8 @@ const es: Dictionary = {
     agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
       "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
+    connectionBlocked:
+      "No se pudo abrir la conexión de subtítulos en vivo. Prueba a activar el micrófono en la sala de video: los subtítulos comenzarán automáticamente. También puedes usar el cuadro de subtítulos manual de arriba.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -539,6 +597,11 @@ const es: Dictionary = {
     selectCamera: "Seleccionar cámara",
     leaveCall: "Salir de la llamada",
     toggleCaptions: "Activar o desactivar subtítulos",
+    screenShareInterrupted: "Tu pantalla compartida se interrumpió por una reconexión — haz clic en Compartir pantalla para reanudarla.",
+    disconnectedDuplicate: "Te has desconectado porque este enlace se abrió al mismo tiempo en otra pestaña o ventana.",
+    disconnectedOther: "Te has desconectado de la sala multimedia.",
+    mediaDeviceError: "Hubo un problema con tu micrófono o cámara.",
+    reload: "Recargar",
   },
   common: {
     speaker: "Orador",
@@ -551,6 +614,11 @@ const es: Dictionary = {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",
     cta: "Crear una nueva sesión",
+  },
+  error: {
+    title: "Algo salió mal",
+    message: "Ocurrió un error inesperado. Puedes intentarlo de nuevo o recargar la página.",
+    retry: "Intentar de nuevo",
   },
 };
 
@@ -571,20 +639,16 @@ export function resolveLanguage(value: unknown, fallback: SupportedLanguage = "e
 
 /**
  * Parses an `Accept-Language` header (e.g. `"es-MX,es;q=0.9,en;q=0.8"`) and picks the
- * first supported language it names, in the browser's own preference order. Used to pick
- * the initial UI language for pages with no session yet (setup/join before a `?lang=` is
- * set), so a first-time visitor sees their own language instead of always English.
+ * first supported language it names, by descending `;q=` weight (not raw list order —
+ * a header can legally list a lower-priority tag before a higher-priority one, e.g.
+ * `"en;q=0.5,fr;q=0.9"`). Used to pick the initial UI language for pages with no session
+ * yet (setup/join before a `?lang=` is set), so a first-time visitor sees their own
+ * language instead of always English. Delegates to `resolveLanguageFromAcceptLanguage`,
+ * which the root layout already uses for the same header — two separate parsers here
+ * used to disagree on which language wins whenever q-values weren't in list order.
  */
 export function detectBrowserLanguage(acceptLanguageHeader: string | null, fallback: SupportedLanguage = "en"): SupportedLanguage {
-  if (!acceptLanguageHeader) return fallback;
-  const preferred = acceptLanguageHeader
-    .split(",")
-    .map((part) => part.trim().split(";")[0]?.split("-")[0]?.toLowerCase())
-    .filter(Boolean);
-  for (const tag of preferred) {
-    if (isSupportedLanguage(tag)) return tag;
-  }
-  return fallback;
+  return resolveLanguageFromAcceptLanguage(acceptLanguageHeader, fallback);
 }
 
 /**

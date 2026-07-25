@@ -1,5 +1,9 @@
+"use client";
+
+import { useActionState } from "react";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { ChatSendButton } from "@/components/ChatSendButton";
+import type { FormActionResult } from "@/lib/session-contracts";
 
 type ChatMessage = {
   id: string;
@@ -27,12 +31,17 @@ export function SessionChatPanel({
 }: {
   messages: ChatMessage[];
   targetLanguage: string;
-  sendAction: (formData: FormData) => void | Promise<void>;
+  sendAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
   viewerIsFacilitator?: boolean;
 }) {
   const dict = getDictionary(resolveLanguage(targetLanguage)).chat;
   const translationUnavailable = getDictionary(resolveLanguage(targetLanguage)).common.translationUnavailable;
+  // Expected, routine failures (rate limited, session ended mid-type) now come back
+  // as state instead of a thrown Error — see FormActionResult's doc comment for why
+  // that matters: without this, any of them took down the whole page, video call
+  // included, instead of showing an inline message next to the textarea.
+  const [state, formAction] = useActionState<FormActionResult, FormData>(sendAction, { error: null });
 
   return (
     <aside className="flex h-full flex-col rounded-lg border border-border-subtle bg-surface-raised">
@@ -57,11 +66,11 @@ export function SessionChatPanel({
                   )}
                 </div>
               </div>
-              <p className="mt-1 text-sm leading-relaxed" lang={targetLanguage}>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
                 {translatedText(message, targetLanguage, translationUnavailable)}
               </p>
               {message.language !== targetLanguage && (
-                <p className="mt-2 text-xs italic text-muted-foreground" lang={message.language}>
+                <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
                   {message.originalText}
                 </p>
               )}
@@ -71,7 +80,7 @@ export function SessionChatPanel({
           <p className="text-sm text-muted-foreground">{dict.noMessages}</p>
         )}
       </div>
-      <form action={sendAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+      <form action={formAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
         <label className="sr-only" htmlFor="session-chat-message">{dict.sendMessageLabel}</label>
         <textarea
           id="session-chat-message"
@@ -82,6 +91,11 @@ export function SessionChatPanel({
           required
           placeholder={dict.placeholder}
         />
+        {state.error && (
+          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+            {state.error}
+          </p>
+        )}
         <div className="flex items-center justify-between gap-3">
           {allowQuestions ? (
             <div className="flex flex-col gap-1">

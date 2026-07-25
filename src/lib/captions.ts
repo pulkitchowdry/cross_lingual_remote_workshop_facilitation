@@ -4,7 +4,7 @@ import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
 import { generateSessionInsights } from "@/lib/insights";
 import { insightProvider } from "@/lib/providers/insight";
-import type { Session } from "@/generated/prisma/client";
+import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -39,6 +39,19 @@ export async function publishTranslatedCaption(
         : null;
     }),
   );
+
+  // Every caller checks LIVE status before starting this function, but the
+  // translation batch above can take up to ~16s worst case (each language tries
+  // local-inference then retries Claude on a transient failure) — long enough for
+  // the facilitator to click "End session" while it's in flight. The WebSocket and
+  // caption-agent callers already re-fetch and re-check per segment before calling
+  // this function (redundant with this check, which is fine); the facilitator's
+  // typed-caption action did not, and could otherwise silently append a caption to
+  // an already-ENDED session's transcript.
+  const stillLive = await prisma.session.findUnique({ where: { id: session.id }, select: { status: true } });
+  if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
+    throw new Error("This session is not live — captions can only be published while it is in progress.");
+  }
 
   await prisma.transcriptSegment.create({
     data: {

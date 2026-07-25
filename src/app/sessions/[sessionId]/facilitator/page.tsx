@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
 import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
-import { ChatSendButton } from "@/components/ChatSendButton";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -17,15 +16,16 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
-import { isCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import {
   endSession,
   publishCaption,
+  resolveInsight,
   revokeLearnerInvite,
   startSession,
   updateFacilitatorLanguage,
@@ -52,20 +52,48 @@ export default async function FacilitatorSessionPage({
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      participants: { where: { role: ParticipantRole.LEARNER } },
-      transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-      insights: { include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } } },
-      messages: {
-        include: { sender: true, translations: true },
-        orderBy: { sentAt: "desc" },
-        take: MESSAGE_HISTORY_LIMIT,
+  const [session, activeBlockers] = await Promise.all([
+    prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        participants: { where: { role: ParticipantRole.LEARNER } },
+        // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
+        // timestamps, so two rows created within the same millisecond (e.g. several
+        // learners' chat messages committing at once) have Postgres-undefined relative
+        // order under a single-column sort — without a stable tiebreaker, two tied rows
+        // can come back in a different relative order on one 2s poll than the next,
+        // visibly swapping position on an auto-refreshing page.
+        transcript: {
+          include: { translations: true },
+          orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+          take: TRANSCRIPT_HISTORY_LIMIT,
+        },
+        insights: {
+          include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+          orderBy: { createdAt: "desc" },
+          take: INSIGHT_HISTORY_LIMIT,
+        },
+        messages: {
+          include: { sender: true, translations: true },
+          orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+          take: MESSAGE_HISTORY_LIMIT,
+        },
+        joinLinks: { where: { role: ParticipantRole.LEARNER } },
       },
-      joinLinks: { where: { role: ParticipantRole.LEARNER } },
-    },
-  });
+    }),
+    // Queried directly, not sliced from the `insights` include above — that include is
+    // capped at INSIGHT_HISTORY_LIMIT (50) most-recent insights of ANY type, so an
+    // older unresolved BLOCKER silently fell out of "Act now" as soon as 50 newer
+    // insights of any kind (activity/decision/confusion included) accumulated, even
+    // though it was never resolved. Active blockers are rare enough by nature (the
+    // facilitator is expected to resolve them) that fetching every one, unbounded, is
+    // the correct read here.
+    prisma.insight.findMany({
+      where: { sessionId, type: "BLOCKER", status: "ACTIVE" },
+      include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
   // expired session's data, but nothing stops it being served here in the
@@ -104,7 +132,7 @@ export default async function FacilitatorSessionPage({
     [SessionStatus.ENDED]: dict.statusEnded,
   }[session.status];
 
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
   const learnerLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
   let learnerLinkQrCode: string | null = null;
@@ -119,8 +147,8 @@ export default async function FacilitatorSessionPage({
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
-  const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER");
   const chatMessages = [...session.messages].reverse();
+  const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
@@ -138,6 +166,14 @@ export default async function FacilitatorSessionPage({
       {(session.status === SessionStatus.DRAFT || session.status === SessionStatus.LIVE) && <SessionAutoRefresh />}
       {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
       <LanguageMenu current={lang} onSelect={changeLanguageAction} />
+      {session.status === SessionStatus.LIVE && (
+        // updateFacilitatorLanguage only updates the session's language label/translation
+        // target — it doesn't (and safely can't, without risking dropped audio mid-utterance)
+        // reopen the underlying Deepgram/local-inference recognition stream, which stays
+        // configured for whatever language it was opened with for the rest of its life. See
+        // updateFacilitatorLanguage's own doc comment.
+        <p className="text-xs text-muted-foreground">{dict.languageChangeLiveWarning}</p>
+      )}
       <div>
         <div className="flex flex-wrap items-center gap-3" aria-live="polite">
           <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
@@ -174,65 +210,63 @@ export default async function FacilitatorSessionPage({
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <div className="flex flex-col gap-3">
-              <LiveSessionRoom sessionId={session.id} role="facilitator" lang={lang} captionText={latestCaptionText} />
-              {speechToTextProvider.isConfigured && (
+          <WorkshopRoomLayout
+            sessionId={session.id}
+            role="facilitator"
+            lang={lang}
+            captionText={latestCaptionText}
+            belowVideo={
+              speechToTextProvider.isConfigured && (
                 <LiveCaptionStream
                   sessionId={session.id}
                   lang={lang}
-                  agentCapturing={isCaptionAgentCapturing(session.id)}
+                  agentCapturing={session.captionAgentActive}
                 />
-              )}
-            </div>
-            <SessionSidePanel
-              chat={{
-                messages: chatMessages,
-                targetLanguage: session.sourceLanguage,
-                sendAction: sendChatAction,
-                viewerIsFacilitator: true,
-              }}
-              captions={{
-                entries: transcriptEntries,
-                emptyLabel: dict.transcriptEmpty,
-                jumpToLatestLabel: commonDict.jumpToLatest,
-              }}
-              captionsHeader={
-                textToSpeechProvider.isConfigured && (
-                  <TranslatedAudioPlayer
-                    segments={session.transcript.map((segment) => ({
-                      id: segment.id,
-                      hasTranslation:
-                        segment.language === session.sourceLanguage ||
-                        segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
-                      isTyped: segment.isTyped,
-                    }))}
-                    preferredLanguage={session.sourceLanguage}
+              )
+            }
+            sidebar={
+              <SessionSidePanel
+                chat={{
+                  messages: chatMessages,
+                  targetLanguage: session.sourceLanguage,
+                  sendAction: sendChatAction,
+                  viewerIsFacilitator: true,
+                }}
+                captions={{
+                  entries: transcriptEntries,
+                  emptyLabel: dict.transcriptEmpty,
+                  jumpToLatestLabel: commonDict.jumpToLatest,
+                }}
+                captionsHeader={
+                  textToSpeechProvider.isConfigured && (
+                    <TranslatedAudioPlayer
+                      segments={session.transcript.map((segment) => ({
+                        id: segment.id,
+                        hasTranslation:
+                          segment.language === session.sourceLanguage ||
+                          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+                        isTyped: segment.isTyped,
+                      }))}
+                      preferredLanguage={session.sourceLanguage}
+                    />
+                  )
+                }
+                captionComposer={
+                  <CaptionPublishForm
+                    action={publishCaptionAction}
+                    dict={{
+                      captionLabel: dict.captionLabel,
+                      captionPlaceholder: dict.captionPlaceholder,
+                      publish: dict.publish,
+                      publishing: dict.publishing,
+                    }}
                   />
-                )
-              }
-              captionComposer={
-                <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
-                  <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
-                  <textarea
-                    id="facilitator-caption"
-                    className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                    name="captionText"
-                    rows={2}
-                    required
-                    maxLength={3000}
-                    placeholder={dict.captionPlaceholder}
-                  />
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">{dict.captionAudioHint}</p>
-                    <ChatSendButton label={dict.publish} sendingLabel={dict.publishing} />
-                  </div>
-                </form>
-              }
-              chatTabLabel={commonDict.chatTab}
-              captionsTabLabel={commonDict.captionsTab}
-            />
-          </div>
+                }
+                chatTabLabel={commonDict.chatTab}
+                captionsTabLabel={commonDict.captionsTab}
+              />
+            }
+          />
         </section>
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
@@ -248,29 +282,34 @@ export default async function FacilitatorSessionPage({
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
                 : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
-              const evidenceLang = evidenceIsSourceLanguage
-                ? evidence?.language
-                : translation
-                  ? session.sourceLanguage
-                  : "en";
+              // The fallback text (getDictionary(lang).common.translationUnavailable above)
+              // is itself localized to `lang`, not fixed English copy — tag it `lang`,
+              // not "en".
+              const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
+              const resolveAction = resolveInsight.bind(null, sessionId, blocker.id);
               return (
                 <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
                   {evidence && (
                     <p
-                      className="mt-2 rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
+                      className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
                       lang={evidenceLang}
                     >
                       “{evidenceText}”
                     </p>
                   )}
+                  <form action={resolveAction} className="mt-2">
+                    <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                      {dict.resolveBlocker}
+                    </button>
+                  </form>
                 </Card>
               );
             })}
           </div>
-        ) : session.transcript.length === 0 ? (
-          <Card eyebrow={dict.noInterventionYet}>
-            <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
+        ) : transcript.length === 0 ? (
+          <Card eyebrow={dict.waitingToStart}>
+            <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
           </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>
@@ -301,7 +340,12 @@ export default async function FacilitatorSessionPage({
                   readOnly
                   value={learnerLink}
                 />
-                <CopyLinkButton value={learnerLink} label={dict.copyLink} copiedLabel={dict.linkCopied} />
+                <CopyLinkButton
+                  value={learnerLink}
+                  label={dict.copyLink}
+                  copiedLabel={dict.linkCopied}
+                  failedLabel={dict.copyFailed}
+                />
               </div>
             </div>
             <form action={revokeInviteAction}>

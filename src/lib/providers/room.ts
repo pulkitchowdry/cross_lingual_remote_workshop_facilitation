@@ -95,11 +95,15 @@ class LiveKitRoomProvider implements RoomProvider {
     const payload = new TextEncoder().encode(JSON.stringify({ type: "captions-changed" }));
     try {
       await client.sendData(`workshop-${sessionId}`, payload, DataPacket_Kind.RELIABLE, { topic: "captions" });
-    } catch {
+    } catch (error) {
       // Best-effort: DataChannel push is a latency optimization, not a
       // correctness requirement — polling (SessionAutoRefresh) still delivers
       // captions if the room has no active LiveKit participants yet or the
-      // push itself fails.
+      // push itself fails. Still log it, though (matching translateWithClaude's
+      // pattern) — a *persistently* failing push (bad credentials, LiveKit
+      // outage) would otherwise be invisible, silently degrading every caption
+      // to polling-speed delivery with nothing in the logs to explain why.
+      console.error(`notifyCaptionsChanged: LiveKit sendData failed for session ${sessionId}, falling back to polling:`, error);
     }
   }
 }

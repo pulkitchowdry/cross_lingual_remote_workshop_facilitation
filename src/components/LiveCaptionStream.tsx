@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CHUNK_INTERVAL_MS = 250;
-const NORMAL_CLOSURE_CODE = 1000;
 
 /**
  * Streams facilitator mic audio to `/api/captions/stream` over a WebSocket —
@@ -39,9 +39,12 @@ export function LiveCaptionStream({
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const stoppedByUserRef = useRef(false);
+  /** Whether the current socket ever reached `OPEN` — see caption-socket-client.ts's "opaque" case. */
+  const hasOpenedRef = useRef(false);
 
   const stop = useCallback(() => {
     stoppedByUserRef.current = true;
+    hasOpenedRef.current = false;
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -66,12 +69,18 @@ export function LiveCaptionStream({
   const start = useCallback(async () => {
     setError(null);
     stoppedByUserRef.current = false;
+    hasOpenedRef.current = false;
     setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
       socketRef.current = socket;
-      socket.onerror = () => setError(dict.connectionFailed);
+      socket.onopen = () => {
+        hasOpenedRef.current = true;
+      };
+      // `onclose` always fires right after and carries the actual signal (a
+      // server-provided reason, or an abnormal closure) — nothing to add here.
+      socket.onerror = () => {};
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
@@ -84,14 +93,19 @@ export function LiveCaptionStream({
       // (e.g. on a failed handshake) while the recorder/mic stream are still open, which
       // would otherwise leave the microphone silently capturing with no way to release it
       // from the UI (the button reads "Start…" again, but a stale stream is still live).
-      // A close the user didn't ask for (any code other than a normal 1000 closure — e.g.
-      // the server's `ws.close(1011, reason)` in server.ts's upgrade handler, whose
-      // `reason` names the actual cause: not authorized, session not live, STT not
-      // configured, etc.) must also be surfaced here, or the button just silently flips
-      // back to idle with no indication of why.
+      // A close the user didn't ask for (any code other than a normal 1000 closure) must
+      // also be surfaced here, or the button just silently flips back to idle with no
+      // indication of why. `classifyCaptionSocketClose` distinguishes three cases: a
+      // trustworthy server-provided reason (server.ts's `ws.close(1011, reason)` — not
+      // authorized, session not live, STT not configured, etc.), an "opaque" closure that
+      // never reached `OPEN` and carries no reason (a VPN/proxy/firewall breaking the WS
+      // Upgrade before it reaches the server — the same generic message for every one of
+      // those cases used to be indistinguishable from a real server rejection), and a
+      // "dropped" connection that opened and streamed before failing.
       socket.onclose = (event) => {
-        if (!stoppedByUserRef.current && event.code !== NORMAL_CLOSURE_CODE) {
-          setError(event.reason || dict.connectionFailed);
+        if (!stoppedByUserRef.current && event.code !== CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
+          const failure = classifyCaptionSocketClose(event, hasOpenedRef.current);
+          setError(failure.kind === "server-reason" ? failure.reason : failure.kind === "opaque" ? dict.connectionBlocked : dict.connectionFailed);
         }
         stop();
       };
@@ -133,7 +147,7 @@ export function LiveCaptionStream({
     } finally {
       setIsConnecting(false);
     }
-  }, [sessionId, stop, dict.connectionFailed, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+  }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
   if (agentCapturing) {
     return (

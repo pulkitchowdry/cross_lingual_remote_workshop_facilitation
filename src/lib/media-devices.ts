@@ -14,14 +14,21 @@
  * permissions were never the cause of it.)
  */
 export function dedupeDevicesByDeviceId(devices: MediaDeviceInfo[]): MediaDeviceInfo[] {
-  const byDeviceId = new Map<string, MediaDeviceInfo>();
+  // Keyed by deviceId *and* kind, not deviceId alone: Chromium's virtual
+  // "default" pseudo-device can reuse the same sentinel deviceId across an
+  // audioinput entry and an unrelated audiooutput entry. Deduping on deviceId
+  // alone collapses those two distinct devices into one, silently dropping
+  // whichever kind lost, which breaks LiveKit's default-device auto-switching
+  // for that kind.
+  const byKey = new Map<string, MediaDeviceInfo>();
   for (const device of devices) {
-    const existing = byDeviceId.get(device.deviceId);
+    const key = `${device.deviceId}:${device.kind}`;
+    const existing = byKey.get(key);
     if (!existing || (!existing.label && device.label)) {
-      byDeviceId.set(device.deviceId, device);
+      byKey.set(key, device);
     }
   }
-  return [...byDeviceId.values()];
+  return [...byKey.values()];
 }
 
 const patchedInstances = new WeakSet<MediaDevices>();
