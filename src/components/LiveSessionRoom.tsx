@@ -20,7 +20,6 @@ import {
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
-import "@/lib/livekit-log-filter";
 import "@/lib/media-devices";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 

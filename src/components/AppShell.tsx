@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import "@/lib/dev-console-filter";
 import { getDictionary } from "@/lib/i18n";
 import { useUiLanguage } from "@/lib/use-ui-language";
 import { logoutFacilitator } from "@/app/sessions/[sessionId]/facilitator/actions";

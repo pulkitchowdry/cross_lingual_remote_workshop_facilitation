@@ -27,12 +27,25 @@ export function LanguageMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  // Lazy initializer (not an effect): the slot div is server-rendered by AppShell as
-  // part of the same HTML document, so it already exists in the DOM by the time this
-  // client component's first render runs during hydration.
-  const [slot] = useState<HTMLElement | null>(() =>
-    typeof document === "undefined" ? null : document.getElementById(HEADER_SLOT_ID),
-  );
+  // Deliberately `useState(null)` + an effect below, not a lazy initializer — a lazy
+  // initializer runs during render, including the client's *hydration* render, where
+  // `document.getElementById` already finds the slot AppShell server-rendered. That
+  // makes the client's first render produce a portal while the server (which has no
+  // `document` at all) produced nothing for this component, a real server/client
+  // output mismatch React's hydration diffing flags. Starting at `null` and only
+  // looking the slot up in an effect (client-only, always runs after hydration,
+  // never during it) keeps the client's hydration-time render matching the server's
+  // (both render nothing) — the portal then mounts on the very next, ordinary
+  // client-side re-render, which hydration doesn't apply to.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // Reads from `document` (an external system, not derivable during render without
+    // reintroducing the hydration mismatch this effect exists to avoid — see the
+    // comment above) and stores the result; it isn't state that could be computed
+    // during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSlot(document.getElementById(HEADER_SLOT_ID));
+  }, []);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const dict = getDictionary(current).shell;
