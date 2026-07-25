@@ -1,8 +1,18 @@
-# Next.js app image. Plain `next start` (no `output: standalone`) — this repo's
-# Prisma client uses driver adapters (@prisma/adapter-pg), and the `prisma` CLI
-# itself (needed for `migrate deploy` at container start, see docker-entrypoint.sh)
-# is a regular (non-dev) dependency, so a `--omit=dev` install still keeps it,
-# with zero manual re-assembly of its transitive deps.
+# Next.js app image. No `output: standalone` — this repo's Prisma client uses
+# driver adapters (@prisma/adapter-pg), and the `prisma` CLI itself (needed
+# for `migrate deploy` at container start, see docker-entrypoint.sh) is a
+# regular (non-dev) dependency, so a `--omit=dev` install still keeps it, with
+# zero manual re-assembly of its transitive deps.
+#
+# `npm start` runs the custom `server.ts` (via `tsx`, see package.json), not
+# plain `next start` — it registers the raw WebSocket upgrade handler and the
+# in-process LiveKit caption agent worker (see server.ts's own comments).
+# `tsx` transpiles that file (and everything it imports under `src/`,
+# including the generated Prisma client at `src/generated/prisma` — see
+# src/AGENTS.md) on the fly at runtime rather than through `next build`'s
+# bundler, so all three — `server.ts`, `tsconfig.json` (for the `@/*` path
+# alias), and `src/` itself — must be copied into the runner stage below, not
+# just `.next`/`public`.
 
 # Prisma's CLI probes for OpenSSL to pick a query-engine build even though this
 # app's driver-adapter setup never loads that engine — without it, `prisma
@@ -53,6 +63,9 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/next.config.ts ./next.config.ts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json ./package.json
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh && chown -R nextjs:nodejs /app
