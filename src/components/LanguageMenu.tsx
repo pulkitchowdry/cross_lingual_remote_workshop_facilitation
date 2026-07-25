@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
@@ -51,12 +51,36 @@ export function LanguageMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const dict = getDictionary(current).shell;
+  // Which option is highlighted — the thing `aria-activedescendant` points at and arrow
+  // keys move. Kept separate from `current` because a keyboard user can arrow through
+  // options without selecting any of them (selection only commits on Enter/Space/click).
+  const [activeIndex, setActiveIndex] = useState(0);
+  // Scopes option ids to this instance — the menu is portalled into a shared header
+  // slot, so a plain per-language id would collide if two instances ever mounted.
+  const listboxId = useId();
+  const optionId = (value: SupportedLanguage) => `${listboxId}-option-${value}`;
+  // `languages` is caller-supplied (the learn page filters it down to a session's
+  // configured learner languages) and could in principle be empty, unlike the
+  // fixed, non-empty `SUPPORTED_LANGUAGES` default — guard the lookup (`.at` types as
+  // possibly-`undefined`) rather than assume `activeIndex` always indexes something.
+  const activeLanguage = languages.at(activeIndex);
 
   useEffect(() => {
     if (!open) return;
-    // Move focus into the list as soon as it opens — without this, a keyboard user
-    // who opens the menu lands nowhere, with no indication the list is even focusable.
-    listRef.current?.querySelector("button")?.focus();
+    // Re-highlight whichever option matches the active language every time the menu
+    // opens, so arrow-key navigation and aria-activedescendant both start from where
+    // selection actually is instead of always resetting to the first option. This reacts
+    // to `open` flipping true (an external, DOM-focus-adjacent event, not a value
+    // derivable during render), the same justification as the `setSlot` effect above.
+    const currentIndex = languages.findIndex((language) => language.value === current);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveIndex(currentIndex === -1 ? 0 : currentIndex);
+    // Move focus onto the listbox itself, not an option — per the WAI-ARIA listbox
+    // pattern, real DOM focus stays on the list and the highlighted option is tracked
+    // virtually via `aria-activedescendant` (set on the list below), so a keyboard user
+    // who opens the menu lands somewhere that's actually announced and behaves like the
+    // listbox it claims to be.
+    listRef.current?.focus();
 
     function handlePointerDown(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -77,7 +101,39 @@ export function LanguageMenu({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [open, current, languages]);
+
+  // WAI-ARIA listbox keyboard pattern: arrows/Home/End move the highlighted option
+  // (clamped, not wrapping — matches the APG reference listbox), Enter/Space commit
+  // whatever `aria-activedescendant` is currently pointing at. Escape is handled by the
+  // document-level listener above, not here.
+  function handleListKeyDown(event: React.KeyboardEvent<HTMLUListElement>) {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        setActiveIndex((index) => Math.min(index + 1, languages.length - 1));
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        setActiveIndex((index) => Math.max(index - 1, 0));
+        break;
+      case "Home":
+        event.preventDefault();
+        setActiveIndex(0);
+        break;
+      case "End":
+        event.preventDefault();
+        setActiveIndex(languages.length - 1);
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (activeLanguage) selectLanguage(activeLanguage.value);
+        break;
+      default:
+        break;
+    }
+  }
 
   function selectLanguage(lang: SupportedLanguage) {
     setOpen(false);
@@ -111,18 +167,27 @@ export function LanguageMenu({
           ref={listRef}
           role="listbox"
           aria-label={dict.interfaceLanguage}
-          className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg"
+          tabIndex={0}
+          aria-activedescendant={activeLanguage ? optionId(activeLanguage.value) : undefined}
+          onKeyDown={handleListKeyDown}
+          className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg outline-none focus:ring-2 focus:ring-accent/30"
         >
-          {languages.map((language) => (
-            <li key={language.value} role="option" aria-selected={language.value === current}>
+          {languages.map((language, index) => (
+            <li
+              key={language.value}
+              id={optionId(language.value)}
+              role="option"
+              aria-selected={language.value === current}
+            >
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => selectLanguage(language.value)}
                 className={`font-data flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${
                   language.value === current
                     ? "bg-accent/10 text-foreground"
                     : "text-muted-foreground hover:bg-accent/10 hover:text-foreground"
-                }`}
+                } ${index === activeIndex ? "ring-2 ring-inset ring-accent/30" : ""}`}
               >
                 {language.nativeLabel}
               </button>

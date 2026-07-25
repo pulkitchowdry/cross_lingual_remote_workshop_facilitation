@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { insightProvider, validateInsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CONTEXT_WINDOW = 20;
 /** Word-overlap (Jaccard) threshold above which a new draft is treated as a paraphrase of an already-noted insight, not genuinely new. */
@@ -74,8 +75,14 @@ export async function generateSessionInsights(session: Session): Promise<void> {
         ).reverse();
         if (recentSegments.length === 0) return;
 
+        // ACTIVE only — a RESOLVED insight (resolveInsight, facilitator/actions.ts) means
+        // the facilitator explicitly dealt with it; a genuine recurrence of that same
+        // issue is new information worth surfacing again, not a duplicate to discard.
+        // Without this filter, an old BLOCKER the facilitator already resolved kept
+        // silently suppressing every later re-report of the exact same problem for the
+        // rest of the session.
         const existingInsights = await tx.insight.findMany({
-          where: { sessionId: session.id },
+          where: { sessionId: session.id, status: "ACTIVE" },
           orderBy: { createdAt: "desc" },
           take: ALREADY_NOTED_LIMIT,
           select: { summary: true },
@@ -84,6 +91,7 @@ export async function generateSessionInsights(session: Session): Promise<void> {
 
         const drafts = await insightProvider.generateInsights({
           sessionGoal: session.goal,
+          sourceLanguage: session.sourceLanguage as SupportedLanguage,
           finalSegments: recentSegments.map((segment) => ({ id: segment.id, originalText: segment.originalText })),
           alreadyNoted,
         });

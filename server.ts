@@ -67,90 +67,82 @@ async function main() {
   // destroying it.
   const nextUpgradeHandler = app.getUpgradeHandler();
 
+  /**
+   * Runs every auth/session check for a caption stream and wires it up on success.
+   * Deliberately runs *after* the WebSocket handshake is already complete (see the
+   * `wss.handleUpgrade` call below for why) — a throw here closes the already-open
+   * `ws` with a reason instead of failing the handshake itself.
+   */
+  async function authorizeAndAttachCaptionSocket(req: import("node:http").IncomingMessage, query: import("node:querystring").ParsedUrlQuery, ws: import("ws").WebSocket) {
+    const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
+    if (!sessionId) throw new Error("sessionId is required.");
+
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[facilitatorCookieName(sessionId)];
+    const authorized = token ? await verifyFacilitatorToken(sessionId, token) : false;
+    if (!authorized) throw new Error("Not authorized for this session.");
+
+    if (!speechToTextProvider.isConfigured || !speechToTextProvider.openStream) {
+      throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY or configure local-inference.");
+    }
+
+    const found = await prisma.session.findUnique({ where: { id: sessionId } });
+    if (!found || found.status !== SessionStatus.LIVE) {
+      throw new Error("Start the session before streaming captions.");
+    }
+    // Authoritative server-side backstop against a duplicate STT pipeline: the
+    // caption-agent worker (caption-agent.ts) auto-subscribes to the facilitator's
+    // mic as soon as it's unmuted and sets `captionAgentActive` once it starts
+    // streaming. The client-side guard for this (LiveCaptionStream.tsx hiding its
+    // "Start" button while `agentCapturing` is true) only learns about that via
+    // SessionAutoRefresh's 2s poll, so a facilitator can still click "Start" in the
+    // race window right after the agent begins capturing but before the next poll
+    // lands — without this check, that would open a second, independent Deepgram
+    // stream for the same audio and duplicate/interleave every caption line
+    // (the same class of bug issue #95 fixed client-side, now backstopped here too).
+    if (found.captionAgentActive) {
+      throw new Error("Captions are already being captured automatically for this session.");
+    }
+
+    attachCaptionSocket(ws, found);
+  }
+
   server.on("upgrade", async (req, socket, head) => {
     const { pathname, query } = parse(req.url ?? "", true);
     if (pathname !== "/api/captions/stream") {
       nextUpgradeHandler(req, socket, head);
       return;
     }
-    let session: Awaited<ReturnType<typeof prisma.session.findUnique>>;
-    try {
-      const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
-      if (!sessionId) throw new Error("sessionId is required.");
-
-      const cookies = parseCookies(req.headers.cookie);
-      const token = cookies[facilitatorCookieName(sessionId)];
-      const authorized = token ? await verifyFacilitatorToken(sessionId, token) : false;
-      if (!authorized) throw new Error("Not authorized for this session.");
-
-      if (!speechToTextProvider.isConfigured || !speechToTextProvider.openStream) {
-        throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY or configure local-inference.");
-      }
-
-      const found = await prisma.session.findUnique({ where: { id: sessionId } });
-      if (!found || found.status !== SessionStatus.LIVE) {
-        throw new Error("Start the session before streaming captions.");
-      }
-      // Authoritative server-side backstop against a duplicate STT pipeline: the
-      // caption-agent worker (caption-agent.ts) auto-subscribes to the facilitator's
-      // mic as soon as it's unmuted and sets `captionAgentActive` once it starts
-      // streaming. The client-side guard for this (LiveCaptionStream.tsx hiding its
-      // "Start" button while `agentCapturing` is true) only learns about that via
-      // SessionAutoRefresh's 2s poll, so a facilitator can still click "Start" in the
-      // race window right after the agent begins capturing but before the next poll
-      // lands — without this check, that would open a second, independent Deepgram
-      // stream for the same audio and duplicate/interleave every caption line
-      // (the same class of bug issue #95 fixed client-side, now backstopped here too).
-      if (found.captionAgentActive) {
-        throw new Error("Captions are already being captured automatically for this session.");
-      }
-      session = found;
-    } catch (error) {
-      // Completing the handshake and closing with a reason (rather than
-      // destroying the raw TCP socket) lets the browser's `WebSocket.onclose`
-      // report *why* the connection didn't start (e.g. "session not live",
-      // "not authorized", "STT not configured") instead of a single opaque
-      // "connection failed" for every case — see LiveCaptionStream.tsx's
-      // `onclose` handler, which surfaces `event.reason` when present.
-      const reason = error instanceof Error ? error.message : "Unable to start captions.";
-      // Without this, a rejected upgrade left zero server-side trace — the only
-      // signal was the client's `onclose`, which can't be relied on either (a
-      // proxy/VPN/firewall that mangles the WS Upgrade before it reaches this
-      // handler at all closes the browser socket abnormally with an empty
-      // `reason`, indistinguishable client-side from every other failure —
-      // see LiveCaptionStream.tsx's handling of that case).
-      console.warn(`[captions/stream] rejecting upgrade: ${reason}`);
-      wss.handleUpgrade(req, socket, head, (ws) => {
+    console.log(`[captions/stream] upgrade request received (sessionId=${query.sessionId ?? "none"})`);
+    // `wss.handleUpgrade` is called immediately and synchronously here, before any
+    // `await` — this is deliberate, not just style. This app's browser-mic caption path
+    // has a long-standing, deployment-specific quirk (see issue #102, #106): on at
+    // least some browser/OS combinations, a `ws://<host>/api/captions/stream` upgrade
+    // whose completion is delayed by *any* asynchronous gap — even a same-tick
+    // `setTimeout(resolve, 0)` with no real I/O, confirmed with a from-scratch
+    // `http`+`ws` server carrying zero app code — gets abruptly reset (no WebSocket
+    // close frame at all) instead of completing. A plain Node `ws` client hitting the
+    // exact same endpoint with the exact same delay is unaffected, so this is a
+    // browser-side characteristic, not a server bug — and it doesn't reproduce over
+    // `wss://`, which is what every real deployment (Railway) actually serves. Calling
+    // `handleUpgrade` with nothing async ahead of it at least guarantees the handshake
+    // itself always completes instantly and gives every subsequent failure (below) a
+    // real, reported reason instead of letting a fast local rejection race the same
+    // failure mode and get misreported as "a VPN, proxy, or firewall may be blocking
+    // it" — see caption-socket-client.ts's `"opaque"` classification, which is what
+    // silently absorbs this class of abrupt, reasonless close.
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      void authorizeAndAttachCaptionSocket(req, query, ws).catch((error) => {
+        // Completing the handshake and closing with a reason (rather than destroying the
+        // raw TCP socket) lets the browser's `WebSocket.onclose` report *why* the
+        // connection didn't start (e.g. "session not live", "not authorized", "STT not
+        // configured") instead of a single opaque "connection failed" for every case —
+        // see LiveCaptionStream.tsx's `onclose` handler, which surfaces `event.reason`
+        // when present.
+        const reason = error instanceof Error ? error.message : "Unable to start captions.";
+        console.error(`[captions/stream] rejecting after upgrade: ${reason}`);
         ws.close(1011, reason);
       });
-      return;
-    }
-
-    // `wss.handleUpgrade`'s callback fires *after* the wire-level handshake is
-    // already complete — the 101 response is written and the socket is bound to
-    // `ws` before this runs. A throw from `attachCaptionSocket` (e.g. a
-    // streaming-STT provider whose constructor validates its own credentials
-    // synchronously, like `ws`'s `WebSocket` rejecting a header value with
-    // invalid characters) used to propagate out of this callback and back into
-    // the `try` block above, which — believing the socket was still a pending
-    // HTTP upgrade — called `wss.handleUpgrade` on it a *second* time. That
-    // wrote a second "101 Switching Protocols" response into a socket already
-    // mid-WebSocket-framing, corrupting the handshake from the browser's
-    // perspective: it never saw a clean `onopen`, only an abrupt, reasonless
-    // closure — indistinguishable from a VPN/proxy/firewall mangling the
-    // upgrade (LiveCaptionStream.tsx's "opaque" case), even though the real
-    // cause was a same-origin, post-handshake server error with a perfectly
-    // good message to report. Once we're in this callback, `ws` is a real,
-    // already-open connection — the only safe way to report a failure is a
-    // normal close on it, never another `handleUpgrade` call on the raw socket.
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      try {
-        attachCaptionSocket(ws, session);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : "Unable to start captions.";
-        console.error(`[captions/stream] attachCaptionSocket failed after upgrade: ${reason}`);
-        ws.close(1011, reason);
-      }
     });
   });
 

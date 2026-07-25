@@ -109,6 +109,7 @@ describe("ClaudeInsightProvider.generateInsights", () => {
 
     const result = await insightProvider.generateInsights({
       sessionGoal: "Ship the endpoint",
+      sourceLanguage: "en",
       finalSegments: [{ id: "seg-1", originalText: "Still getting a 500." }],
     });
 
@@ -124,6 +125,7 @@ describe("ClaudeInsightProvider.generateInsights", () => {
 
     await insightProvider.generateInsights({
       sessionGoal: "Ship the endpoint",
+      sourceLanguage: "en",
       finalSegments: [{ id: "seg-1", originalText: "Still getting a 500." }],
     });
 

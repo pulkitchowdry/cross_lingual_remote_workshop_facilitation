@@ -64,6 +64,13 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
+      // Skip reassigning while a previous flush is still in-flight: calling flush()
+      // again here would just hit its own single-flight guard and resolve almost
+      // immediately, and pointing flushPromise at that trivial resolution would make
+      // close() believe the real in-flight flush is done when it isn't (see close()'s
+      // comment) — silently dropping whatever's buffered once that real flush finally
+      // settles.
+      if (this.flushing) return;
       this.flushPromise = this.flush();
     }, WINDOW_MS);
   }

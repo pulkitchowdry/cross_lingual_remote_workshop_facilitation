@@ -18,7 +18,7 @@ import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
-import { CaptionPublishButton } from "@/components/CaptionPublishButton";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import {
   endSession,
   publishCaption,
@@ -49,34 +49,48 @@ export default async function FacilitatorSessionPage({
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      participants: { where: { role: ParticipantRole.LEARNER } },
-      // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
-      // timestamps, so two rows created within the same millisecond (e.g. several
-      // learners' chat messages committing at once) have Postgres-undefined relative
-      // order under a single-column sort — without a stable tiebreaker, two tied rows
-      // can come back in a different relative order on one 2s poll than the next,
-      // visibly swapping position on an auto-refreshing page.
-      transcript: {
-        include: { translations: true },
-        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-        take: TRANSCRIPT_HISTORY_LIMIT,
+  const [session, activeBlockers] = await Promise.all([
+    prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        participants: { where: { role: ParticipantRole.LEARNER } },
+        // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
+        // timestamps, so two rows created within the same millisecond (e.g. several
+        // learners' chat messages committing at once) have Postgres-undefined relative
+        // order under a single-column sort — without a stable tiebreaker, two tied rows
+        // can come back in a different relative order on one 2s poll than the next,
+        // visibly swapping position on an auto-refreshing page.
+        transcript: {
+          include: { translations: true },
+          orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+          take: TRANSCRIPT_HISTORY_LIMIT,
+        },
+        insights: {
+          include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+          orderBy: { createdAt: "desc" },
+          take: INSIGHT_HISTORY_LIMIT,
+        },
+        messages: {
+          include: { sender: true, translations: true },
+          orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+          take: MESSAGE_HISTORY_LIMIT,
+        },
+        joinLinks: { where: { role: ParticipantRole.LEARNER } },
       },
-      insights: {
-        include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
-        orderBy: { createdAt: "desc" },
-        take: INSIGHT_HISTORY_LIMIT,
-      },
-      messages: {
-        include: { sender: true, translations: true },
-        orderBy: [{ sentAt: "desc" }, { id: "desc" }],
-        take: MESSAGE_HISTORY_LIMIT,
-      },
-      joinLinks: { where: { role: ParticipantRole.LEARNER } },
-    },
-  });
+    }),
+    // Queried directly, not sliced from the `insights` include above — that include is
+    // capped at INSIGHT_HISTORY_LIMIT (50) most-recent insights of ANY type, so an
+    // older unresolved BLOCKER silently fell out of "Act now" as soon as 50 newer
+    // insights of any kind (activity/decision/confusion included) accumulated, even
+    // though it was never resolved. Active blockers are rare enough by nature (the
+    // facilitator is expected to resolve them) that fetching every one, unbounded, is
+    // the correct read here.
+    prisma.insight.findMany({
+      where: { sessionId, type: "BLOCKER", status: "ACTIVE" },
+      include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
   // expired session's data, but nothing stops it being served here in the
@@ -93,7 +107,7 @@ export default async function FacilitatorSessionPage({
     [SessionStatus.ENDED]: dict.statusEnded,
   }[session.status];
 
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
   const learnerLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
   let learnerLinkQrCode: string | null = null;
@@ -108,7 +122,6 @@ export default async function FacilitatorSessionPage({
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
-  const activeBlockers = session.insights.filter((insight) => insight.type === "BLOCKER" && insight.status === "ACTIVE");
   const chatMessages = [...session.messages].reverse();
   const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
@@ -178,19 +191,15 @@ export default async function FacilitatorSessionPage({
             lang={lang}
             belowVideo={
               <>
-                <form action={publishCaptionAction} className="flex gap-2">
-                  <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
-                  <textarea
-                    id="facilitator-caption"
-                    className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                    name="captionText"
-                    rows={1}
-                    required
-                    maxLength={3000}
-                    placeholder={dict.captionPlaceholder}
-                  />
-                  <CaptionPublishButton label={dict.publish} publishingLabel={dict.publishing} />
-                </form>
+                <CaptionPublishForm
+                  action={publishCaptionAction}
+                  dict={{
+                    captionLabel: dict.captionLabel,
+                    captionPlaceholder: dict.captionPlaceholder,
+                    publish: dict.publish,
+                    publishing: dict.publishing,
+                  }}
+                />
                 {speechToTextProvider.isConfigured && (
                   <LiveCaptionStream
                     sessionId={session.id}
@@ -233,7 +242,7 @@ export default async function FacilitatorSessionPage({
                   <p>{blocker.summary}</p>
                   {evidence && (
                     <p
-                      className="mt-2 rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
+                      className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
                       lang={evidenceLang}
                     >
                       “{evidenceText}”
@@ -266,11 +275,11 @@ export default async function FacilitatorSessionPage({
               const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
               return (
                 <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
-                  <p className="italic text-muted-foreground" lang={segment.language}>
+                  <p className="whitespace-pre-wrap italic text-muted-foreground" lang={segment.language}>
                     {segment.originalText}
                   </p>
                   {translation && (
-                    <p className="mt-2" lang={session.sourceLanguage}>
+                    <p className="mt-2 whitespace-pre-wrap" lang={session.sourceLanguage}>
                       {translation.text}
                     </p>
                   )}

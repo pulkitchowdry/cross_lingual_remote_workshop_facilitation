@@ -34,6 +34,12 @@ export function CopyLinkButton({
     <button
       type="button"
       onClick={copy}
+      // The visible label is the only feedback for success/failure — without this,
+      // a screen-reader user who activates the button hears nothing change and has
+      // no way to know whether the copy succeeded, so they'd need to guess or retry
+      // blindly. aria-live (not role="status") to avoid overriding the native button
+      // role that's still needed for the element to be announced as interactive.
+      aria-live="polite"
       className={`font-data w-fit shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${
         status === "copied"
           ? "border-[var(--tick-high)] text-[var(--tick-high)]"

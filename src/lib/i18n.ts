@@ -137,6 +137,10 @@ export interface Dictionary {
     selectCamera: string;
     leaveCall: string;
     screenShareInterrupted: string;
+    disconnectedDuplicate: string;
+    disconnectedOther: string;
+    mediaDeviceError: string;
+    reload: string;
   };
   common: {
     speaker: string;
@@ -184,7 +188,7 @@ const en: Dictionary = {
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
     strictPrivacyLabel: "Strict privacy mode",
     strictPrivacyHint:
-      "Never send audio or text to external translation providers. If the local translation service is unavailable, captions and translations will show as unavailable instead of falling back to the cloud.",
+      "Nothing is ever sent to Claude or another cloud translation provider — audio and text stay on this server. This requires a local-inference server to be configured; if none is set up (the default for local testing), captions and translations will show as unavailable for the whole session instead of using the cloud, not just when the network is unreliable.",
     submit: "Create session",
   },
   join: {
@@ -265,7 +269,7 @@ const en: Dictionary = {
     connectionFailed:
       "Live caption connection failed. Use the typed caption box above instead.",
     connectionBlocked:
-      "Couldn't reach the live caption service — a VPN, proxy, or firewall may be blocking it. Use the typed caption box above instead.",
+      "Couldn't open the live caption connection. Try unmuting your microphone in the video room instead — captions will start automatically. You can also use the typed caption box above.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -280,6 +284,10 @@ const en: Dictionary = {
     selectCamera: "Select camera",
     leaveCall: "Leave call",
     screenShareInterrupted: "Your screen share was interrupted by a reconnect — click Share screen again to resume.",
+    disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
+    disconnectedOther: "You've been disconnected from the media room.",
+    mediaDeviceError: "There was a problem with your microphone or camera.",
+    reload: "Reload",
   },
   common: { speaker: "Speaker", translationUnavailable: "Translation unavailable." },
   notFound: {
@@ -322,7 +330,8 @@ const zh: Dictionary = {
     retentionMonth: "30 天后删除",
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
     strictPrivacyLabel: "严格隐私模式",
-    strictPrivacyHint: "绝不将音频或文本发送给外部翻译服务。如果本地翻译服务不可用，字幕和翻译将显示为不可用，而不会回退到云端。",
+    strictPrivacyHint:
+      "绝不会将音频或文本发送给 Claude 或其他云端翻译服务——数据始终留在本服务器上。此选项需要配置本地推理服务器；如果未配置（本地测试的默认情况），整场活动的字幕和翻译都会显示为不可用，而不仅仅是网络不稳定时才会如此。",
     submit: "创建场次",
   },
   join: {
@@ -403,7 +412,7 @@ const zh: Dictionary = {
     connectionFailed:
       "实时字幕连接失败。请改用上方的手动输入字幕框。",
     connectionBlocked:
-      "无法直接连接实时字幕服务——可能是 VPN、代理或防火墙阻止了连接。请改用上方的手动输入字幕框。",
+      "无法建立实时字幕连接。可以改为在视频通话中开启麦克风——字幕会自动开始生成。你也可以改用上方的手动输入字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -418,6 +427,10 @@ const zh: Dictionary = {
     selectCamera: "选择摄像头",
     leaveCall: "离开通话",
     screenShareInterrupted: "屏幕共享因重新连接而中断——请点击“共享屏幕”以恢复。",
+    disconnectedDuplicate: "你已断开连接，因为此链接同时在另一个标签页或窗口中被打开。",
+    disconnectedOther: "你已从媒体房间断开连接。",
+    mediaDeviceError: "麦克风或摄像头出现问题。",
+    reload: "重新加载",
   },
   common: { speaker: "发言者", translationUnavailable: "暂无译文。" },
   notFound: {
@@ -462,7 +475,7 @@ const es: Dictionary = {
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
     strictPrivacyLabel: "Modo de privacidad estricto",
     strictPrivacyHint:
-      "Nunca se enviará audio ni texto a proveedores de traducción externos. Si el servicio de traducción local no está disponible, los subtítulos y traducciones se mostrarán como no disponibles en lugar de recurrir a la nube.",
+      "Nunca se envía audio ni texto a Claude ni a otro proveedor de traducción en la nube: todo permanece en este servidor. Esto requiere un servidor de inferencia local configurado; si no hay uno (lo habitual en pruebas locales), los subtítulos y traducciones se mostrarán como no disponibles durante toda la sesión, no solo cuando la red falle.",
     submit: "Crear sesión",
   },
   join: {
@@ -543,7 +556,7 @@ const es: Dictionary = {
     connectionFailed:
       "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
     connectionBlocked:
-      "No se pudo conectar con el servicio de subtítulos en vivo: una VPN, un proxy o un firewall podrían estar bloqueando la conexión. Usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "No se pudo abrir la conexión de subtítulos en vivo. Prueba a activar el micrófono en la sala de video: los subtítulos comenzarán automáticamente. También puedes usar el cuadro de subtítulos manual de arriba.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -558,6 +571,10 @@ const es: Dictionary = {
     selectCamera: "Seleccionar cámara",
     leaveCall: "Salir de la llamada",
     screenShareInterrupted: "Tu pantalla compartida se interrumpió por una reconexión — haz clic en Compartir pantalla para reanudarla.",
+    disconnectedDuplicate: "Te has desconectado porque este enlace se abrió al mismo tiempo en otra pestaña o ventana.",
+    disconnectedOther: "Te has desconectado de la sala multimedia.",
+    mediaDeviceError: "Hubo un problema con tu micrófono o cámara.",
+    reload: "Recargar",
   },
   common: { speaker: "Orador", translationUnavailable: "Traducción no disponible." },
   notFound: {

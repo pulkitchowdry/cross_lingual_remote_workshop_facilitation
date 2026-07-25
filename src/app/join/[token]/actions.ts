@@ -11,18 +11,24 @@ import { isRateLimited } from "@/lib/rate-limit";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
-/** 5 join attempts per minute per IP — generous for a real learner (who joins once)
- * or a facilitator testing the flow, but bounds a scripted loop hitting the publicly
- * shared learner invite link (a QR code/copyable link meant for a whole room) to mint
- * unlimited learner identities. */
-const JOIN_RATE_LIMIT = { max: 5, windowMs: 60_000 };
+/** Secondary, defense-in-depth layer only — `x-forwarded-for`'s leftmost value is
+ * client-controlled unless a trusted proxy strips/overwrites it (this app's own
+ * topology doesn't guarantee that; see docker-compose.yml, which exposes `web`
+ * directly with nothing in front), so a determined script can rotate this per
+ * request and this limit alone never fires. Raised from an earlier, much stricter
+ * per-IP-only cap that also had the opposite problem: a real classroom or office
+ * joining from behind one NAT'd IP could exhaust it on legitimate traffic alone.
+ * JOIN_RATE_LIMIT_PER_LINK below is the primary, bypass-proof control. */
+const JOIN_RATE_LIMIT_PER_IP = { max: 20, windowMs: 60_000 };
+/** The actual anti-abuse control: a script can spoof its IP but not which invite
+ * link it's hammering, so this bounds "a scripted loop hitting the publicly shared
+ * learner invite link (a QR code/copyable link meant for a whole room) to mint
+ * unlimited learner identities" (the original threat this file was hardened
+ * against) regardless of how many IPs it presents. High enough that a large
+ * classroom's real students all joining within the same minute never hits it. */
+const JOIN_RATE_LIMIT_PER_LINK = { max: 60, windowMs: 60_000 };
 
 export async function joinSession(formData: FormData) {
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (isRateLimited(`join:${ip}`, JOIN_RATE_LIMIT.max, JOIN_RATE_LIMIT.windowMs)) {
-    throw new Error("Too many join attempts. Please wait a moment and try again.");
-  }
-
   const token = formData.get("token");
   const displayName = formData.get("displayName");
   const preferredLanguage = formData.get("preferredLanguage");
@@ -37,7 +43,16 @@ export async function joinSession(formData: FormData) {
     throw new Error("Consent is required before joining a live session.");
   }
 
-  const joinLink = await prisma.joinLink.findUnique({ where: { tokenHash: hashToken(token) } });
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const tokenHash = hashToken(token);
+  if (
+    isRateLimited(`join-ip:${ip}`, JOIN_RATE_LIMIT_PER_IP.max, JOIN_RATE_LIMIT_PER_IP.windowMs) ||
+    isRateLimited(`join-link:${tokenHash}`, JOIN_RATE_LIMIT_PER_LINK.max, JOIN_RATE_LIMIT_PER_LINK.windowMs)
+  ) {
+    throw new Error("Too many join attempts. Please wait a moment and try again.");
+  }
+
+  const joinLink = await prisma.joinLink.findUnique({ where: { tokenHash } });
   if (
     !joinLink ||
     joinLink.role !== ParticipantRole.LEARNER ||
@@ -75,6 +90,15 @@ export async function joinSession(formData: FormData) {
   const accessToken = createOpaqueToken();
 
   await prisma.$transaction(async (transaction) => {
+    // Re-check inside the transaction, not just once above — a facilitator can end
+    // the session (or its retention deadline can pass) in the gap between that first
+    // check and this write actually committing, letting a learner join a session
+    // that's no longer live (sendChatMessage re-checks for the same reason, right
+    // before its own write).
+    const current = await transaction.session.findUnique({ where: { id: joinLink.sessionId } });
+    if (!current || current.status === SessionStatus.ENDED || isSessionRetentionExpired(current)) {
+      throw new Error("This session is no longer available.");
+    }
     const user = await transaction.user.create({
       data: {
         displayName: displayName.trim(),
@@ -104,7 +128,12 @@ export async function joinSession(formData: FormData) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24,
+    // Matches the facilitator cookie's 30-day maxAge (setup/actions.ts) and the join
+    // link's own 30-day expiry, not a shorter, unrelated 24h window — a learner
+    // revisiting their read-only transcript/chat archive (this file's own comment
+    // above anticipates exactly that) got silently logged out well before the
+    // session/transcript retention it's actually gated on ever expired.
+    maxAge: 60 * 60 * 24 * 30,
   });
 
   redirect(`/sessions/${joinLink.sessionId}/learn`);

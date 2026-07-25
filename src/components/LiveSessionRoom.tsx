@@ -18,7 +18,7 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { Track } from "livekit-client";
+import { DisconnectReason, Track } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
 import "@/lib/media-devices";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -64,6 +64,16 @@ interface PublishState {
 const TOKEN_REFRESH_INTERVAL_MS = 5 * 60 * 60 * 1000;
 /** Floor between refreshes triggered by 'visibilitychange'/'online' so rapid tab-focus flapping doesn't force a remount on every switch. */
 const MIN_REFRESH_GAP_MS = 5 * 60 * 1000;
+/**
+ * A FAILED background refresh (e.g. a transient network blip) must not just sit
+ * there until the next multi-hour interval tick or a visibility/online event —
+ * on a tab that stays focused and online the whole time, that event may never
+ * come before the 6h token actually expires. Retrying soon, a few times, gives a
+ * transient blip a real chance to recover well inside that window.
+ */
+const BACKGROUND_REFRESH_RETRY_DELAY_MS = 60 * 1000;
+/** Caps the retry chain so a genuine outage (vs. a transient blip) falls back to the normal interval/wake cadence instead of hammering the token endpoint forever. */
+const MAX_BACKGROUND_REFRESH_RETRIES = 3;
 
 /**
  * Only the facilitator gets the screen-share toggle — the room stays
@@ -184,7 +194,16 @@ function WorkshopVideoStage({
           </div>
         </div>
         {role === "facilitator" && (
-          <TrackToggle source={Track.Source.ScreenShare} aria-label={dict.toggleScreenShare} onChange={handleScreenShareChange} />
+          <TrackToggle
+            source={Track.Source.ScreenShare}
+            aria-label={dict.toggleScreenShare}
+            onChange={handleScreenShareChange}
+            // Without this, getDisplayMedia() captures video only — the token still
+            // grants screen-share-audio publish rights (room.ts), but nothing ever
+            // requests the browser's shared-tab/system audio to begin with, so
+            // learners never hear it regardless of what the token allows.
+            captureOptions={{ audio: true }}
+          />
         )}
         <DisconnectButton aria-label={dict.leaveCall} onClick={onLeave}>
           <LeaveIcon />
@@ -210,6 +229,21 @@ export function LiveSessionRoom({
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastFetchedAtRef = useRef(0);
+  // Bounded retry chain for a FAILED background refresh (see fetchCredentials's
+  // catch block) — reset to 0 at the start of each new root-triggered attempt (in
+  // maybeRefresh below) so every independent trigger gets its own full budget,
+  // not just the first one after a long healthy stretch.
+  const backgroundRetryCountRef = useRef(0);
+  // Holds the pending retry's timer ID so the refresh effect below can cancel it
+  // (alongside its own interval/listeners) if `fetchCredentials` changes identity
+  // or the component unmounts before it fires.
+  const backgroundRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `fetchCredentials` schedules its own retry (see its catch block below), but
+  // referencing that `const` by name from inside its own body would depend on a
+  // declaration that isn't finished yet. Routing through a ref kept in sync after
+  // every render (just below) sidesteps that while still always calling whichever
+  // version is current.
+  const fetchCredentialsRef = useRef<((args: { background: boolean }) => Promise<void>) | null>(null);
   // The actual mic/camera/screen-share state the local participant currently wants
   // published — starts at the same defaults <LiveKitRoom> always auto-published
   // before this existed (mic off, camera on, no screen share), but tracks every
@@ -258,6 +292,21 @@ export function LiveSessionRoom({
   const handleLeave = useCallback(() => {
     hasLeftRef.current = true;
   }, []);
+  // Set on a *terminal* disconnect/error the room has no path to recover from on its
+  // own (livekit-client already retries transient network drops internally without
+  // ever firing these callbacks) — without this, <LiveKitRoom> just unmounts its
+  // children (falling through to a blank space where the video was) with nothing
+  // telling the user why or what to do, for the rest of the page's lifetime.
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const handleDisconnected = useCallback(
+    (reason?: DisconnectReason) => {
+      if (hasLeftRef.current || reason === DisconnectReason.CLIENT_INITIATED) return;
+      setFatalError(reason === DisconnectReason.DUPLICATE_IDENTITY ? dict.disconnectedDuplicate : dict.disconnectedOther);
+    },
+    [dict.disconnectedDuplicate, dict.disconnectedOther],
+  );
+  const handleRoomError = useCallback(() => setFatalError(dict.unableToJoin), [dict.unableToJoin]);
+  const handleMediaDeviceFailure = useCallback(() => setFatalError(dict.mediaDeviceError), [dict.mediaDeviceError]);
 
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
@@ -303,11 +352,28 @@ export function LiveSessionRoom({
         // A background refresh failing (e.g. a transient network blip) must not tear
         // down an otherwise-healthy connection by clearing `credentials` or surfacing
         // an error over the live video — only report failures from the initial join.
-        if (!background) setError(reason instanceof Error ? reason.message : dict.unableToJoin);
+        if (!background) {
+          setError(reason instanceof Error ? reason.message : dict.unableToJoin);
+          return;
+        }
+        // Otherwise this failure would sit untouched until the next multi-hour
+        // interval tick or a visibility/online event (see BACKGROUND_REFRESH_RETRY_DELAY_MS
+        // above) — retry soon, independent of MIN_REFRESH_GAP_MS (that floor only
+        // throttles *new* triggers, not this fetch's own recovery attempts).
+        if (backgroundRetryCountRef.current < MAX_BACKGROUND_REFRESH_RETRIES) {
+          backgroundRetryCountRef.current += 1;
+          backgroundRetryTimeoutRef.current = setTimeout(() => {
+            if (hasLeftRef.current) return;
+            void fetchCredentialsRef.current?.({ background: true });
+          }, BACKGROUND_REFRESH_RETRY_DELAY_MS);
+        }
       }
     },
     [role, sessionId, dict.unableToJoin],
   );
+  useEffect(() => {
+    fetchCredentialsRef.current = fetchCredentials;
+  }, [fetchCredentials]);
 
   useEffect(() => {
     // Fetches from an external system (the token endpoint) on mount/role change — the
@@ -336,6 +402,9 @@ export function LiveSessionRoom({
       // `lastFetchedAtRef` and both pass this gap check, firing two concurrent
       // token fetches instead of the second one being correctly debounced.
       lastFetchedAtRef.current = Date.now();
+      // Fresh retry budget for this new root-triggered attempt — a chain already
+      // exhausted by an earlier failure shouldn't count against this independent one.
+      backgroundRetryCountRef.current = 0;
       void fetchCredentials({ background });
     };
     const interval = setInterval(() => maybeRefresh(true), TOKEN_REFRESH_INTERVAL_MS);
@@ -346,11 +415,31 @@ export function LiveSessionRoom({
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("online", onWake);
+      // Cancel a pending background-refresh retry (see fetchCredentials's catch
+      // block) too — otherwise it could fire after `fetchCredentials` changes
+      // identity or the component unmounts, wastefully hitting the token endpoint.
+      if (backgroundRetryTimeoutRef.current !== null) clearTimeout(backgroundRetryTimeoutRef.current);
     };
   }, [credentials, fetchCredentials]);
 
   if (error) {
     return <p className="text-sm" style={{ color: "var(--tick-low)" }}>{error}</p>;
+  }
+  if (fatalError) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
+          {fatalError}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
+        >
+          {dict.reload}
+        </button>
+      </div>
+    );
   }
   if (!credentials) {
     return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
@@ -381,6 +470,9 @@ export function LiveSessionRoom({
         audio={publishState.audio}
         video={publishState.video}
         screen={publishState.screen}
+        onDisconnected={handleDisconnected}
+        onError={handleRoomError}
+        onMediaDeviceFailure={handleMediaDeviceFailure}
         data-lk-theme="default"
       >
         <WorkshopVideoStage

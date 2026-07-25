@@ -155,6 +155,46 @@ describe("LocalBufferingSpeechToTextStream", () => {
     expect(onSegment).toHaveBeenCalledWith({ text: "first", isFinal: true });
   });
 
+  it("awaits the true in-flight flush on close(), not a stale one clobbered by a later timer tick", async () => {
+    let resolveFirstFlush!: (result: { text: string }) => void;
+    localTranscribeMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirstFlush = resolve;
+      }),
+    );
+    const onSegment = vi.fn();
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment,
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback: vi.fn(),
+    });
+
+    stream.sendAudio(new Uint8Array([1]));
+    await vi.advanceTimersByTimeAsync(2_500); // first flush() starts; localTranscribe is pending
+
+    // Arrives after the first flush already captured/cleared the buffer.
+    stream.sendAudio(new Uint8Array([2]));
+
+    // A second timer tick fires while the first flush is still in-flight. Before the
+    // fix, this reassigned `flushPromise` to this tick's own (single-flight-guarded,
+    // trivially-resolved) no-op promise, clobbering the reference to the real
+    // in-flight flush that close() needs to wait out.
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(localTranscribeMock).toHaveBeenCalledTimes(1); // second tick must not re-invoke localTranscribe
+
+    localTranscribeMock.mockResolvedValueOnce({ text: "second" });
+    stream.close();
+
+    resolveFirstFlush({ text: "first" });
+    await vi.waitFor(() => expect(localTranscribeMock).toHaveBeenCalledTimes(2));
+
+    expect(Array.from(localTranscribeMock.mock.calls[1][0] as Uint8Array)).toEqual([2]);
+    await vi.waitFor(() => expect(onSegment).toHaveBeenCalledWith({ text: "second", isFinal: true }));
+    expect(onSegment).toHaveBeenCalledWith({ text: "first", isFinal: true });
+  });
+
   it("captures the WebM container header from the first window and prepends it to later headerless windows", async () => {
     localTranscribeMock.mockResolvedValue({ text: "" });
     const stream = new LocalBufferingSpeechToTextStream({

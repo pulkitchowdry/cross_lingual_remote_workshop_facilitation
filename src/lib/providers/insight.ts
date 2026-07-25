@@ -1,9 +1,17 @@
+import type { SupportedLanguage } from "@/lib/session-contracts";
+
 export type InsightKind = "ACTIVITY" | "DECISION" | "BLOCKER" | "CONFUSION";
 
 export interface InsightSourceSegment {
   id: string;
   originalText: string;
 }
+
+const languageName: Record<SupportedLanguage, string> = {
+  en: "English",
+  zh: "Chinese",
+  es: "Spanish",
+};
 
 export interface InsightDraft {
   type: InsightKind;
@@ -22,6 +30,7 @@ export interface InsightProvider {
   readonly isConfigured: boolean;
   generateInsights(input: {
     sessionGoal: string;
+    sourceLanguage: SupportedLanguage;
     finalSegments: InsightSourceSegment[];
     alreadyNoted?: string[];
   }): Promise<InsightDraft[]>;
@@ -77,15 +86,27 @@ function buildUserContent(input: {
   return `Workshop goal: ${input.sessionGoal}\n\nTranscript segments (id: text):\n${segmentLines}${notedLines}`;
 }
 
-const INSIGHT_SYSTEM_PROMPT =
-  "You are observing a live, possibly multilingual workshop transcript to help a facilitator notice things they might miss. " +
-  "Given the workshop goal and a batch of transcript segments (each with a stable id and its original-language text), " +
-  "identify only genuinely new, clearly-evidenced items: ACTIVITY (what the group is currently doing), " +
-  "DECISION (a decision the group made), BLOCKER (an unresolved problem blocking progress), or CONFUSION (signs of misunderstanding). " +
-  "It is correct and expected to report nothing for ordinary chatter — do not fabricate signal that isn't there. " +
-  "Every item must cite the ids of the specific segments that justify it. " +
-  'Reply with ONLY a JSON array, no commentary: [{"type": "ACTIVITY"|"DECISION"|"BLOCKER"|"CONFUSION", "summary": string, "sourceSegmentIds": string[]}]. ' +
-  "Return [] if nothing new stands out.";
+/**
+ * The facilitator dashboard (ACT NOW) renders `summary` directly, unlike the
+ * transcript/chat panels — there's no per-viewer translation step for it. Without
+ * telling the model which language to reply in, it tends to default toward English
+ * regardless of the transcript's actual language, producing a BLOCKER summary in a
+ * different language than the evidence quote sitting right next to it (that quote is
+ * the raw transcript segment, always in the session's real source language).
+ */
+function buildSystemPrompt(sourceLanguage: SupportedLanguage): string {
+  return (
+    "You are observing a live, possibly multilingual workshop transcript to help a facilitator notice things they might miss. " +
+    "Given the workshop goal and a batch of transcript segments (each with a stable id and its original-language text), " +
+    "identify only genuinely new, clearly-evidenced items: ACTIVITY (what the group is currently doing), " +
+    "DECISION (a decision the group made), BLOCKER (an unresolved problem blocking progress), or CONFUSION (signs of misunderstanding). " +
+    "It is correct and expected to report nothing for ordinary chatter — do not fabricate signal that isn't there. " +
+    "Every item must cite the ids of the specific segments that justify it. " +
+    `Write every "summary" in ${languageName[sourceLanguage]}, regardless of what language the transcript segments or workshop goal are in — the facilitator reads this dashboard in that language. ` +
+    'Reply with ONLY a JSON array, no commentary: [{"type": "ACTIVITY"|"DECISION"|"BLOCKER"|"CONFUSION", "summary": string, "sourceSegmentIds": string[]}]. ' +
+    "Return [] if nothing new stands out."
+  );
+}
 
 class ClaudeInsightProvider implements InsightProvider {
   get isConfigured() {
@@ -94,6 +115,7 @@ class ClaudeInsightProvider implements InsightProvider {
 
   async generateInsights(input: {
     sessionGoal: string;
+    sourceLanguage: SupportedLanguage;
     finalSegments: InsightSourceSegment[];
     alreadyNoted?: string[];
   }): Promise<InsightDraft[]> {
@@ -110,7 +132,7 @@ class ClaudeInsightProvider implements InsightProvider {
       body: JSON.stringify({
         model: INSIGHT_MODEL,
         max_tokens: 1024,
-        system: INSIGHT_SYSTEM_PROMPT,
+        system: buildSystemPrompt(input.sourceLanguage),
         messages: [{ role: "user", content: buildUserContent(input) }],
       }),
       cache: "no-store",

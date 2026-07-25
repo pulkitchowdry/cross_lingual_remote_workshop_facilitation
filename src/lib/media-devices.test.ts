@@ -31,6 +31,16 @@ describe("dedupeDevicesByDeviceId", () => {
     expect(dedupeDevicesByDeviceId([first, second])).toHaveLength(2);
   });
 
+  it("keeps both entries when the same deviceId is shared across kinds, as Chromium's virtual 'default' pseudo-device does", () => {
+    const defaultMic = fakeDevice({ deviceId: "default", kind: "audioinput", label: "Default" });
+    const defaultSpeaker = fakeDevice({ deviceId: "default", kind: "audiooutput", label: "Default" });
+
+    const result = dedupeDevicesByDeviceId([defaultMic, defaultSpeaker]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((d) => d.kind).sort()).toEqual(["audioinput", "audiooutput"]);
+  });
+
   it("prefers a labeled entry over a blank one for the same deviceId", () => {
     const blank = fakeDevice({ deviceId: "shared-hash", label: "" });
     const labeled = fakeDevice({ deviceId: "shared-hash", label: "USB Webcam" });

@@ -154,4 +154,89 @@ describe("translateText", () => {
     expect(result).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("jitters the post-429 retry delay instead of using a fixed 400ms (Math.random floor)", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429, text: async () => "rate limited" })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "hola" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const resultPromise = translateText("hello", "en", "es");
+
+    // Math.random() pinned to 0 puts the jittered delay at its floor (half the 400ms
+    // base) — advancing just short of it must not yet fire the retry.
+    await vi.advanceTimersByTimeAsync(199);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(resultPromise).resolves.toEqual({
+      text: "hola",
+      provider: "claude",
+      qualitySignal: "provider-confirmed",
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("jitters the post-429 retry delay instead of using a fixed 400ms (Math.random ceiling)", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429, text: async () => "rate limited" })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "hola" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const resultPromise = translateText("hello", "en", "es");
+
+    // Math.random() pinned to 1 puts the jittered delay at its ceiling (1.5x the 400ms
+    // base) — a fixed, non-jittered implementation would already have retried by 400ms.
+    await vi.advanceTimersByTimeAsync(599);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(resultPromise).resolves.toEqual({
+      text: "hola",
+      provider: "claude",
+      qualitySignal: "provider-confirmed",
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("logs and falls back to Claude when local-inference responds 200 with an empty translation", async () => {
+    process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
+    process.env.LOCAL_INFERENCE_SECRET = "s3cret";
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("local.example.com")) return { ok: true, json: async () => ({ text: "" }) };
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "hola" }] }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es");
+
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("empty translation"));
+  });
 });

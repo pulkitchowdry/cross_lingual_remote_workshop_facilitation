@@ -2,7 +2,7 @@ import type { WebSocket } from "ws";
 import { prisma } from "@/lib/db";
 import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { publishTranslatedCaption } from "@/lib/captions";
-import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -39,49 +39,59 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
       .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
   }, DUPLICATE_CAPTURE_CHECK_MS);
 
-  const sttStream = speechToTextProvider.openStream!({
-    expectedLanguage: sourceLanguage,
-    allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
-    onSegment: (event) => {
-      if (!event.isFinal) return;
-      // Capture and advance the timestamp synchronously, in the same tick the
-      // event arrives — not after the async publish below resolves. Two `is_final`
-      // events close together would otherwise both read the same stale
-      // `segmentStartedAt`, since the previous reassignment hadn't run yet.
-      const startedAt = segmentStartedAt;
-      const endedAt = new Date();
-      segmentStartedAt = endedAt;
-      void (async () => {
-        // Re-fetch the full session per segment, not just once at connect — the
-        // facilitator may click "End session" while this socket is still open, or
-        // change the session's source language mid-LIVE-session (updateFacilitatorLanguage
-        // has no LIVE-session guard). Re-fetching only `status` and still publishing
-        // against the stale `session`/`sourceLanguage` closed over at connect time
-        // (mirrors the per-segment re-fetch in src/lib/caption-agent.ts, which reads
-        // the *fresh* session for exactly this reason) meant every segment kept
-        // getting stamped and translated with whatever language was active when this
-        // WebSocket first opened, for the rest of its lifetime.
-        const current = await prisma.session.findUnique({ where: { id: session.id } });
-        if (!current || current.status !== SessionStatus.LIVE) return;
-        await publishTranslatedCaption(current, {
-          speakerId: null,
-          originalText: event.text,
-          language: current.sourceLanguage as SupportedLanguage,
-          startedAt,
-          endedAt,
-        });
-      })().catch((error) => console.error(`[captions/stream] failed to publish a segment for ${session.id}:`, error));
-    },
-    onError: (error) => {
-      // Send the error, then close — without closing, the STT stream is dead (its
-      // `sendAudio` silently no-ops once the inner connection leaves OPEN) but the
-      // WebSocket itself stays open, so the client (LiveCaptionStream.tsx) never
-      // gets an `onclose` and keeps rendering an active "Stop"/recording state
-      // indefinitely while no further audio is actually being transcribed.
-      ws.send(JSON.stringify({ type: "error", message: error.message }));
-      ws.close(1011, error.message);
-    },
-  });
+  // openStream() can throw synchronously (e.g. a strict-privacy session with no
+  // local-inference tier configured — see its own "cloud fallback is disabled"
+  // check) before the ws.on("close"/"error") handlers below ever get registered,
+  // so without this try/catch the interval above would never get cleared.
+  let sttStream: SpeechToTextStream;
+  try {
+    sttStream = speechToTextProvider.openStream!({
+      expectedLanguage: sourceLanguage,
+      allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
+      onSegment: (event) => {
+        if (!event.isFinal) return;
+        // Capture and advance the timestamp synchronously, in the same tick the
+        // event arrives — not after the async publish below resolves. Two `is_final`
+        // events close together would otherwise both read the same stale
+        // `segmentStartedAt`, since the previous reassignment hadn't run yet.
+        const startedAt = segmentStartedAt;
+        const endedAt = new Date();
+        segmentStartedAt = endedAt;
+        void (async () => {
+          // Re-fetch the full session per segment, not just once at connect — the
+          // facilitator may click "End session" while this socket is still open, or
+          // change the session's source language mid-LIVE-session (updateFacilitatorLanguage
+          // has no LIVE-session guard). Re-fetching only `status` and still publishing
+          // against the stale `session`/`sourceLanguage` closed over at connect time
+          // (mirrors the per-segment re-fetch in src/lib/caption-agent.ts, which reads
+          // the *fresh* session for exactly this reason) meant every segment kept
+          // getting stamped and translated with whatever language was active when this
+          // WebSocket first opened, for the rest of its lifetime.
+          const current = await prisma.session.findUnique({ where: { id: session.id } });
+          if (!current || current.status !== SessionStatus.LIVE) return;
+          await publishTranslatedCaption(current, {
+            speakerId: null,
+            originalText: event.text,
+            language: current.sourceLanguage as SupportedLanguage,
+            startedAt,
+            endedAt,
+          });
+        })().catch((error) => console.error(`[captions/stream] failed to publish a segment for ${session.id}:`, error));
+      },
+      onError: (error) => {
+        // Send the error, then close — without closing, the STT stream is dead (its
+        // `sendAudio` silently no-ops once the inner connection leaves OPEN) but the
+        // WebSocket itself stays open, so the client (LiveCaptionStream.tsx) never
+        // gets an `onclose` and keeps rendering an active "Stop"/recording state
+        // indefinitely while no further audio is actually being transcribed.
+        ws.send(JSON.stringify({ type: "error", message: error.message }));
+        ws.close(1011, error.message);
+      },
+    });
+  } catch (error) {
+    clearInterval(duplicateGuardInterval);
+    throw error;
+  }
 
   ws.on("message", (data) => {
     sttStream.sendAudio(new Uint8Array(data as Buffer));
