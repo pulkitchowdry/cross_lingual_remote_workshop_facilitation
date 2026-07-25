@@ -85,12 +85,13 @@ export function LiveCaptionStream({
       // would otherwise leave the microphone silently capturing with no way to release it
       // from the UI (the button reads "Start…" again, but a stale stream is still live).
       // A close the user didn't ask for (any code other than a normal 1000 closure — e.g.
-      // the server's `ws.close(1011, ...)` when the route handler throws *after* a
-      // successful production handshake, which never reaches `onerror`/a `{type:'error'}`
-      // message) must also be surfaced here, or the button just silently flips back to idle.
+      // the server's `ws.close(1011, reason)` in server.ts's upgrade handler, whose
+      // `reason` names the actual cause: not authorized, session not live, STT not
+      // configured, etc.) must also be surfaced here, or the button just silently flips
+      // back to idle with no indication of why.
       socket.onclose = (event) => {
         if (!stoppedByUserRef.current && event.code !== NORMAL_CLOSURE_CODE) {
-          setError(dict.connectionFailed);
+          setError(event.reason || dict.connectionFailed);
         }
         stop();
       };

@@ -95,8 +95,17 @@ async function main() {
       wss.handleUpgrade(req, socket, head, (ws) => {
         attachCaptionSocket(ws, session);
       });
-    } catch {
-      socket.destroy();
+    } catch (error) {
+      // Completing the handshake and closing with a reason (rather than
+      // destroying the raw TCP socket) lets the browser's `WebSocket.onclose`
+      // report *why* the connection didn't start (e.g. "session not live",
+      // "not authorized", "STT not configured") instead of a single opaque
+      // "connection failed" for every case — see LiveCaptionStream.tsx's
+      // `onclose` handler, which surfaces `event.reason` when present.
+      const reason = error instanceof Error ? error.message : "Unable to start captions.";
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        ws.close(1011, reason);
+      });
     }
   });
 
