@@ -37,6 +37,17 @@ export const INSIGHT_HISTORY_LIMIT = 50;
 
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
+/**
+ * Return shape for a `useActionState`-driven Server Action whose expected, routine
+ * failures (rate limited, session not live, input too long) should show up as an
+ * inline message next to the form instead of throwing — a thrown Error with no
+ * boundary in the tree crashes the whole route (see RouteErrorFallback.tsx), taking
+ * down the live video call along with it for what's often just a mistimed click.
+ */
+export interface FormActionResult {
+  error: string | null;
+}
+
 export type TranslationMode = "AUTO" | "LOCAL_ONLY";
 
 export interface CreateSessionInput {

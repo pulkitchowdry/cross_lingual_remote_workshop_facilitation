@@ -155,14 +155,14 @@ export default async function LearnerSessionPage({
               return (
                 <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
                   <p
-                    className="text-base leading-relaxed"
+                    className="whitespace-pre-wrap text-base leading-relaxed"
                     lang={primaryLang}
                     style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
                   >
                     {primaryText}
                   </p>
                   {!isOwnLanguage && (
-                    <p className="mt-2 text-xs italic text-muted-foreground" lang={segment.language}>
+                    <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={segment.language}>
                       {segment.originalText}
                     </p>
                   )}

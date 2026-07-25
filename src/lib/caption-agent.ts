@@ -205,5 +205,16 @@ export default defineAgent({
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });
+    // Mirrors streamFacilitatorAudio's own `finally`-block cleanup, but for the case
+    // that loop never gets to run its `finally` at all: a crash, redeploy, or
+    // LiveKit-initiated room disconnect kills this worker process while a track is
+    // still actively streaming. Without this, `captionAgentActive` is left stuck
+    // `true` in the DB forever, permanently hiding the "Start live captions from mic"
+    // fallback for this session (see server.ts's upgrade-handler check). `@livekit/agents`
+    // runs every `addShutdownCallback` on both a room disconnect and a graceful job
+    // shutdown (see job_proc_lazy_main.js), so this one hook covers both.
+    ctx.addShutdownCallback(async () => {
+      if (activeTracks.size > 0) await clearCaptionAgentCapturing(sessionId);
+    });
   },
 });

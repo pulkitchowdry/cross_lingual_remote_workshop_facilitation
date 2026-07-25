@@ -87,6 +87,12 @@ This repo follows that shape for its two Railway services — `railway.json`
      `LOCAL_INFERENCE_SECRET` as a random string — it must match the value
      you set on `local-inference` below.
    - Networking: generate a public domain so the app is reachable.
+   - **Set `NEXT_PUBLIC_APP_URL` to that public domain** (e.g.
+     `https://your-app.up.railway.app`) once you have it. The facilitator
+     dashboard builds the learner invite link/QR code from this — leaving it
+     unset silently falls back to `http://localhost:3000`, so every learner
+     link you hand out from a deployed instance would point at localhost
+     instead of this deployment.
 
 3. **Add the `local-inference` service** (skip if you're staying on cloud
    providers only). New → GitHub Repo → same repo.

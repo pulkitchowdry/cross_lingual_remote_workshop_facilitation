@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import { isSupportedLanguage } from "@/lib/i18n";
 
 export async function updateFacilitatorLanguage(sessionId: string, lang: SupportedLanguage) {
@@ -53,17 +53,21 @@ export async function endSession(sessionId: string) {
   revalidatePath(`/sessions/${sessionId}/learn`);
 }
 
-export async function publishCaption(sessionId: string, formData: FormData) {
+export async function publishCaption(
+  sessionId: string,
+  _prevState: FormActionResult,
+  formData: FormData,
+): Promise<FormActionResult> {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
   const captionText = formData.get("captionText");
   if (typeof captionText !== "string" || !captionText.trim() || captionText.trim().length > 3_000) {
-    throw new Error("Enter a caption of up to 3,000 characters.");
+    return { error: "Enter a caption of up to 3,000 characters." };
   }
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session || session.status !== SessionStatus.LIVE) {
-    throw new Error("Start the session before publishing captions.");
+    return { error: "Start the session before publishing captions." };
   }
 
   const now = new Date();
@@ -74,6 +78,7 @@ export async function publishCaption(sessionId: string, formData: FormData) {
     startedAt: now,
     endedAt: now,
   });
+  return { error: null };
 }
 
 /**

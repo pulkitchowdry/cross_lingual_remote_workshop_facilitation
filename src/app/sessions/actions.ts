@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
-import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { SUPPORTED_LANGUAGES, type FormActionResult, type SupportedLanguage } from "@/lib/session-contracts";
 import { translateText } from "@/lib/providers/translation";
 import { isRateLimited } from "@/lib/rate-limit";
 
@@ -16,17 +16,22 @@ type ChatRole = "facilitator" | "learner";
  * out unlimited paid per-language Claude/local-inference translation calls. */
 const CHAT_RATE_LIMIT = { max: 10, windowMs: 10_000 };
 
-export async function sendChatMessage(sessionId: string, role: ChatRole, formData: FormData) {
+export async function sendChatMessage(
+  sessionId: string,
+  role: ChatRole,
+  _prevState: FormActionResult,
+  formData: FormData,
+): Promise<FormActionResult> {
   const text = formData.get("message");
   if (typeof text !== "string" || !text.trim() || text.trim().length > 1_000) {
-    throw new Error("Enter a message of up to 1,000 characters.");
+    return { error: "Enter a message of up to 1,000 characters." };
   }
   const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) redirect("/setup");
   if (session.status !== SessionStatus.LIVE) {
-    throw new Error("This session is not live — messages can only be sent while it is in progress.");
+    return { error: "This session is not live — messages can only be sent while it is in progress." };
   }
 
   let senderId: string;
@@ -48,7 +53,7 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
   // so it throttles a single script hammering this action as one specific
   // facilitator/learner rather than needing to guess a request-level identity.
   if (isRateLimited(`chat:${senderId}`, CHAT_RATE_LIMIT.max, CHAT_RATE_LIMIT.windowMs)) {
-    throw new Error("You're sending messages too quickly. Please wait a moment and try again.");
+    return { error: "You're sending messages too quickly. Please wait a moment and try again." };
   }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
@@ -75,7 +80,7 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
   // the time this runs.
   const stillLive = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
   if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
-    throw new Error("This session is not live — messages can only be sent while it is in progress.");
+    return { error: "This session is not live — messages can only be sent while it is in progress." };
   }
 
   await prisma.message.create({
@@ -95,4 +100,5 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
 
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
+  return { error: null };
 }

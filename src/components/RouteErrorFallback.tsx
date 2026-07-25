@@ -14,8 +14,20 @@ import { getDictionary } from "@/lib/i18n";
  * small, recoverable, inline notice. `error.message` is shown when Next actually
  * hands the client the real thrown message; the localized fallback below covers the
  * case where it's redacted/empty instead.
+ *
+ * The retry button calls `unstable_retry()` rather than `reset()`: `reset()` only clears
+ * this boundary's local error flag and re-renders whatever was already fetched pre-crash,
+ * so a "session that ended moments ago" error would just resurface immediately. `unstable_retry()`
+ * (added in Next 16.2, see `error.js` docs) also triggers a router refresh that re-fetches this
+ * segment's data before re-rendering, which is what actually gives the retry a chance to succeed.
  */
-export function RouteErrorFallback({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export function RouteErrorFallback({
+  error,
+  unstable_retry,
+}: {
+  error: Error & { digest?: string };
+  unstable_retry: () => void;
+}) {
   const lang = useUiLanguage();
   const dict = getDictionary(lang).error;
 
@@ -29,7 +41,7 @@ export function RouteErrorFallback({ error, reset }: { error: Error & { digest?:
       <p className="text-sm text-muted-foreground">{error.message || dict.message}</p>
       <button
         type="button"
-        onClick={reset}
+        onClick={unstable_retry}
         className="font-data w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
       >
         {dict.retry}

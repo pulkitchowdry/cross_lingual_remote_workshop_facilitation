@@ -28,6 +28,15 @@ function isTransientClaudeStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/** sendChatMessage/publishCaption fan out one translateText call per target language via
+ * Promise.all, all sharing the same Claude API key — if Claude 429s all of them in the
+ * same brief rate-limit window, a fixed retry delay would just retry every one of them
+ * in lockstep and hit that same window again. Jittering the delay (half the base to 1.5x
+ * the base, same ~400ms order of magnitude) spreads concurrent retries out instead. */
+function claudeRetryDelayMs(): number {
+  return CLAUDE_RETRY_DELAY_MS / 2 + Math.random() * CLAUDE_RETRY_DELAY_MS;
+}
+
 /**
  * Cloud fallback tier — Claude Haiku. Never throws; any error/timeout/non-OK
  * degrades to `null` (see `translateText`'s doc comment for why).
@@ -71,7 +80,7 @@ async function translateWithClaude(
       if (!response.ok) {
         console.error(`translateWithClaude: Claude API responded ${response.status} ${await response.text()}`);
         if (isTransientClaudeStatus(response.status) && attempt < CLAUDE_MAX_ATTEMPTS) {
-          await new Promise((resolve) => setTimeout(resolve, CLAUDE_RETRY_DELAY_MS));
+          await new Promise((resolve) => setTimeout(resolve, claudeRetryDelayMs()));
           continue;
         }
         return null;
@@ -101,7 +110,7 @@ async function translateWithClaude(
       // indistinguishable from CLAUDE_API_KEY simply not being set.
       console.error(`translateWithClaude failed (attempt ${attempt}/${CLAUDE_MAX_ATTEMPTS}):`, error);
       if (attempt < CLAUDE_MAX_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, CLAUDE_RETRY_DELAY_MS));
+        await new Promise((resolve) => setTimeout(resolve, claudeRetryDelayMs()));
         continue;
       }
       return null;
@@ -133,6 +142,11 @@ export async function translateText(
     try {
       const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
       if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
+      // localTranslate only throws when payload.text isn't a string (already logged below via
+      // catch) — an empty string passes that check and lands here instead, silently falling
+      // through to the cloud tier. Without this log, a local-inference tier that responds 200
+      // with a blank body is indistinguishable from one that's simply not configured.
+      console.error("translateText: local-inference translate returned an empty translation, falling back.");
     } catch (error) {
       // Fall through to the cloud tier below (or to null, if disallowed) — but log
       // first, or a broken local-inference tier is invisible until someone notices
