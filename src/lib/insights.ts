@@ -6,6 +6,16 @@ import type { Session } from "@/generated/prisma/client";
 const CONTEXT_WINDOW = 20;
 /** Word-overlap (Jaccard) threshold above which a new draft is treated as a paraphrase of an already-noted insight, not genuinely new. */
 const DUPLICATE_SUMMARY_SIMILARITY = 0.6;
+/**
+ * Caps how many of a session's own past insight summaries get sent to the model as
+ * "already noted" context. Without a cap, a multi-hour workshop accumulating hundreds
+ * of insights would re-send its *entire* history on every single caption-triggered
+ * call — this background analysis is on the hot path of every final caption
+ * (captions.ts fires it unawaited after each one), so token usage/latency/cost here
+ * would grow linearly and unboundedly with session length instead of staying capped.
+ * Only the most recent ones matter in practice for catching a near-term repeat.
+ */
+const ALREADY_NOTED_LIMIT = 30;
 
 /**
  * Analyzes the session's recent transcript for new facilitator-dashboard
@@ -46,16 +56,28 @@ export async function generateSessionInsights(session: Session): Promise<void> {
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${session.id}))`;
 
-        const recentSegments = await tx.transcriptSegment.findMany({
-          where: { sessionId: session.id, isFinal: true },
-          orderBy: { startedAt: "desc" },
-          take: CONTEXT_WINDOW,
-          select: { id: true, originalText: true },
-        });
+        // `desc` (newest first) is what makes `take: CONTEXT_WINDOW` cheaply grab the
+        // *most recent* segments — but the model needs to read them oldest-first, the
+        // same chronological order the conversation actually happened in, or it can
+        // read a resolution before the problem it resolved and misjudge cause and
+        // effect (e.g. emitting a BLOCKER for an issue that was already fixed earlier
+        // in the same batch). `session.transcript` is reversed the identical way
+        // before rendering (see facilitator/page.tsx) — this is the one place that
+        // reversal was missing.
+        const recentSegments = (
+          await tx.transcriptSegment.findMany({
+            where: { sessionId: session.id, isFinal: true },
+            orderBy: { startedAt: "desc" },
+            take: CONTEXT_WINDOW,
+            select: { id: true, originalText: true },
+          })
+        ).reverse();
         if (recentSegments.length === 0) return;
 
         const existingInsights = await tx.insight.findMany({
           where: { sessionId: session.id },
+          orderBy: { createdAt: "desc" },
+          take: ALREADY_NOTED_LIMIT,
           select: { summary: true },
         });
         const alreadyNoted = existingInsights.map((insight) => insight.summary);

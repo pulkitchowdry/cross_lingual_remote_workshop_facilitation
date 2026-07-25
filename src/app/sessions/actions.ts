@@ -7,8 +7,14 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { translateText } from "@/lib/providers/translation";
+import { isRateLimited } from "@/lib/rate-limit";
 
 type ChatRole = "facilitator" | "learner";
+
+/** 10 messages per 10s per sender — comfortably above real typing/sending speed, but
+ * bounds a script that bypasses the UI and POSTs directly to this action from fanning
+ * out unlimited paid per-language Claude/local-inference translation calls. */
+const CHAT_RATE_LIMIT = { max: 10, windowMs: 10_000 };
 
 export async function sendChatMessage(sessionId: string, role: ChatRole, formData: FormData) {
   const text = formData.get("message");
@@ -36,6 +42,13 @@ export async function sendChatMessage(sessionId: string, role: ChatRole, formDat
     if (!participant || participant.sessionId !== sessionId) redirect("/setup");
     senderId = participant.userId;
     sourceLanguage = participant.preferredLanguage as SupportedLanguage;
+  }
+
+  // Keyed by the real, already-authenticated sender identity (not a raw cookie or IP),
+  // so it throttles a single script hammering this action as one specific
+  // facilitator/learner rather than needing to guess a request-level identity.
+  if (isRateLimited(`chat:${senderId}`, CHAT_RATE_LIMIT.max, CHAT_RATE_LIMIT.windowMs)) {
+    throw new Error("You're sending messages too quickly. Please wait a moment and try again.");
   }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";

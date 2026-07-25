@@ -38,8 +38,6 @@ export interface Dictionary {
     sessionTitlePlaceholder: string;
     workshopGoal: string;
     workshopGoalPlaceholder: string;
-    learnerLanguages: string;
-    learnerLanguagesHint: string;
     retention: string;
     retentionDay: string;
     retentionWeek: string;
@@ -55,6 +53,7 @@ export interface Dictionary {
     yourName: string;
     consent: string;
     submit: string;
+    submitting: string;
   };
   facilitator: {
     statusDraft: string;
@@ -71,10 +70,15 @@ export interface Dictionary {
     captionLabel: string;
     captionPlaceholder: string;
     publish: string;
+    publishing: string;
     actNow: string;
     blocker: string;
+    resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
+    waitingToStart: string;
+    noInterventionHintWaiting: string;
+    languageChangeLiveWarning: string;
     liveTranscript: string;
     transcriptEmpty: string;
     learnerInvitation: string;
@@ -132,6 +136,7 @@ export interface Dictionary {
     selectMicrophone: string;
     selectCamera: string;
     leaveCall: string;
+    screenShareInterrupted: string;
   };
   common: {
     speaker: string;
@@ -141,6 +146,11 @@ export interface Dictionary {
     title: string;
     message: string;
     cta: string;
+  };
+  error: {
+    title: string;
+    message: string;
+    retry: string;
   };
 }
 
@@ -167,8 +177,6 @@ const en: Dictionary = {
     sessionTitlePlaceholder: "e.g. REST endpoint workshop",
     workshopGoal: "Workshop goal",
     workshopGoalPlaceholder: "e.g. Implement a working REST endpoint for user signup, including input validation.",
-    learnerLanguages: "Learner languages",
-    learnerLanguagesHint: "Learners choose one of these when they join. Start with the languages you can support.",
     retention: "Transcript retention",
     retentionDay: "Delete after 1 day",
     retentionWeek: "Delete after 7 days",
@@ -186,6 +194,7 @@ const en: Dictionary = {
     consent:
       "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
     submit: "Join session",
+    submitting: "Joining…",
   },
   facilitator: {
     statusDraft: "draft",
@@ -202,10 +211,15 @@ const en: Dictionary = {
     captionLabel: "Type a caption for learners",
     captionPlaceholder: "Type a caption for learners in their selected language…",
     publish: "Publish",
+    publishing: "Publishing…",
     actNow: "Act now",
     blocker: "Blocker",
+    resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
+    waitingToStart: "Waiting to begin",
+    noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
+    languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
     learnerInvitation: "Learner invitation",
@@ -265,12 +279,18 @@ const en: Dictionary = {
     selectMicrophone: "Select microphone",
     selectCamera: "Select camera",
     leaveCall: "Leave call",
+    screenShareInterrupted: "Your screen share was interrupted by a reconnect — click Share screen again to resume.",
   },
   common: { speaker: "Speaker", translationUnavailable: "Translation unavailable." },
   notFound: {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
     cta: "Start a new session",
+  },
+  error: {
+    title: "Something went wrong",
+    message: "An unexpected error occurred. You can try again, or reload the page.",
+    retry: "Try again",
   },
 };
 
@@ -296,8 +316,6 @@ const zh: Dictionary = {
     sessionTitlePlaceholder: "例如：REST 接口工作坊",
     workshopGoal: "工作坊目标",
     workshopGoalPlaceholder: "例如：实现一个可用的用户注册 REST 接口，并包含输入校验。",
-    learnerLanguages: "学员可选语言",
-    learnerLanguagesHint: "学员加入时会从中选择一种。请先勾选你能够支持的语言。",
     retention: "转录保留时长",
     retentionDay: "1 天后删除",
     retentionWeek: "7 天后删除",
@@ -314,6 +332,7 @@ const zh: Dictionary = {
     consent:
       "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
+    submitting: "加入中……",
   },
   facilitator: {
     statusDraft: "草稿",
@@ -330,10 +349,15 @@ const zh: Dictionary = {
     captionLabel: "为学员输入字幕",
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
     publish: "发布",
+    publishing: "发布中……",
     actNow: "立即处理",
     blocker: "障碍",
+    resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
+    waitingToStart: "等待开始",
+    noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
+    languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
     learnerInvitation: "学员邀请",
@@ -393,12 +417,18 @@ const zh: Dictionary = {
     selectMicrophone: "选择麦克风",
     selectCamera: "选择摄像头",
     leaveCall: "离开通话",
+    screenShareInterrupted: "屏幕共享因重新连接而中断——请点击“共享屏幕”以恢复。",
   },
   common: { speaker: "发言者", translationUnavailable: "暂无译文。" },
   notFound: {
     title: "未找到该链接",
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
     cta: "创建新场次",
+  },
+  error: {
+    title: "出了点问题",
+    message: "发生了意外错误。你可以重试，或刷新页面。",
+    retry: "重试",
   },
 };
 
@@ -425,8 +455,6 @@ const es: Dictionary = {
     sessionTitlePlaceholder: "p. ej. Taller de endpoints REST",
     workshopGoal: "Objetivo del taller",
     workshopGoalPlaceholder: "p. ej. Implementar un endpoint REST funcional para el registro de usuarios, con validación de datos.",
-    learnerLanguages: "Idiomas para los alumnos",
-    learnerLanguagesHint: "Los alumnos elegirán uno de estos al unirse. Empieza con los idiomas que puedas ofrecer.",
     retention: "Retención de la transcripción",
     retentionDay: "Eliminar después de 1 día",
     retentionWeek: "Eliminar después de 7 días",
@@ -444,6 +472,7 @@ const es: Dictionary = {
     consent:
       "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
     submit: "Unirse a la sesión",
+    submitting: "Uniéndote…",
   },
   facilitator: {
     statusDraft: "borrador",
@@ -460,10 +489,15 @@ const es: Dictionary = {
     captionLabel: "Escribe un subtítulo para los alumnos",
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
     publish: "Publicar",
+    publishing: "Publicando…",
     actNow: "Actuar ahora",
     blocker: "Bloqueo",
+    resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
+    waitingToStart: "Esperando para comenzar",
+    noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
+    languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
     learnerInvitation: "Invitación para alumnos",
@@ -523,12 +557,18 @@ const es: Dictionary = {
     selectMicrophone: "Seleccionar micrófono",
     selectCamera: "Seleccionar cámara",
     leaveCall: "Salir de la llamada",
+    screenShareInterrupted: "Tu pantalla compartida se interrumpió por una reconexión — haz clic en Compartir pantalla para reanudarla.",
   },
   common: { speaker: "Orador", translationUnavailable: "Traducción no disponible." },
   notFound: {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",
     cta: "Crear una nueva sesión",
+  },
+  error: {
+    title: "Algo salió mal",
+    message: "Ocurrió un error inesperado. Puedes intentarlo de nuevo o recargar la página.",
+    retry: "Intentar de nuevo",
   },
 };
 

@@ -224,12 +224,29 @@ export function LiveSessionRoom({
   // here re-rendering this component doesn't remount <LiveKitRoom> (its `key`
   // doesn't change), so it doesn't cost an extra reconnect.
   const [publishState, setPublishState] = useState<PublishState>({ audio: false, video: true, screen: false });
+  // A background token refresh remounts <LiveKitRoom> (its `key` is
+  // `credentials.token`), which reruns its own connect-time auto-publish for
+  // `screen={publishState.screen}` — but `getDisplayMedia()` always requires a user
+  // gesture, which a timer/'online'/'visibilitychange'-triggered reconnect never has.
+  // Read via a ref (not the `publishState` state value) inside `fetchCredentials`
+  // below so that callback doesn't need `publishState` in its dependency array —
+  // this only needs the *current* value at the moment a background refresh lands,
+  // not to re-run whenever publishState changes.
+  const publishStateRef = useRef(publishState);
+  useEffect(() => {
+    publishStateRef.current = publishState;
+  }, [publishState]);
+  const [screenShareInterrupted, setScreenShareInterrupted] = useState(false);
   // Stable identity (empty deps — `setPublishState` itself is already stable, and this
   // closes over nothing else) is what lets WorkshopVideoStage's own `useCallback`s stay
   // stable too, which is what actually avoids the infinite-render loop described below —
   // an inline arrow function here would defeat that regardless of memoizing downstream.
   const handlePublishStateChange = useCallback((patch: Partial<PublishState>) => {
     setPublishState((prev) => ({ ...prev, ...patch }));
+    // The facilitator manually restarting their share is the one signal that clears
+    // the interruption notice below — not a timeout, since there's no way to know in
+    // advance how long they'll take to notice and click the button again.
+    if (patch.screen) setScreenShareInterrupted(false);
   }, []);
   // Set the instant the user clicks Leave (see WorkshopVideoStage's onLeave), before
   // `room.disconnect()` itself runs — distinct from a network-triggered disconnect,
@@ -252,12 +269,34 @@ export function LiveSessionRoom({
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
+        // A background refresh can still be in flight when the user clicks Leave —
+        // `hasLeftRef` is set synchronously at that moment (see handleLeave), but this
+        // `fetch` was already past `maybeRefresh`'s pre-start check by then. Applying a
+        // stale in-flight refresh's result here would still remount <LiveKitRoom> (its
+        // `key` is `credentials.token`) and silently reconnect a room the user
+        // explicitly, deliberately left moments earlier.
+        if (hasLeftRef.current) return;
         // Also set on success (not just eagerly in `maybeRefresh` below) so the very
         // first, mount-time fetch — which doesn't go through `maybeRefresh` — still
         // establishes a baseline; otherwise a 'visibilitychange'/'online' firing soon
         // after mount would see the ref at its unset 0 and skip the debounce floor
         // entirely for that first background refresh.
         lastFetchedAtRef.current = Date.now();
+        // A forced reconnect while screen-sharing can't actually resume it —
+        // `getDisplayMedia()` always requires a user gesture, which none of this
+        // component's reconnect triggers (a timer, 'online', 'visibilitychange') ever
+        // have. Resetting `screen` here, before <LiveKitRoom> remounts with these new
+        // credentials, stops it from even attempting (and silently failing) that
+        // republish — the alternative (letting it try and catching the rejection after
+        // the fact) depends on LiveKit's internal auto-publish/error-surfacing
+        // behavior holding a specific shape across versions; this is deterministic.
+        if (background) {
+          const wasSharing = publishStateRef.current.screen;
+          if (wasSharing) {
+            setPublishState((prev) => ({ ...prev, screen: false }));
+            setScreenShareInterrupted(true);
+          }
+        }
         setCredentials(payload);
         if (!background) setError(null);
       } catch (reason) {
@@ -326,6 +365,11 @@ export function LiveSessionRoom({
     // as-is from the hand-rolled controls change) — MediaDeviceMenu's dropdown
     // needs to render outside these bounds.
     <div className="h-[clamp(26rem,75vh,54rem)] rounded-lg border border-border-subtle bg-surface">
+      {screenShareInterrupted && (
+        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+          {dict.screenShareInterrupted}
+        </p>
+      )}
       <LiveKitRoom
         key={credentials.token}
         token={credentials.token}

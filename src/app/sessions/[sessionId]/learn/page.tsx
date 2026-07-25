@@ -33,10 +33,17 @@ export default async function LearnerSessionPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "desc" }, take: TRANSCRIPT_HISTORY_LIMIT },
+          // A secondary `id` tiebreaker: see the matching comment in facilitator/page.tsx —
+          // without one, two rows created within the same millisecond can silently swap
+          // relative order between successive SessionAutoRefresh polls.
+          transcript: {
+            include: { translations: true },
+            orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+            take: TRANSCRIPT_HISTORY_LIMIT,
+          },
           messages: {
             include: { sender: true, translations: true },
-            orderBy: { sentAt: "desc" },
+            orderBy: [{ sentAt: "desc" }, { id: "desc" }],
             take: MESSAGE_HISTORY_LIMIT,
           },
         },

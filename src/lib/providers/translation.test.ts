@@ -103,4 +103,55 @@ describe("translateText", () => {
     await expect(translateText("hello", "en", "es")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("retries once and succeeds after a transient (5xx) Claude response", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => "overloaded" })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "hola" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es");
+
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries once and succeeds after a network-level error on the first attempt", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ content: [{ type: "text", text: "hola" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es");
+
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a non-transient (4xx, non-429) Claude response", async () => {
+    delete process.env.LOCAL_INFERENCE_URL;
+    delete process.env.LOCAL_INFERENCE_SECRET;
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "invalid api key" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es");
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -26,6 +26,15 @@ export const MESSAGE_HISTORY_LIMIT = 50;
  */
 export const TRANSCRIPT_HISTORY_LIMIT = 100;
 
+/**
+ * Same rationale as `TRANSCRIPT_HISTORY_LIMIT`/`MESSAGE_HISTORY_LIMIT`, applied to
+ * `Session.insights` — unlike those two, the facilitator dashboard's `insights`
+ * include (with a heavier nested evidence -> transcriptSegment -> translations join)
+ * had no cap at all, so a long-running session's full, ever-growing insight history
+ * was re-fetched and re-joined on every 2s poll.
+ */
+export const INSIGHT_HISTORY_LIMIT = 50;
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
 export type TranslationMode = "AUTO" | "LOCAL_ONLY";

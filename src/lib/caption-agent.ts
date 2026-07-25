@@ -61,53 +61,72 @@ async function streamFacilitatorAudio(
   await markCaptionAgentCapturing(sessionId);
 
   let segmentStartedAt = new Date();
-  const sttStream = speechToTextProvider.openStream({
-    expectedLanguage: sourceLanguage,
-    encoding: { format: "linear16", sampleRate: STREAM_SAMPLE_RATE, channels: STREAM_CHANNELS },
-    allowCloudFallback: translationMode !== "LOCAL_ONLY",
-    onSegment: (event) => {
-      if (!event.isFinal) return;
-      // Capture and advance synchronously — see the matching comment in
-      // src/app/api/captions/stream/route.ts for why reassigning inside a
-      // post-publish `.finally()` races on back-to-back final segments.
-      const startedAt = segmentStartedAt;
-      const endedAt = new Date();
-      segmentStartedAt = endedAt;
-      void (async () => {
-        const session = await prisma.session.findUnique({ where: { id: sessionId } });
-        if (!session || session.status !== SessionStatus.LIVE) return;
-        await publishTranslatedCaption(session, {
-          speakerId: "Facilitator",
-          originalText: event.text,
-          // The freshly-refetched session's language, not the `sourceLanguage` this
-          // stream was opened with — a facilitator can change their session's source
-          // language mid-LIVE-session (updateFacilitatorLanguage), and this stream
-          // (opened once, at subscribe time, and not restarted on that change) would
-          // otherwise keep stamping every caption with the stale language for the
-          // rest of the session even after the change.
-          language: session.sourceLanguage as SupportedLanguage,
-          startedAt,
-          endedAt,
-        });
-      })();
-    },
-    onError: (error) => console.error(`[caption-agent] Deepgram stream error for ${sessionId}:`, error),
-  });
-
-  const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
+  // Set by onError below and checked by the audio loop so a dead STT stream actually
+  // stops the pipeline instead of running forever — see the loop's own comment.
+  let stopped = false;
+  let sttStream: ReturnType<typeof speechToTextProvider.openStream> | undefined;
   try {
+    sttStream = speechToTextProvider.openStream({
+      expectedLanguage: sourceLanguage,
+      encoding: { format: "linear16", sampleRate: STREAM_SAMPLE_RATE, channels: STREAM_CHANNELS },
+      allowCloudFallback: translationMode !== "LOCAL_ONLY",
+      onSegment: (event) => {
+        if (!event.isFinal) return;
+        // Capture and advance synchronously — see the matching comment in
+        // src/app/api/captions/stream/route.ts for why reassigning inside a
+        // post-publish `.finally()` races on back-to-back final segments.
+        const startedAt = segmentStartedAt;
+        const endedAt = new Date();
+        segmentStartedAt = endedAt;
+        void (async () => {
+          const session = await prisma.session.findUnique({ where: { id: sessionId } });
+          if (!session || session.status !== SessionStatus.LIVE) return;
+          await publishTranslatedCaption(session, {
+            speakerId: null,
+            originalText: event.text,
+            // The freshly-refetched session's language, not the `sourceLanguage` this
+            // stream was opened with — a facilitator can change their session's source
+            // language mid-LIVE-session (updateFacilitatorLanguage), and this stream
+            // (opened once, at subscribe time, and not restarted on that change) would
+            // otherwise keep stamping every caption with the stale language for the
+            // rest of the session even after the change.
+            language: session.sourceLanguage as SupportedLanguage,
+            startedAt,
+            endedAt,
+          });
+        })().catch((error) => console.error(`[caption-agent] failed to publish a segment for ${sessionId}:`, error));
+      },
+      // A console.error alone used to leave the pipeline running: the for-await loop
+      // below kept feeding frames into a now-dead stream (its sendAudio silently
+      // no-ops once the underlying connection isn't OPEN) forever — captions died
+      // instantly but captionAgentActive stayed true and the browser-mic fallback
+      // stayed hidden behind "already running", with zero signal to the facilitator
+      // that anything broke, for the rest of the LIVE session. Stopping the loop lets
+      // the `finally` below run its real cleanup (activeTracks + captionAgentActive).
+      onError: (error) => {
+        console.error(`[caption-agent] Deepgram stream error for ${sessionId}:`, error);
+        stopped = true;
+        sttStream?.close();
+      },
+    });
+
+    const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
     for await (const frame of audioStream) {
+      if (stopped) break;
       sttStream.sendAudio(new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength));
     }
   } catch (error) {
     // Without this, an error thrown mid-stream (a dropped LiveKit connection, a
-    // malformed frame) becomes an unhandled promise rejection from the `void
-    // streamFacilitatorAudio(...)` call site below — silent in production, where
-    // Node only logs unhandled rejections at a debug level most deployments don't
-    // capture.
+    // malformed frame, or openStream() itself throwing synchronously — e.g. a
+    // LOCAL_ONLY session whose local-inference tier isn't configured) becomes an
+    // unhandled promise rejection from the `void streamFacilitatorAudio(...)` call
+    // site below — silent in production, where Node only logs unhandled rejections
+    // at a debug level most deployments don't capture. Wrapping openStream() itself
+    // (not just the loop) here also means a synchronous open failure still reaches
+    // the `finally` below instead of leaving captionAgentActive stuck true forever.
     console.error(`[caption-agent] audio stream error for ${sessionId}:`, error);
   } finally {
-    sttStream.close();
+    sttStream?.close();
     // Only clear this identity's guard if `track` is still the one on record — a
     // `TrackUnsubscribed`-triggered clear (or a newer `TrackSubscribed` superseding
     // it) may have already happened for a *different* track under this same
@@ -162,14 +181,17 @@ export default defineAgent({
     ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
       if (!(track instanceof RemoteAudioTrack)) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
-      void streamFacilitatorAudio(
+      // streamFacilitatorAudio wraps its own body in try/finally once inside the
+      // stream, but a failure before that (e.g. markCaptionAgentCapturing's DB write)
+      // would otherwise reject silently as an unhandled promise rejection here.
+      streamFacilitatorAudio(
         track,
         sessionId,
         session.sourceLanguage as SupportedLanguage,
         session.translationMode,
         activeTracks,
         participant.identity,
-      );
+      ).catch((error) => console.error(`[caption-agent] streamFacilitatorAudio failed for ${sessionId}:`, error));
     });
     // Proactively frees the per-identity guard as soon as LiveKit signals the old
     // track is gone, rather than waiting for that track's own audio-frame loop to
