@@ -113,6 +113,10 @@ export interface Dictionary {
     playTranslatedAudio: string;
     audioBlocked: string;
     audioSkipped: string;
+    explainSimply: string;
+    giveExample: string;
+    explainSimplyQuestion: (caption: string) => string;
+    giveExampleQuestion: (caption: string) => string;
   };
   chat: {
     translatedChat: string;
@@ -250,6 +254,10 @@ const en: Dictionary = {
     playTranslatedAudio: "Play translated audio for new captions",
     audioBlocked: "Translated audio playback was blocked by the browser.",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
+    explainSimply: "Explain simply",
+    giveExample: "Give an example",
+    explainSimplyQuestion: (caption) => `Please explain this simply: "${caption}"`,
+    giveExampleQuestion: (caption) => `Please give an example for this: "${caption}"`,
   },
   chat: {
     translatedChat: "Translated chat",
@@ -383,6 +391,10 @@ const zh: Dictionary = {
     playTranslatedAudio: "为新字幕播放翻译语音",
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
+    explainSimply: "简单解释",
+    giveExample: "举个例子",
+    explainSimplyQuestion: (caption) => `请用简单的话解释这段字幕：“${caption}”`,
+    giveExampleQuestion: (caption) => `请针对这段字幕举一个例子：“${caption}”`,
   },
   chat: {
     translatedChat: "翻译聊天",
@@ -518,6 +530,10 @@ const es: Dictionary = {
     playTranslatedAudio: "Reproducir audio traducido para los nuevos subtítulos",
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
+    explainSimply: "Explicar sencillo",
+    giveExample: "Dar un ejemplo",
+    explainSimplyQuestion: (caption) => `Explica esto de forma sencilla: "${caption}"`,
+    giveExampleQuestion: (caption) => `Da un ejemplo para esto: "${caption}"`,
   },
   chat: {
     translatedChat: "Chat traducido",

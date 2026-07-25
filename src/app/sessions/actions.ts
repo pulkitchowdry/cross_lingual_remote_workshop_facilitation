@@ -9,11 +9,12 @@ import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contr
 import { translateText } from "@/lib/providers/translation";
 
 type ChatRole = "facilitator" | "learner";
+const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 
 export async function sendChatMessage(sessionId: string, role: ChatRole, formData: FormData) {
   const text = formData.get("message");
-  if (typeof text !== "string" || !text.trim() || text.trim().length > 1_000) {
-    throw new Error("Enter a message of up to 1,000 characters.");
+  if (typeof text !== "string" || !text.trim() || text.trim().length > MAX_CHAT_MESSAGE_LENGTH) {
+    throw new Error("Enter a message of up to 4,000 characters.");
   }
   const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
 
