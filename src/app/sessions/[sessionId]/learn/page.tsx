@@ -135,9 +135,11 @@ export default async function LearnerSessionPage({
               const primaryText = isOwnLanguage
                 ? segment.originalText
                 : (translation?.text ?? dict.common.translationUnavailable);
-              // The fallback "Translation unavailable." string is fixed English UI copy, not a
-              // translation — tag it "en" rather than the learner's preferred language.
-              const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+              // Both non-own-language branches resolve to the learner's preferred
+              // language: `translation.text` is translated *into* it, and the
+              // dict.common.translationUnavailable fallback is itself localized to it
+              // (see i18n.ts's `common` dictionary) — neither is fixed English copy.
+              const primaryLang = isOwnLanguage ? segment.language : participant.preferredLanguage;
               return (
                 <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
                   <p

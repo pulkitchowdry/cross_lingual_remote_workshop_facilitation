@@ -83,6 +83,7 @@ export interface Dictionary {
     learnerLinkAriaLabel: string;
     copyLink: string;
     linkCopied: string;
+    copyFailed: string;
     revokeInvite: string;
     linkMissingMsg: string;
     qrAlt: string;
@@ -213,6 +214,7 @@ const en: Dictionary = {
     learnerLinkAriaLabel: "Learner invitation link",
     copyLink: "Copy link",
     linkCopied: "Copied!",
+    copyFailed: "Couldn't copy the link. Select and copy it manually instead.",
     revokeInvite: "Revoke invite link",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
@@ -340,6 +342,7 @@ const zh: Dictionary = {
     learnerLinkAriaLabel: "学员邀请链接",
     copyLink: "复制链接",
     linkCopied: "已复制！",
+    copyFailed: "复制链接失败，请手动选择并复制。",
     revokeInvite: "撤销邀请链接",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
@@ -469,6 +472,7 @@ const es: Dictionary = {
     learnerLinkAriaLabel: "Enlace de invitación para alumnos",
     copyLink: "Copiar enlace",
     linkCopied: "¡Copiado!",
+    copyFailed: "No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.",
     revokeInvite: "Revocar enlace de invitación",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",

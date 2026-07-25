@@ -1,23 +1,39 @@
-import { describe, expect, it } from "vitest";
-import { clearCaptionAgentCapturing, isCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const updateMock = vi.fn();
+vi.mock("@/lib/db", () => ({ prisma: { session: { update: updateMock } } }));
 
 describe("caption-source-state", () => {
-  it("reports false for a session that was never marked", () => {
-    expect(isCaptionAgentCapturing("never-marked")).toBe(false);
+  afterEach(() => {
+    updateMock.mockReset();
   });
 
-  it("reports true after marking and false after clearing", () => {
-    markCaptionAgentCapturing("session-1");
-    expect(isCaptionAgentCapturing("session-1")).toBe(true);
+  it("markCaptionAgentCapturing sets captionAgentActive true for the given session", async () => {
+    updateMock.mockResolvedValue({});
+    const { markCaptionAgentCapturing } = await import("@/lib/caption-source-state");
 
-    clearCaptionAgentCapturing("session-1");
-    expect(isCaptionAgentCapturing("session-1")).toBe(false);
+    await markCaptionAgentCapturing("session-1");
+
+    expect(updateMock).toHaveBeenCalledWith({ where: { id: "session-1" }, data: { captionAgentActive: true } });
   });
 
-  it("tracks sessions independently", () => {
-    markCaptionAgentCapturing("session-a");
-    expect(isCaptionAgentCapturing("session-a")).toBe(true);
-    expect(isCaptionAgentCapturing("session-b")).toBe(false);
-    clearCaptionAgentCapturing("session-a");
+  it("clearCaptionAgentCapturing sets captionAgentActive false for the given session", async () => {
+    updateMock.mockResolvedValue({});
+    const { clearCaptionAgentCapturing } = await import("@/lib/caption-source-state");
+
+    await clearCaptionAgentCapturing("session-1");
+
+    expect(updateMock).toHaveBeenCalledWith({ where: { id: "session-1" }, data: { captionAgentActive: false } });
+  });
+
+  it("never throws when the database write fails — the audio stream this guards must keep running regardless", async () => {
+    updateMock.mockRejectedValue(new Error("connection reset"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { markCaptionAgentCapturing, clearCaptionAgentCapturing } = await import("@/lib/caption-source-state");
+
+    await expect(markCaptionAgentCapturing("session-1")).resolves.toBeUndefined();
+    await expect(clearCaptionAgentCapturing("session-1")).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+    errorSpy.mockRestore();
   });
 });

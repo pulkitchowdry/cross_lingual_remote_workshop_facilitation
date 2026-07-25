@@ -34,7 +34,7 @@ async function streamFacilitatorAudio(
   sessionId: string,
   sourceLanguage: SupportedLanguage,
   translationMode: "AUTO" | "LOCAL_ONLY",
-  activeIdentities: Set<string>,
+  activeTracks: Map<string, RemoteAudioTrack>,
   identity: string,
 ) {
   if (!speechToTextProvider.openStream) {
@@ -42,20 +42,23 @@ async function streamFacilitatorAudio(
     return;
   }
   // A network blip/reconnect can republish the facilitator's audio track under the
-  // same identity before the old track's unsubscribe fires, so `RoomEvent.TrackSubscribed`
-  // can arrive twice for one facilitator. Without this guard both would open their own
-  // Deepgram stream and publish for the same session, duplicating/interleaving
-  // transcript segments — the caption pipeline has no de-duplication.
-  if (activeIdentities.has(identity)) {
+  // same identity before the old track's `TrackUnsubscribed` has cleared this guard
+  // (see the RoomEvent.TrackUnsubscribed handler in `entry` below, which is what
+  // actually clears it — not this loop's own completion, which can lag behind the
+  // room-level unsubscribe signal), so `RoomEvent.TrackSubscribed` can arrive twice
+  // for one facilitator. Without this guard both would open their own Deepgram
+  // stream and publish for the same session, duplicating/interleaving transcript
+  // segments — the caption pipeline has no de-duplication.
+  if (activeTracks.has(identity)) {
     console.warn(`[caption-agent] Track already streaming for ${identity} in session ${sessionId}; skipping duplicate subscription.`);
     return;
   }
-  activeIdentities.add(identity);
+  activeTracks.set(identity, track);
   // Surfaced to the facilitator dashboard (see caption-source-state.ts) so it can
   // hide/disable the redundant "Start live captions from mic" button — that button
   // opens a second, independent STT pipeline for the same facilitator audio, which
   // was silently duplicating every caption (issue #95).
-  markCaptionAgentCapturing(sessionId);
+  await markCaptionAgentCapturing(sessionId);
 
   let segmentStartedAt = new Date();
   const sttStream = speechToTextProvider.openStream({
@@ -76,7 +79,13 @@ async function streamFacilitatorAudio(
         await publishTranslatedCaption(session, {
           speakerId: "Facilitator",
           originalText: event.text,
-          language: sourceLanguage,
+          // The freshly-refetched session's language, not the `sourceLanguage` this
+          // stream was opened with — a facilitator can change their session's source
+          // language mid-LIVE-session (updateFacilitatorLanguage), and this stream
+          // (opened once, at subscribe time, and not restarted on that change) would
+          // otherwise keep stamping every caption with the stale language for the
+          // rest of the session even after the change.
+          language: session.sourceLanguage as SupportedLanguage,
           startedAt,
           endedAt,
         });
@@ -90,10 +99,22 @@ async function streamFacilitatorAudio(
     for await (const frame of audioStream) {
       sttStream.sendAudio(new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength));
     }
+  } catch (error) {
+    // Without this, an error thrown mid-stream (a dropped LiveKit connection, a
+    // malformed frame) becomes an unhandled promise rejection from the `void
+    // streamFacilitatorAudio(...)` call site below — silent in production, where
+    // Node only logs unhandled rejections at a debug level most deployments don't
+    // capture.
+    console.error(`[caption-agent] audio stream error for ${sessionId}:`, error);
   } finally {
     sttStream.close();
-    activeIdentities.delete(identity);
-    clearCaptionAgentCapturing(sessionId);
+    // Only clear this identity's guard if `track` is still the one on record — a
+    // `TrackUnsubscribed`-triggered clear (or a newer `TrackSubscribed` superseding
+    // it) may have already happened for a *different* track under this same
+    // identity between this loop ending and this `finally` running; blindly
+    // deleting here could otherwise clobber a newer, still-active stream's guard.
+    if (activeTracks.get(identity) === track) activeTracks.delete(identity);
+    await clearCaptionAgentCapturing(sessionId);
   }
 }
 
@@ -121,7 +142,7 @@ export default defineAgent({
 
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamFacilitatorAudio.
-    const activeIdentities = new Set<string>();
+    const activeTracks = new Map<string, RemoteAudioTrack>();
     ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
       if (!(track instanceof RemoteAudioTrack)) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
@@ -130,9 +151,21 @@ export default defineAgent({
         sessionId,
         session.sourceLanguage as SupportedLanguage,
         session.translationMode,
-        activeIdentities,
+        activeTracks,
         participant.identity,
       );
+    });
+    // Proactively frees the per-identity guard as soon as LiveKit signals the old
+    // track is gone, rather than waiting for that track's own audio-frame loop to
+    // notice (which can lag behind this room-level event) — without this, a fast
+    // reconnect's new `TrackSubscribed` can arrive while the guard is still (stale)
+    // held by the old track, and get silently, permanently dropped by the guard in
+    // streamFacilitatorAudio, killing captions for that facilitator for the rest of
+    // the session with no retry.
+    ctx.room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
+      if (!(track instanceof RemoteAudioTrack)) return;
+      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });
   },
 });

@@ -248,6 +248,8 @@ export function parseDeepgramStreamingMessage(raw: string): StreamingTranscriptE
 
 class DeepgramStreamingSession implements SpeechToTextStream {
   private readonly socket: WebSocket;
+  /** Set before we initiate our own close, so the `close` handler below can tell "we hung up" apart from Deepgram's side closing on us. */
+  private closedByUs = false;
 
   constructor(
     apiKey: string,
@@ -276,6 +278,17 @@ class DeepgramStreamingSession implements SpeechToTextStream {
       if (event) onSegment(event);
     });
     this.socket.on("error", (error) => onError(error instanceof Error ? error : new Error(String(error))));
+    // Without this, a *clean* close (Deepgram's own idle timeout, its max-duration
+    // limit, or an intermediate proxy/load balancer dropping an idle connection —
+    // none of which raise a websocket "error") is invisible: `sendAudio` silently
+    // no-ops once `readyState` leaves OPEN, `onError` never fires, and neither
+    // caller (captions-socket.ts nor caption-agent.ts) has any other signal to
+    // reconnect on — live captions would go silently dead mid-session with the UI
+    // still reporting "streaming".
+    this.socket.on("close", (code, reason) => {
+      if (this.closedByUs) return;
+      onError(new Error(`Deepgram streaming connection closed unexpectedly (code ${code}${reason.length > 0 ? `: ${reason.toString()}` : ""}).`));
+    });
   }
 
   sendAudio(chunk: Uint8Array): void {
@@ -283,6 +296,7 @@ class DeepgramStreamingSession implements SpeechToTextStream {
   }
 
   close(): void {
+    this.closedByUs = true;
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
       this.socket.close();
     }

@@ -62,6 +62,16 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments, enabled]);
 
+  useEffect(() => {
+    // Unchecking the box must actually silence playback, not just stop queueing
+    // *new* segments — without this, whatever was already playing (or queued right
+    // behind it) kept right on talking after the learner turned the control off.
+    if (enabled) return;
+    audioRef.current?.pause();
+    queueRef.current = [];
+    playingRef.current = false;
+  }, [enabled]);
+
   return (
     <div className="flex items-center gap-2">
       <label className="flex items-center gap-2 text-xs text-muted-foreground">

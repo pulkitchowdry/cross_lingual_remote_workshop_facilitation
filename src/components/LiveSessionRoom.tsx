@@ -44,6 +44,13 @@ interface RoomCredentials {
   token: string;
 }
 
+/** What `<LiveKitRoom>` should (re)publish on (re)connect — see the comment on `publishState` below. */
+interface PublishState {
+  audio: boolean;
+  video: boolean;
+  screen: boolean;
+}
+
 /**
  * `issueCredential` (room.ts) mints a 6h-TTL token. Refreshing (and remounting
  * `<LiveKitRoom>` to actually apply it — see the `key` below) forces a brief
@@ -65,7 +72,19 @@ const MIN_REFRESH_GAP_MS = 5 * 60 * 1000;
  * get the control. Controls are hand-rolled (rather than LiveKit's stock
  * `ControlBar`) so each button's aria-label can come from `dict`.
  */
-function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
+function WorkshopVideoStage({
+  role,
+  dict,
+  onPublishStateChange,
+  onLeave,
+}: {
+  role: Role;
+  dict: RoomDict;
+  /** Reports the local participant's actual mic/camera/screen-share state after every change, so a later forced reconnect (see `publishState` below) can restore it instead of resetting to fixed defaults. */
+  onPublishStateChange: (patch: Partial<PublishState>) => void;
+  /** Fired when the user explicitly clicks Leave, distinct from a network-triggered disconnect — see `hasLeftRef` below. */
+  onLeave: () => void;
+}) {
   // LiveKitRoom auto-publishes video but never audio (`audio={false}` below),
   // so the browser only ever prompts for camera permission on connect. Without
   // mic permission, `navigator.mediaDevices.enumerateDevices()` — which
@@ -98,6 +117,28 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
 
+  // `useTrackToggle` (which `<TrackToggle>` wraps) re-runs an internal effect whose
+  // dependency array includes this `onChange` reference every time it changes — an
+  // inline arrow function here would be a new reference on every render, so that
+  // effect fires again, which calls `onPublishStateChange`, which (via LiveSessionRoom's
+  // `setPublishState`) re-renders this component, creating yet another new inline
+  // function: an infinite render loop ("Maximum update depth exceeded"), reproduced
+  // and confirmed live in the browser. `useCallback` keeps each handler's identity
+  // stable across renders as long as `onPublishStateChange` itself is stable (it is —
+  // see LiveSessionRoom's own `useCallback` around `setPublishState`).
+  const handleMicrophoneChange = useCallback(
+    (enabled: boolean) => onPublishStateChange({ audio: enabled }),
+    [onPublishStateChange],
+  );
+  const handleCameraChange = useCallback(
+    (enabled: boolean) => onPublishStateChange({ video: enabled }),
+    [onPublishStateChange],
+  );
+  const handleScreenShareChange = useCallback(
+    (enabled: boolean) => onPublishStateChange({ screen: enabled }),
+    [onPublishStateChange],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-hidden p-2">
@@ -116,21 +157,21 @@ function WorkshopVideoStage({ role, dict }: { role: Role; dict: RoomDict }) {
       </div>
       <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
         <div className="lk-button-group">
-          <TrackToggle source={Track.Source.Microphone} aria-label={dict.toggleMicrophone} />
+          <TrackToggle source={Track.Source.Microphone} aria-label={dict.toggleMicrophone} onChange={handleMicrophoneChange} />
           <div className="lk-button-group-menu">
             <MediaDeviceMenu kind="audioinput" aria-label={dict.selectMicrophone} />
           </div>
         </div>
         <div className="lk-button-group">
-          <TrackToggle source={Track.Source.Camera} aria-label={dict.toggleCamera} />
+          <TrackToggle source={Track.Source.Camera} aria-label={dict.toggleCamera} onChange={handleCameraChange} />
           <div className="lk-button-group-menu">
             <MediaDeviceMenu kind="videoinput" aria-label={dict.selectCamera} />
           </div>
         </div>
         {role === "facilitator" && (
-          <TrackToggle source={Track.Source.ScreenShare} aria-label={dict.toggleScreenShare} />
+          <TrackToggle source={Track.Source.ScreenShare} aria-label={dict.toggleScreenShare} onChange={handleScreenShareChange} />
         )}
-        <DisconnectButton aria-label={dict.leaveCall}>
+        <DisconnectButton aria-label={dict.leaveCall} onClick={onLeave}>
           <LeaveIcon />
         </DisconnectButton>
       </div>
@@ -143,6 +184,37 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastFetchedAtRef = useRef(0);
+  // The actual mic/camera/screen-share state the local participant currently wants
+  // published — starts at the same defaults <LiveKitRoom> always auto-published
+  // before this existed (mic off, camera on, no screen share), but tracks every
+  // toggle via WorkshopVideoStage's TrackToggle onChange handlers from then on.
+  // A forced reconnect (the token-refresh effect below) remounts <LiveKitRoom>
+  // (its `key` is `credentials.token`), which re-runs its own connect-time
+  // auto-publish using whatever audio/video/screen props it's given *at that
+  // moment* — reading this state there (instead of fixed constants) is what makes
+  // a reconnect preserve rather than reset an active mic/screen-share, or a camera
+  // the user had explicitly turned off. State, not a ref, deliberately — reading a
+  // ref's `.current` during render (as the JSX below does) isn't safe, and a toggle
+  // here re-rendering this component doesn't remount <LiveKitRoom> (its `key`
+  // doesn't change), so it doesn't cost an extra reconnect.
+  const [publishState, setPublishState] = useState<PublishState>({ audio: false, video: true, screen: false });
+  // Stable identity (empty deps — `setPublishState` itself is already stable, and this
+  // closes over nothing else) is what lets WorkshopVideoStage's own `useCallback`s stay
+  // stable too, which is what actually avoids the infinite-render loop described below —
+  // an inline arrow function here would defeat that regardless of memoizing downstream.
+  const handlePublishStateChange = useCallback((patch: Partial<PublishState>) => {
+    setPublishState((prev) => ({ ...prev, ...patch }));
+  }, []);
+  // Set the instant the user clicks Leave (see WorkshopVideoStage's onLeave), before
+  // `room.disconnect()` itself runs — distinct from a network-triggered disconnect,
+  // which must still reconnect normally. Read by the refresh effect below so a
+  // background token refresh (interval/'visibilitychange'/'online', all of which
+  // keep running regardless of what the user did with the room in the meantime)
+  // can't remount <LiveKitRoom> and silently rejoin someone who explicitly left.
+  const hasLeftRef = useRef(false);
+  const handleLeave = useCallback(() => {
+    hasLeftRef.current = true;
+  }, []);
 
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
@@ -154,6 +226,11 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
+        // Also set on success (not just eagerly in `maybeRefresh` below) so the very
+        // first, mount-time fetch — which doesn't go through `maybeRefresh` — still
+        // establishes a baseline; otherwise a 'visibilitychange'/'online' firing soon
+        // after mount would see the ref at its unset 0 and skip the debounce floor
+        // entirely for that first background refresh.
         lastFetchedAtRef.current = Date.now();
         setCredentials(payload);
         if (!background) setError(null);
@@ -186,7 +263,14 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
   useEffect(() => {
     if (!credentials) return;
     const maybeRefresh = (background: boolean) => {
+      if (hasLeftRef.current) return;
       if (Date.now() - lastFetchedAtRef.current < MIN_REFRESH_GAP_MS) return;
+      // Set before the (async) fetch starts, not after it resolves — otherwise two
+      // wake events firing close together (exactly the laptop-wake scenario this
+      // targets: 'visibilitychange' and 'online' both firing) can each read a stale
+      // `lastFetchedAtRef` and both pass this gap check, firing two concurrent
+      // token fetches instead of the second one being correctly debounced.
+      lastFetchedAtRef.current = Date.now();
       void fetchCredentials({ background });
     };
     const interval = setInterval(() => maybeRefresh(true), TOKEN_REFRESH_INTERVAL_MS);
@@ -221,11 +305,15 @@ export function LiveSessionRoom({ sessionId, role, lang }: { sessionId: string; 
         token={credentials.token}
         serverUrl={credentials.serverUrl}
         connect
-        audio={false}
-        video
+        // Not fixed constants — a forced reconnect (the token-refresh effect above
+        // changing `credentials.token`, which changes this `key`) must (re)publish
+        // whatever the user's actual last mic/camera/screen-share state was.
+        audio={publishState.audio}
+        video={publishState.video}
+        screen={publishState.screen}
         data-lk-theme="default"
       >
-        <WorkshopVideoStage role={role} dict={dict} />
+        <WorkshopVideoStage role={role} dict={dict} onPublishStateChange={handlePublishStateChange} onLeave={handleLeave} />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

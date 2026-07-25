@@ -48,17 +48,28 @@ export function LanguageMenu({
   }, []);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const dict = getDictionary(current).shell;
 
   useEffect(() => {
     if (!open) return;
+    // Move focus into the list as soon as it opens — without this, a keyboard user
+    // who opens the menu lands nowhere, with no indication the list is even focusable.
+    listRef.current?.querySelector("button")?.focus();
+
     function handlePointerDown(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // Only Escape (and selecting an option, in `selectLanguage` below) return focus to
+      // the trigger — an outside pointerdown closes the menu but deliberately leaves
+      // focus wherever the user actually clicked, not wherever the menu used to be.
+      triggerRef.current?.focus();
     }
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -70,6 +81,7 @@ export function LanguageMenu({
 
   function selectLanguage(lang: SupportedLanguage) {
     setOpen(false);
+    triggerRef.current?.focus();
     if (lang === current) return;
     startTransition(async () => {
       await onSelect(lang);
@@ -82,6 +94,7 @@ export function LanguageMenu({
   return createPortal(
     <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
@@ -95,6 +108,7 @@ export function LanguageMenu({
       </button>
       {open && (
         <ul
+          ref={listRef}
           role="listbox"
           aria-label={dict.interfaceLanguage}
           className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg"

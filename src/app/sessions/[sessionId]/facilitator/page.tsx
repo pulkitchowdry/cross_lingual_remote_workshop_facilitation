@@ -14,7 +14,6 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
-import { isCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
@@ -170,7 +169,7 @@ export default async function FacilitatorSessionPage({
                 <LiveCaptionStream
                   sessionId={session.id}
                   lang={lang}
-                  agentCapturing={isCaptionAgentCapturing(session.id)}
+                  agentCapturing={session.captionAgentActive}
                 />
               )}
             </div>
@@ -195,11 +194,10 @@ export default async function FacilitatorSessionPage({
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
                 : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
-              const evidenceLang = evidenceIsSourceLanguage
-                ? evidence?.language
-                : translation
-                  ? session.sourceLanguage
-                  : "en";
+              // The fallback text (getDictionary(lang).common.translationUnavailable above)
+              // is itself localized to `lang`, not fixed English copy — tag it `lang`,
+              // not "en".
+              const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
               return (
                 <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
                   <p>{blocker.summary}</p>
@@ -272,7 +270,12 @@ export default async function FacilitatorSessionPage({
                   readOnly
                   value={learnerLink}
                 />
-                <CopyLinkButton value={learnerLink} label={dict.copyLink} copiedLabel={dict.linkCopied} />
+                <CopyLinkButton
+                  value={learnerLink}
+                  label={dict.copyLink}
+                  copiedLabel={dict.linkCopied}
+                  failedLabel={dict.copyFailed}
+                />
               </div>
             </div>
             <form action={revokeInviteAction}>
