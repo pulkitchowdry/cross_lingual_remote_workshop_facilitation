@@ -32,7 +32,11 @@ export function SessionSidePanel({
   const [tab, setTab] = useState<Tab>(defaultTab);
 
   return (
-    <div className="flex h-[38rem] flex-col gap-2">
+    // Matches LiveSessionRoom's own clamp so the two line up side by side — a fixed
+    // height (not just a flat rem value) is what actually bounds the chat/captions
+    // tab content below so it scrolls internally as messages pile up, instead of the
+    // whole panel (and the page under it) growing taller without limit.
+    <div className="flex h-[clamp(26rem,75vh,54rem)] flex-col gap-2">
       <div role="tablist" className="flex gap-1 rounded-lg border border-border-subtle bg-surface p-1">
         {(
           [

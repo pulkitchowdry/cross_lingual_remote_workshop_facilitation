@@ -71,14 +71,31 @@ export async function publishCaption(
   }
 
   const now = new Date();
-  await publishTranslatedCaption(session, {
-    speakerId: null,
-    originalText: captionText.trim(),
-    language: session.sourceLanguage as SupportedLanguage,
-    startedAt: now,
-    endedAt: now,
-    isTyped: true,
-  });
+  try {
+    await publishTranslatedCaption(session, {
+      speakerId: null,
+      originalText: captionText.trim(),
+      language: session.sourceLanguage as SupportedLanguage,
+      startedAt: now,
+      endedAt: now,
+      isTyped: true,
+    });
+  } catch (error) {
+    // publishTranslatedCaption's own translation fan-out can take up to ~16s —
+    // long enough for the facilitator (or a co-facilitator) to click "End session"
+    // while this is in flight, which makes its own re-check throw ("session is not
+    // live"). Unlike its other two callers (the caption WS route, caption-agent.ts —
+    // plain async functions whose own `.catch(console.error)` absorbs this fine),
+    // this is a `useActionState`-bound server action: an uncaught throw here
+    // doesn't become `state.error` the way returning one does — it propagates to
+    // the nearest error boundary (src/app/sessions/[sessionId]/error.tsx), which
+    // replaces the ENTIRE session route (live video, chat, everything) with a
+    // generic error screen, exactly what this FormActionResult pattern exists to
+    // avoid (see sendChatMessage's identical re-check, which returns instead of
+    // throwing, for the sibling case this was missing here).
+    console.error("publishCaption failed", error);
+    return { error: "This session ended while your caption was being translated. It was not published." };
+  }
   return { error: null };
 }
 

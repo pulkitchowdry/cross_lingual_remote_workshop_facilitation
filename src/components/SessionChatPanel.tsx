@@ -44,6 +44,12 @@ export function SessionChatPanel({
   const [state, formAction] = useActionState<FormActionResult, FormData>(sendAction, { error: null });
 
   return (
+    // `h-full` — this is now always nested inside SessionSidePanel.tsx's tab
+    // container, which is what actually bounds the height (a fixed clamp, matching
+    // LiveSessionRoom's own, so the two line up side by side and the messages list
+    // below scrolls internally instead of growing without limit). The static
+    // "Translated chat" header this used to render on its own is now the tab button
+    // itself (SessionSidePanel's chatTabLabel), so it isn't repeated here too.
     <aside className="flex h-full flex-col rounded-lg border border-border-subtle bg-surface-raised">
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
         {messages.length > 0 ? (

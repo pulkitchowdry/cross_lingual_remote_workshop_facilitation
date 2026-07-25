@@ -61,6 +61,8 @@ export interface Dictionary {
     statusEnded: string;
     startSession: string;
     endSession: string;
+    confirmEndSessionTitle: string;
+    confirmEndSessionBody: string;
     logOut: string;
     learnersJoinedCard: string;
     learnersJoinedHint: string;
@@ -72,14 +74,20 @@ export interface Dictionary {
     publishing: string;
     actNow: string;
     blocker: string;
+    confusion: string;
     resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
     waitingToStart: string;
     noInterventionHintWaiting: string;
+    insightsNotConfigured: string;
     languageChangeLiveWarning: string;
     liveTranscript: string;
     transcriptEmpty: string;
+    currentLesson: string;
+    activity: string;
+    decision: string;
+    noRecentActivity: string;
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
@@ -88,6 +96,8 @@ export interface Dictionary {
     linkCopied: string;
     copyFailed: string;
     revokeInvite: string;
+    confirmRevokeInviteTitle: string;
+    confirmRevokeInviteBody: string;
     linkMissingMsg: string;
     qrAlt: string;
   };
@@ -143,11 +153,15 @@ export interface Dictionary {
     disconnectedDuplicate: string;
     disconnectedOther: string;
     mediaDeviceError: string;
-    reload: string;
+    cameraUnavailable: string;
+    microphoneUnavailable: string;
+    rejoin: string;
   };
   common: {
     speaker: string;
     translationUnavailable: string;
+    confirm: string;
+    cancel: string;
     jumpToLatest: string;
     chatTab: string;
     captionsTab: string;
@@ -194,7 +208,7 @@ const en: Dictionary = {
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
     strictPrivacyLabel: "Strict privacy mode",
     strictPrivacyHint:
-      "Nothing is ever sent to Claude or another cloud translation provider — audio and text stay on this server. This requires a local-inference server to be configured; if none is set up (the default for local testing), captions and translations will show as unavailable for the whole session instead of using the cloud, not just when the network is unreliable.",
+      "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
   },
   join: {
@@ -202,7 +216,7 @@ const en: Dictionary = {
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
     yourName: "Your name",
     consent:
-      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
+      "I agree to speech and text being processed for live captions, translation, and facilitator support. Raw audio isn't stored by default. My camera and mic join live as soon as I enter — mic starts muted, camera can be turned off anytime.",
     submit: "Join session",
     submitting: "Joining…",
   },
@@ -212,6 +226,8 @@ const en: Dictionary = {
     statusEnded: "ended",
     startSession: "Start session",
     endSession: "End session",
+    confirmEndSessionTitle: "End this session?",
+    confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
     logOut: "Log out",
     learnersJoinedCard: "Learners joined",
     learnersJoinedHint: "Learners have completed consent and joined.",
@@ -223,14 +239,20 @@ const en: Dictionary = {
     publishing: "Publishing…",
     actNow: "Act now",
     blocker: "Blocker",
+    confusion: "Possible confusion",
     resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
-    noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
+    noInterventionHintOnTrack: "The group's discussion looks on track — no blockers or confusion detected yet.",
     waitingToStart: "Waiting to begin",
     noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
+    insightsNotConfigured: "Automatic insight detection isn't configured for this session — nothing here is analyzed. Use the typed caption/chat tools to follow along manually.",
     languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
+    currentLesson: "Current lesson",
+    activity: "Activity",
+    decision: "Decision",
+    noRecentActivity: "No activity or decisions noted yet.",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
@@ -239,6 +261,8 @@ const en: Dictionary = {
     linkCopied: "Copied!",
     copyFailed: "Couldn't copy the link. Select and copy it manually instead.",
     revokeInvite: "Revoke invite link",
+    confirmRevokeInviteTitle: "Revoke this invite link?",
+    confirmRevokeInviteBody: "Anyone who hasn't joined yet will no longer be able to use this link.",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
   },
@@ -275,9 +299,9 @@ const en: Dictionary = {
     stop: "Stop live captions",
     agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
-      "Live caption connection failed. Use the typed caption box above instead.",
+      "Live captions disconnected. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
     connectionBlocked:
-      "Couldn't open the live caption connection. Try unmuting your microphone in the video room instead — captions will start automatically. You can also use the typed caption box above.",
+      "Live captions couldn't connect. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -296,11 +320,15 @@ const en: Dictionary = {
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    reload: "Reload",
+    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
+    microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
+    rejoin: "Rejoin",
   },
   common: {
     speaker: "Speaker",
     translationUnavailable: "Translation unavailable.",
+    confirm: "Confirm",
+    cancel: "Cancel",
     jumpToLatest: "Jump to latest",
     chatTab: "Chat",
     captionsTab: "Captions",
@@ -346,7 +374,7 @@ const zh: Dictionary = {
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
     strictPrivacyLabel: "严格隐私模式",
     strictPrivacyHint:
-      "绝不会将音频或文本发送给 Claude 或其他云端翻译服务——数据始终留在本服务器上。此选项需要配置本地推理服务器；如果未配置（本地测试的默认情况），整场活动的字幕和翻译都会显示为不可用，而不仅仅是网络不稳定时才会如此。",
+      "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
   },
   join: {
@@ -354,7 +382,7 @@ const zh: Dictionary = {
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
     yourName: "你的姓名",
     consent:
-      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
+      "我同意为提供实时字幕、翻译及主持人协助而处理我的语音与文字。默认不保存原始音频。进入后摄像头和麦克风立即接入——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
     submitting: "加入中……",
   },
@@ -364,6 +392,8 @@ const zh: Dictionary = {
     statusEnded: "已结束",
     startSession: "开始场次",
     endSession: "结束场次",
+    confirmEndSessionTitle: "确定要结束此场次吗？",
+    confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
     logOut: "退出登录",
     learnersJoinedCard: "已加入学员",
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
@@ -375,14 +405,20 @@ const zh: Dictionary = {
     publishing: "发布中……",
     actNow: "立即处理",
     blocker: "障碍",
+    confusion: "可能存在困惑",
     resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
-    noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
+    noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍或困惑。",
     waitingToStart: "等待开始",
     noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
+    insightsNotConfigured: "此场次未配置自动洞察检测——此处内容不会被分析。请改用手动输入字幕/聊天工具跟进。",
     languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
+    currentLesson: "当前课程",
+    activity: "动态",
+    decision: "决定",
+    noRecentActivity: "暂无记录的动态或决定。",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
@@ -391,6 +427,8 @@ const zh: Dictionary = {
     linkCopied: "已复制！",
     copyFailed: "复制链接失败，请手动选择并复制。",
     revokeInvite: "撤销邀请链接",
+    confirmRevokeInviteTitle: "确定要撤销此邀请链接吗？",
+    confirmRevokeInviteBody: "尚未加入的人将无法再使用此链接。",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
   },
@@ -427,9 +465,9 @@ const zh: Dictionary = {
     stop: "停止实时字幕",
     agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
-      "实时字幕连接失败。请改用上方的手动输入字幕框。",
+      "实时字幕连接已断开。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
     connectionBlocked:
-      "无法建立实时字幕连接。可以改为在视频通话中开启麦克风——字幕会自动开始生成。你也可以改用上方的手动输入字幕框。",
+      "实时字幕未能连接。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -448,11 +486,15 @@ const zh: Dictionary = {
     disconnectedDuplicate: "你已断开连接，因为此链接同时在另一个标签页或窗口中被打开。",
     disconnectedOther: "你已从媒体房间断开连接。",
     mediaDeviceError: "麦克风或摄像头出现问题。",
-    reload: "重新加载",
+    cameraUnavailable: "摄像头不可用（权限被拒绝、被占用或未找到）——将不使用摄像头继续。你仍可以只用音频加入。",
+    microphoneUnavailable: "麦克风不可用（权限被拒绝、被占用或未找到）——将不使用麦克风继续。",
+    rejoin: "重新加入",
   },
   common: {
     speaker: "发言者",
     translationUnavailable: "暂无译文。",
+    confirm: "确认",
+    cancel: "取消",
     jumpToLatest: "跳到最新",
     chatTab: "聊天",
     captionsTab: "字幕",
@@ -499,7 +541,7 @@ const es: Dictionary = {
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
     strictPrivacyLabel: "Modo de privacidad estricto",
     strictPrivacyHint:
-      "Nunca se envía audio ni texto a Claude ni a otro proveedor de traducción en la nube: todo permanece en este servidor. Esto requiere un servidor de inferencia local configurado; si no hay uno (lo habitual en pruebas locales), los subtítulos y traducciones se mostrarán como no disponibles durante toda la sesión, no solo cuando la red falle.",
+      "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
   },
   join: {
@@ -507,7 +549,7 @@ const es: Dictionary = {
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
     yourName: "Tu nombre",
     consent:
-      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
+      "Acepto que mi voz y texto se procesen para subtítulos en vivo, traducción y apoyo del facilitador. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectan en vivo en cuanto entro — el micrófono empieza silenciado y puedo apagar la cámara en cualquier momento.",
     submit: "Unirse a la sesión",
     submitting: "Uniéndote…",
   },
@@ -517,6 +559,8 @@ const es: Dictionary = {
     statusEnded: "finalizada",
     startSession: "Iniciar sesión",
     endSession: "Finalizar sesión",
+    confirmEndSessionTitle: "¿Finalizar esta sesión?",
+    confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
     logOut: "Cerrar sesión",
     learnersJoinedCard: "Alumnos conectados",
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
@@ -528,14 +572,20 @@ const es: Dictionary = {
     publishing: "Publicando…",
     actNow: "Actuar ahora",
     blocker: "Bloqueo",
+    confusion: "Posible confusión",
     resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
-    noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
+    noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos ni confusión.",
     waitingToStart: "Esperando para comenzar",
     noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
+    insightsNotConfigured: "La detección automática de información no está configurada para esta sesión — nada aquí se analiza. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
     languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
+    currentLesson: "Lección actual",
+    activity: "Actividad",
+    decision: "Decisión",
+    noRecentActivity: "Aún no se ha registrado actividad ni decisiones.",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
@@ -544,6 +594,8 @@ const es: Dictionary = {
     linkCopied: "¡Copiado!",
     copyFailed: "No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.",
     revokeInvite: "Revocar enlace de invitación",
+    confirmRevokeInviteTitle: "¿Revocar este enlace de invitación?",
+    confirmRevokeInviteBody: "Quienes aún no se hayan unido ya no podrán usar este enlace.",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",
   },
@@ -580,9 +632,9 @@ const es: Dictionary = {
     stop: "Detener subtítulos en vivo",
     agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
-      "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "Se perdió la conexión de subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
     connectionBlocked:
-      "No se pudo abrir la conexión de subtítulos en vivo. Prueba a activar el micrófono en la sala de video: los subtítulos comenzarán automáticamente. También puedes usar el cuadro de subtítulos manual de arriba.",
+      "No se pudieron conectar los subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -601,11 +653,15 @@ const es: Dictionary = {
     disconnectedDuplicate: "Te has desconectado porque este enlace se abrió al mismo tiempo en otra pestaña o ventana.",
     disconnectedOther: "Te has desconectado de la sala multimedia.",
     mediaDeviceError: "Hubo un problema con tu micrófono o cámara.",
-    reload: "Recargar",
+    cameraUnavailable: "Tu cámara no está disponible (permiso denegado, en uso, o no encontrada) — continuando sin ella. Aún puedes unirte solo con audio.",
+    microphoneUnavailable: "Tu micrófono no está disponible (permiso denegado, en uso, o no encontrado) — continuando sin él.",
+    rejoin: "Reincorporarse",
   },
   common: {
     speaker: "Orador",
     translationUnavailable: "Traducción no disponible.",
+    confirm: "Confirmar",
+    cancel: "Cancelar",
     jumpToLatest: "Ir a lo último",
     chatTab: "Chat",
     captionsTab: "Subtítulos",

@@ -1,5 +1,14 @@
 import { AutoSubscribe, defineAgent, type JobContext } from "@livekit/agents";
-import { AudioStream, RemoteAudioTrack, RoomEvent, type RemoteParticipant, type RemoteTrack } from "@livekit/rtc-node";
+import {
+  AudioStream,
+  type RemoteAudioTrack,
+  RoomEvent,
+  TrackKind,
+  TrackSource,
+  type RemoteParticipant,
+  type RemoteTrackPublication,
+  type RemoteTrack,
+} from "@livekit/rtc-node";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
@@ -178,14 +187,37 @@ export default defineAgent({
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamFacilitatorAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
-    ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
-      if (!(track instanceof RemoteAudioTrack)) return;
+    ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      // NOT `track instanceof RemoteAudioTrack` — confirmed live (2026-07-26) that it's
+      // always `false` here despite `track` genuinely being one (`track.constructor.name
+      // === "RemoteAudioTrack"`, but `track.constructor !== RemoteAudioTrack`, the class
+      // this file imports: two separate module instances of `@livekit/rtc-node` end up
+      // loaded — one CJS, one ESM, per its dual-package `exports` map — so the class
+      // identity `instanceof` relies on doesn't match across that boundary, even though
+      // there's only one copy of the package on disk. This made every single
+      // `TrackSubscribed` event silently return here, for every session, ever — the
+      // server-side caption pipeline this file exists for has never actually captured
+      // anything. `publication.kind` is a plain enum value (from the wire protocol, not a
+      // class), so it doesn't have this problem — check that instead, and trust the SDK's
+      // own pairing of "kind audio" with "constructs a RemoteAudioTrack" (room.js's
+      // `TrackSubscribed` handler is what makes that pairing in the first place).
+      if (publication.kind !== TrackKind.KIND_AUDIO) return;
+      // Facilitators are also granted SCREEN_SHARE_AUDIO publish rights (room.ts) and the
+      // screen-share toggle explicitly requests tab/system audio (LiveSessionRoom.tsx's
+      // captureOptions) — that track is kind AUDIO under the same facilitator identity as
+      // the mic, so without this it can claim this identity's `activeTracks` slot first
+      // (e.g. facilitator shares a video clip before unmuting), captioning the shared
+      // audio instead of their speech while their real mic gets silently dropped by the
+      // dedup guard below.
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      const audioTrack = track as RemoteAudioTrack;
+      console.log(`[caption-agent] capturing facilitator audio for session ${sessionId} (${participant.identity})`);
       // streamFacilitatorAudio wraps its own body in try/finally once inside the
       // stream, but a failure before that (e.g. markCaptionAgentCapturing's DB write)
       // would otherwise reject silently as an unhandled promise rejection here.
       streamFacilitatorAudio(
-        track,
+        audioTrack,
         sessionId,
         session.sourceLanguage as SupportedLanguage,
         session.translationMode,
@@ -200,8 +232,12 @@ export default defineAgent({
     // held by the old track, and get silently, permanently dropped by the guard in
     // streamFacilitatorAudio, killing captions for that facilitator for the rest of
     // the session with no retry.
-    ctx.room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
-      if (!(track instanceof RemoteAudioTrack)) return;
+    ctx.room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      // See the matching comments on the `TrackSubscribed` handler above — not
+      // `instanceof RemoteAudioTrack` (dual-module-instance reason), and source-filtered
+      // the same way so a screen-share-audio unsubscribe never clears the mic's guard.
+      if (publication.kind !== TrackKind.KIND_AUDIO) return;
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
       if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });

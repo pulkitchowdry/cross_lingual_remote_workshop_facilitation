@@ -29,12 +29,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-full flex-col">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:uppercase focus:tracking-wider focus:text-accent-foreground"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-fill focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:uppercase focus:tracking-wider focus:text-accent-foreground"
       >
         {dict.shell.skipToContent}
       </a>
       <header className="border-b border-border-subtle">
-        <nav className="mx-auto flex max-w-[1600px] items-center gap-8 px-6 py-4">
+        {/* flex-wrap + gap-y: without it, this row (wordmark + nav links + the
+            accessibility/theme/language controls) has no responsive collapse at all and
+            overflows horizontally on any narrow viewport (~375-428px, confirmed down to
+            a plain narrow desktop window, not just mobile emulation) — the controls div
+            gets clipped off-screen, reachable only by scrolling the whole page
+            sideways, on every route including the accessibility panel's own page. */}
+        <nav className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-8 gap-y-2 px-6 py-4">
           <span className="flex items-center gap-2">
             <span
               className="h-2 w-2 shrink-0 animate-live-pulse rounded-full bg-accent"
@@ -84,9 +90,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <main
         id="main-content"
+        // `<main>` isn't natively focusable, so activating the "Skip to main content"
+        // link above only scrolls Safari to it without moving keyboard focus there —
+        // Chrome/Firefox do both. `tabIndex={-1}` makes it a valid focus target
+        // (still excluded from the normal Tab order) without changing anything visual.
+        tabIndex={-1}
         className={
           isWorkshopRoomRoute
-            ? "mx-auto w-full flex-1 px-3 py-6 sm:px-4"
+            ? // Still wider than the default 1600px cap (the live video grid genuinely
+              // wants the extra room — see the comment above), but not fully unbounded:
+              // the same route also renders the pre-live "waiting for facilitator"/join
+              // state, which has no video grid to fill that space and read as oddly
+              // sparse stretched edge-to-edge on a wide monitor.
+              "mx-auto w-full max-w-[1920px] flex-1 px-3 py-6 sm:px-4"
             : "mx-auto w-full max-w-[1600px] flex-1 px-6 py-8"
         }
       >

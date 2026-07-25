@@ -42,7 +42,7 @@ export function RouteErrorFallback({
       <button
         type="button"
         onClick={unstable_retry}
-        className="font-data w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+        className="font-data w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
       >
         {dict.retry}
       </button>
