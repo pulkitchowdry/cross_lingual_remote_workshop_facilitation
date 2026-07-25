@@ -17,6 +17,7 @@ const NORMAL_CLOSURE_CODE = 1000;
 export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang: SupportedLanguage }) {
   const dict = getDictionary(lang).captions;
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -39,6 +40,7 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
   const start = useCallback(async () => {
     setError(null);
     stoppedByUserRef.current = false;
+    setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
@@ -76,6 +78,11 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
         socketRef.current !== socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
       if (socketFailed) {
         stream.getTracks().forEach((track) => track.stop());
+        // socketRef.current has already moved on (e.g. a re-entrant start()) —
+        // this exact `socket` reference is otherwise unreachable from here on,
+        // so it must close itself or it (and its server-side STT session)
+        // leaks for the rest of the page's lifetime.
+        if (socketRef.current !== socket) socket.close();
         return;
       }
       streamRef.current = stream;
@@ -96,6 +103,8 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
     } catch {
       setError(dict.micDenied);
       stop();
+    } finally {
+      setIsConnecting(false);
     }
   }, [sessionId, stop, dict.connectionFailed, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
@@ -104,7 +113,8 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       <button
         type="button"
         onClick={() => (isStreaming ? stop() : void start())}
-        className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
+        disabled={isConnecting}
+        className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
         style={isStreaming ? { color: "var(--tick-high)", borderColor: "var(--tick-high)" } : undefined}
         aria-pressed={isStreaming}
       >

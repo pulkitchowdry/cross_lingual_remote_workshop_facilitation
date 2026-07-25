@@ -49,8 +49,8 @@ export async function publishTranslatedCaption(
     },
   });
 
-  revalidatePath(`/sessions/${session.id}/facilitator`);
-  revalidatePath(`/sessions/${session.id}/learn`);
+  safeRevalidatePath(`/sessions/${session.id}/facilitator`);
+  safeRevalidatePath(`/sessions/${session.id}/learn`);
   await roomProvider.notifyCaptionsChanged(session.id);
 
   if (insightProvider.isConfigured) {
@@ -60,5 +60,27 @@ export async function publishTranslatedCaption(
     void generateSessionInsights(session).catch((error) => {
       console.error("generateSessionInsights failed", error);
     });
+  }
+}
+
+/**
+ * `revalidatePath` requires an active Next.js request/Server Action async
+ * context, which two of this function's three callers don't have: the
+ * caption-streaming WebSocket upgrade handler and the LiveKit Agents job
+ * process (see server.ts) both run outside `handle(req, res)` entirely, so
+ * `revalidatePath` throws "Invariant: static generation store missing" —
+ * aborting notifyCaptionsChanged and insight generation below it, every
+ * single time a caption is published from either path.
+ * `roomProvider.notifyCaptionsChanged` (which `CaptionChannelRefresher`
+ * listens for) is the load-bearing live-update signal; `SessionAutoRefresh`
+ * also re-polls independently. This cache invalidation is a nice-to-have
+ * for the Server Action call site, not something the other two paths can
+ * afford to crash on.
+ */
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path);
+  } catch {
+    // See doc comment above: not every caller has a request context to revalidate against.
   }
 }

@@ -55,13 +55,20 @@ export async function POST(request: NextRequest) {
       new Set([...facilitators.map((f) => f.facilitatorId), ...participants.map((p) => p.userId)]),
     );
 
-    await prisma.session.deleteMany({ where: { id: { in: expiredIds } } });
+    // Atomic: without this, a crash/restart between the two deletes (Railway
+    // redeploy, OOM, a scheduler with a short HTTP timeout) leaves sessions
+    // gone but their Users un-swept — and permanently un-purgeable, since the
+    // next run can only find orphan-User candidates via *currently expired*
+    // sessions, which no longer exist for this batch.
+    await prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { id: { in: expiredIds } } });
 
-    if (candidateUserIds.length > 0) {
-      await prisma.user.deleteMany({
-        where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
-      });
-    }
+      if (candidateUserIds.length > 0) {
+        await tx.user.deleteMany({
+          where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
+        });
+      }
+    });
   }
 
   return Response.json({ deletedSessionIds: expiredIds });

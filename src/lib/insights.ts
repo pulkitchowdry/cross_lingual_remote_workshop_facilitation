@@ -91,8 +91,13 @@ export async function generateSessionInsights(session: Session): Promise<void> {
       // analysis call.
       { timeout: 20_000 },
     );
-  } catch {
-    // Best-effort background analysis — never let this affect the live caption path.
+  } catch (error) {
+    // Best-effort background analysis — never let this affect the live caption path,
+    // but still log it: a bare swallow here also makes the caller's own
+    // `.catch((error) => console.error(...))` unreachable dead code, so this was
+    // the only place a systemic failure (schema drift, connection exhaustion,
+    // provider errors) could actually surface.
+    console.error("generateSessionInsights failed", error);
   }
 }
 
