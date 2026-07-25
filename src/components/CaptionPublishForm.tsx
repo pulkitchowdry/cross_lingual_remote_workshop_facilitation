@@ -22,12 +22,12 @@ export function CaptionPublishForm({
   const [state, formAction] = useActionState<FormActionResult, FormData>(action, { error: null });
 
   return (
-    <form action={formAction} className="flex flex-col gap-2">
+    <form action={formAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
       <div className="flex gap-2">
         <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
         <textarea
           id="facilitator-caption"
-          className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="flex-1 resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="captionText"
           rows={1}
           required

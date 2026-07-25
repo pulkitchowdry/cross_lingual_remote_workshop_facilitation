@@ -20,7 +20,7 @@ export function CaptionPublishButton({ label, publishingLabel }: { label: string
       type="submit"
       disabled={pending}
       aria-disabled={pending}
-      className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      className="font-data shrink-0 whitespace-nowrap rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? publishingLabel : label}
     </button>
