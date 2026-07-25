@@ -10,7 +10,7 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * delivery (synthesize on request, stream the bytes back), not the doc's
  * fuller per-language "interpreter participant" design — that needs a
  * persistent LiveKit bot participant per language, which is the same
- * always-on-process tradeoff as `agent/`'s track-subscription worker and is
+ * always-on-process tradeoff as `src/lib/caption-agent.ts`'s track-subscription worker and is
  * left as follow-up. This route stays serverless-compatible: no LiveKit
  * publish involved, just synthesize-and-return.
  */

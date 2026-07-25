@@ -11,18 +11,18 @@ own `SKILLS.md` — see the table in [`AGENTS.md`](AGENTS.md).
    truth other docs point back to.
 2. If the app should fail fast when it's missing (vs. degrading gracefully),
    add it to `ENV_SPEC` in `src/lib/env.ts`.
-3. Wire it into `docker-compose.yml` (`web`'s or `agent`'s `environment:`
-   block, `${VAR:-default}` form so `docker compose up` still works with no
-   `.env`) and into the relevant section of `docs/DEPLOYMENT.md` if it needs
-   wiring between Railway services.
+3. Wire it into `docker-compose.yml` (`web`'s `environment:` block,
+   `${VAR:-default}` form so `docker compose up` still works with no `.env`)
+   and into the relevant section of `docs/DEPLOYMENT.md` if it needs wiring
+   between Railway services.
 
 ## Add a new Docker Compose service
 
 1. Add a `services:` entry to `docker-compose.yml`. If it's built from this
    repo (not a pre-built image), give it its own `Dockerfile` in its own
    directory — each package builds independently, see `.dockerignore` at the
-   repo root for why (`web`'s build context deliberately excludes `agent/`
-   and `local-inference/`).
+   repo root for why (`web`'s build context deliberately excludes
+   `local-inference/`).
 2. Decide whether values you hand it are browser-reachable or
    container-only — see the `LIVEKIT_URL` comment at the top of
    `docker-compose.yml` for why this distinction matters and has bitten this
@@ -52,6 +52,8 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker Compose for local, or
 Railway (one Railway service per package, each with its own `railway.json`)
 for hosting. The Next.js app also still deploys to Vercel as before (see
 `vercel.json`'s cron config for `/api/retention/cleanup`) — Railway is an
-addition, not a replacement, and is the only option for `agent/` and
-`local-inference/` since both need a persistent process Vercel Functions
-can't provide (see each package's own README for why).
+addition, not a replacement, and is the only option for `local-inference/`
+since it needs a persistent process Vercel Functions can't provide (see that
+package's own README for why). `web` also needs a persistent process for its
+own custom `server.ts` (WebSocket upgrades, the in-process LiveKit caption
+agent worker) — that's true on Railway regardless of `local-inference/`.

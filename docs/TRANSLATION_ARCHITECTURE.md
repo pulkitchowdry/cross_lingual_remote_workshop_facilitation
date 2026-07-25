@@ -153,29 +153,40 @@ message. `SessionAutoRefresh`'s 2s poll remains as a fallback for viewers who
 haven't joined the LiveKit room yet (or if the push itself fails).
 
 **Server-side track subscription** — so captions work without the
-facilitator's own mic UI — is now scaffolded in `agent/`, a standalone
-[LiveKit Agents](https://docs.livekit.io/agents/) worker. It's deliberately a
-separate package (own `package.json`, not a dependency of the Next.js app):
-`@livekit/agents` is an 18MB+ dependency tree with native/ffmpeg bits that
-shouldn't bloat the main app's install/deploy, and it's deployed as its own
-long-running Railway service, independent of the app's lifecycle. The worker
-subscribes to the `facilitator:*` participant's audio track, streams it
-through the same `SpeechToTextProvider.openStream` boundary the browser mic
-path uses, and publishes final transcripts to a new authenticated endpoint,
-`/api/captions/agent` (shared-secret protected via `CAPTION_AGENT_SECRET`),
-rather than importing `@/lib/db`/`@/lib/captions` directly — an earlier draft
-tried the direct import and it broke: the generated Prisma client's
-`export * from "./enums"` doesn't propagate through `tsx`/esbuild's module
-resolution the way it does through Next's bundler, so `SessionStatus` came
-back `undefined` outside of Next. See `agent/README.md` for env vars and the
-full rationale.
+facilitator's own mic UI — lives in `src/lib/caption-agent.ts`, a
+[LiveKit Agents](https://docs.livekit.io/agents/) worker registered directly
+from `server.ts` (the app's custom Node server, already a persistent process
+on Railway). It's a single deployable service/`package.json` with the rest of
+the app now, not a standalone one — this repo is a hackathon project, not a
+long-term production system, so the earlier microservice split (own
+`package.json`, own Railway service, talking to the app over HTTP) wasn't
+worth the operational overhead. The worker subscribes to the `facilitator:*`
+participant's audio track, streams it through the same
+`SpeechToTextProvider.openStream` boundary the browser mic path uses, and
+publishes final transcripts via `publishTranslatedCaption` directly — no HTTP
+hop or shared secret needed now that the worker and the rest of the app share
+one process/module graph. (An earlier standalone-package draft had to route
+through HTTP because the generated Prisma client's `export * from
+"./enums"` didn't propagate through `tsx`/esbuild's module resolution from a
+separate `agent/node_modules` the way it does through Next's bundler, so
+`SessionStatus` came back `undefined`; running in the same `tsx`-loaded
+process as `server.ts` — which already imports `@/generated/prisma/client`
+successfully — sidesteps that.)
 
-**Where this stands is a deploy decision, not a build one.** The worker code
-exists and passes local import/typecheck verification, but running a full
-session through it end-to-end needs LiveKit Cloud + Deepgram credentials this
-environment doesn't have, and the repo still hasn't picked a host for a
-persistent process (a small VM, Fly.io, Railway, etc.) — that choice is
-explicitly deferred to whoever deploys this.
+LiveKit Agents still forks a subprocess per job dispatch (its own job
+isolation model, preserving `tsx`'s `execArgv` so the forked process can still
+load the `.ts` entry file) — that's internal to the worker, not a second
+deployable service.
+
+**Verified locally** against a real LiveKit Cloud project: `server.ts`
+registers the worker successfully on startup (`starting worker` /
+`registered worker` in the logs) alongside the Next.js app on the same port.
+Running a full session through it end-to-end (facilitator audio →
+`trackSubscribed` → Deepgram → `publishTranslatedCaption`) still needs a live
+LiveKit room with a connected facilitator to confirm, which wasn't set up in
+this environment. `server.ts` no-ops the worker registration entirely when
+`LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`STT_API_KEY` aren't all
+set, so local dev without those still starts cleanly.
 
 **Streaming STT choice:** `faster-whisper` (self-hosted, via `local-inference/`)
 is now the default, tried first behind `SpeechToTextProvider.openStream`; Deepgram
@@ -220,7 +231,7 @@ for sequential playback so overlapping captions don't talk over each other.
   transcoding per listener. What's shipped instead: synthesize-on-request per
   segment per listener, streamed back over a plain HTTP route. This was a
   deliberate scope cut — the interpreter-participant design needs the same
-  always-on-process tradeoff as `agent/`'s track-subscription worker (a
+  always-on-process tradeoff as `src/lib/caption-agent.ts`'s track-subscription worker (a
   persistent bot participant per language, running as its own long-lived
   process), and building a second piece of always-on infrastructure in the
   same phase as the first wasn't worth it yet. The per-listener version is a
@@ -255,8 +266,9 @@ issue asks about that aren't yet decided:
 
 ## Part 5 — Self-hosted local-inference tier
 
-**Shipped:** a standalone FastAPI service, `local-inference/` (sibling to
-`agent/`, the repo's first Python component), running NLLB-600M-int8
+**Shipped:** a standalone FastAPI service, `local-inference/` (the repo's
+first Python component — still deliberately separate, since it's a different
+language runtime with its own heavy ML dependency stack), running NLLB-600M-int8
 translation (via CTranslate2), `faster-whisper` STT, and Piper TTS entirely
 on-server. `TranslationProvider`/`SpeechToTextProvider`/`TextToSpeechProvider`
 each try this service first (when `LOCAL_INFERENCE_URL`+`LOCAL_INFERENCE_SECRET`

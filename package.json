@@ -16,8 +16,10 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@livekit/agents": "^1.5.5",
     "@livekit/components-react": "^2.9.23",
     "@livekit/components-styles": "^1.2.0",
+    "@livekit/rtc-node": "^0.13.31",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
     "livekit-client": "^2.20.2",

@@ -39,9 +39,10 @@ const ENV_SPEC: EnvSpec[] = [
     description: "Shared secret authorizing this app's calls to the local-inference service",
   },
   {
-    key: "CAPTION_AGENT_SECRET",
+    key: "LIVEKIT_AGENT_URL",
     required: false,
-    description: "Shared secret authorizing the standalone agent/ worker's /api/captions/agent calls",
+    description:
+      "Overrides LIVEKIT_URL just for the in-process caption agent worker's connection (server.ts) — for setups (e.g. Docker Compose) where the browser-facing LIVEKIT_URL isn't reachable from inside the app's own container",
   },
   {
     key: "CRON_SECRET",
