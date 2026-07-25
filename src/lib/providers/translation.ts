@@ -48,13 +48,21 @@ async function translateWithClaude(
       signal: AbortSignal.timeout(8_000),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(`translateWithClaude: Claude API responded ${response.status} ${await response.text()}`);
+      return null;
+    }
     const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
     const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
     if (!translated) return null;
 
     return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
-  } catch {
+  } catch (error) {
+    // Every failure here degrades silently to "Translation unavailable." for the
+    // learner (see learn/page.tsx) with no other signal — without this log, a
+    // persistently wrong API key, model name, or network block is
+    // indistinguishable from CLAUDE_API_KEY simply not being set.
+    console.error("translateWithClaude failed:", error);
     return null;
   }
 }
@@ -82,8 +90,11 @@ export async function translateText(
     try {
       const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
       if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
-    } catch {
-      // Fall through to the cloud tier below (or to null, if disallowed).
+    } catch (error) {
+      // Fall through to the cloud tier below (or to null, if disallowed) — but log
+      // first, or a broken local-inference tier is invisible until someone notices
+      // every segment quietly reads "Translation unavailable.".
+      console.error("translateText: local-inference translate failed, falling back:", error);
     }
   }
 
