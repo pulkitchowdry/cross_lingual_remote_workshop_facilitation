@@ -38,6 +38,23 @@ flowchart LR
 
 ## Getting Started
 
+### Option A: Docker Compose (fastest)
+
+Runs the whole stack — Postgres, a local LiveKit dev server, `local-inference`,
+this app, and the captions `agent/` worker — with one command, no local
+Postgres/LiveKit install required:
+
+```bash
+cp .env.example .env   # optional — fill in real keys, everything else falls back gracefully
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for what each service needs and how
+to run a subset of the stack.
+
+### Option B: Run natively
+
 The app needs four services configured before it runs end to end: **PostgreSQL** (session/message storage), **LiveKit** (real-time audio rooms), **Deepgram** (speech-to-text), and **Claude** (translation + understanding). Everything degrades gracefully — the app runs with only `DATABASE_URL` set, and each feature turns on once its key is added.
 
 1. Install dependencies:
