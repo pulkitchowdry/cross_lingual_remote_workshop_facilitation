@@ -17,6 +17,7 @@ import {
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { getDictionary } from "@/lib/i18n";
+import "@/lib/media-devices";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -49,13 +50,18 @@ function WorkshopVideoStage({ role }: { role: Role }) {
   // so the browser only ever prompts for camera permission on connect. Without
   // mic permission, `navigator.mediaDevices.enumerateDevices()` — which
   // ControlBar's device menus call internally — returns every audio input
-  // with the same blank label and the same browser-anonymized deviceId hash,
-  // and the same happens for video inputs if camera permission is denied.
-  // React then renders those device menus' <li> entries keyed by the
-  // repeated hash, producing the "two children with the same key" warning.
+  // with the same blank label and the same deviceId ("" pre-permission), and
+  // the same can happen for video inputs if camera permission is denied.
   // Requesting (and immediately releasing) both permissions here makes the
-  // browser report real per-device IDs — publishing stays governed by the
-  // `audio`/`video` props above, only the permission prompts change.
+  // browser report real per-device labels/IDs — publishing stays governed by
+  // the `audio`/`video` props above, only the permission prompts change.
+  //
+  // This does NOT cover every cause of ControlBar's "two children with the
+  // same key" warning, though: some drivers report two real, distinct
+  // devices under one identical deviceId even with permission granted (see
+  // `dedupeEnumerateDevices` in `@/lib/media-devices`, imported above for
+  // that reason) — two earlier fixes here assumed permission state was the
+  // only cause and didn't hold up.
   useEffect(() => {
     navigator.mediaDevices
       ?.getUserMedia({ audio: true, video: true })
