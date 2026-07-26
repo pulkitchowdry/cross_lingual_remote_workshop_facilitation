@@ -23,6 +23,7 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { computeConfusionLevel } from "@/lib/confusion-level";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
@@ -54,12 +55,17 @@ export default async function FacilitatorSessionPage({
   const { sessionId } = await params;
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+  const accessSession = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { facilitatorId: true },
+  });
+  if (!accessSession) notFound();
 
   const [session, activeActionItems] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
-        participants: { where: { role: ParticipantRole.LEARNER } },
+        participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
         // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
         // timestamps, so two rows created within the same millisecond (e.g. several
         // learners' chat messages committing at once) have Postgres-undefined relative
@@ -77,6 +83,7 @@ export default async function FacilitatorSessionPage({
           take: INSIGHT_HISTORY_LIMIT,
         },
         messages: {
+          where: visibleSessionMessageWhere(sessionId, accessSession.facilitatorId),
           include: { sender: true, translations: true },
           orderBy: [{ sentAt: "desc" }, { id: "desc" }],
           take: MESSAGE_HISTORY_LIMIT,
@@ -162,6 +169,11 @@ export default async function FacilitatorSessionPage({
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
   const chatMessages = [...session.messages].reverse();
+  const privateRecipientOptions = session.participants.map((participant) => ({
+    participantId: participant.id,
+    userId: participant.userId,
+    displayName: participant.user.displayName,
+  }));
   const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
@@ -251,6 +263,8 @@ export default async function FacilitatorSessionPage({
                   targetLanguage: session.sourceLanguage,
                   sendAction: sendChatAction,
                   viewerIsFacilitator: true,
+                  viewerUserId: session.facilitatorId,
+                  privateRecipientOptions,
                 }}
                 captions={{
                   entries: transcriptEntries,
