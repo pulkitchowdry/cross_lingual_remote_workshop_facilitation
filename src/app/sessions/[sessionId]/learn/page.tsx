@@ -17,6 +17,7 @@ import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { CHAT_MESSAGE_MAX_LENGTH, MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
@@ -66,6 +67,11 @@ export default async function LearnerSessionPage({
   const { sessionId } = await params;
   const participantId = await learnerParticipantId(sessionId);
   if (!participantId) redirect("/setup");
+  const accessParticipant = await prisma.sessionParticipant.findFirst({
+    where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
+    select: { userId: true },
+  });
+  if (!accessParticipant) notFound();
 
   const participant = await prisma.sessionParticipant.findFirst({
     where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
@@ -81,6 +87,7 @@ export default async function LearnerSessionPage({
             take: TRANSCRIPT_HISTORY_LIMIT,
           },
           messages: {
+            where: visibleSessionMessageWhere(sessionId, accessParticipant.userId),
             include: { sender: true, translations: true },
             orderBy: [{ sentAt: "desc" }, { id: "desc" }],
             take: MESSAGE_HISTORY_LIMIT,
@@ -197,6 +204,8 @@ export default async function LearnerSessionPage({
                   targetLanguage: participant.preferredLanguage,
                   sendAction: sendChatAction,
                   allowQuestions: true,
+                  viewerUserId: participant.userId,
+                  canMessageFacilitatorPrivately: true,
                 }}
                 captions={{
                   entries: transcriptEntries,

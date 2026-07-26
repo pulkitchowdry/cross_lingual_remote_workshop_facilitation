@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { SessionStatus } from "@/generated/prisma/client";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { CHAT_MESSAGE_MAX_LENGTH, SUPPORTED_LANGUAGES, type FormActionResult, type SupportedLanguage } from "@/lib/session-contracts";
 import { translateText } from "@/lib/providers/translation";
 import { isRateLimited } from "@/lib/rate-limit";
+import { isPrivateMessageRequest, validateFacilitatorPrivateRecipient } from "@/lib/message-visibility";
 
 type ChatRole = "facilitator" | "learner";
 
@@ -28,6 +29,7 @@ export async function sendChatMessage(
   }
   const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
   const isAnonymous = role === "learner" && formData.get("isAnonymous") === "true";
+  const isPrivateMessage = isPrivateMessageRequest(role, formData);
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) redirect("/setup");
@@ -37,17 +39,45 @@ export async function sendChatMessage(
 
   let senderId: string;
   let sourceLanguage: SupportedLanguage;
+  let recipientId: string | null = null;
   if (role === "facilitator") {
     if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+    const participant = await prisma.sessionParticipant.findFirst({
+      where: { sessionId, userId: session.facilitatorId, role: ParticipantRole.FACILITATOR },
+      select: { id: true },
+    });
+    if (!participant) redirect("/setup");
     senderId = session.facilitatorId;
     sourceLanguage = session.sourceLanguage as SupportedLanguage;
+    if (isPrivateMessage) {
+      const recipientParticipantId = formData.get("recipientParticipantId");
+      if (typeof recipientParticipantId !== "string" || !recipientParticipantId.trim()) {
+        return { error: "Choose a learner in this session for a private reply." };
+      }
+      const recipientParticipant = await prisma.sessionParticipant.findFirst({
+        where: { id: recipientParticipantId, sessionId },
+        select: { id: true, userId: true, role: true, sessionId: true },
+      });
+      const validated = validateFacilitatorPrivateRecipient({ participant: recipientParticipant, sessionId });
+      if (validated.error) return { error: validated.error };
+      recipientId = validated.recipientId;
+    }
   } else {
     const participantId = await learnerParticipantId(sessionId);
     if (!participantId) redirect("/setup");
-    const participant = await prisma.sessionParticipant.findUnique({ where: { id: participantId } });
-    if (!participant || participant.sessionId !== sessionId) redirect("/setup");
+    const participant = await prisma.sessionParticipant.findFirst({
+      where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
+    });
+    if (!participant) redirect("/setup");
     senderId = participant.userId;
     sourceLanguage = participant.preferredLanguage as SupportedLanguage;
+    if (isPrivateMessage) {
+      const requestedRecipient = formData.get("recipientParticipantId");
+      if (typeof requestedRecipient === "string" && requestedRecipient.trim()) {
+        return { error: "Learners can only message the facilitator privately." };
+      }
+      recipientId = session.facilitatorId;
+    }
   }
 
   // Keyed by the real, already-authenticated sender identity (not a raw cookie or IP),
@@ -88,6 +118,7 @@ export async function sendChatMessage(
     data: {
       sessionId,
       senderId,
+      recipientId,
       originalText: text.trim(),
       language: sourceLanguage,
       kind,

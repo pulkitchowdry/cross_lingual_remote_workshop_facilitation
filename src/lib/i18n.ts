@@ -152,6 +152,15 @@ export interface Dictionary {
     askAnonymously: string;
     anonymousLearner: string;
     anonymousBadge: string;
+    privateBadge: string;
+    messageFacilitatorPrivately: string;
+    publicMode: string;
+    privateModeToFacilitator: string;
+    privateModeTo: (name: string) => string;
+    returnToPublic: string;
+    recipientLabel: string;
+    everyone: string;
+    replyPrivately: string;
     send: string;
     sending: string;
   };
@@ -336,6 +345,15 @@ const en: Dictionary = {
     askAnonymously: "Ask anonymously",
     anonymousLearner: "Anonymous learner",
     anonymousBadge: "Anonymous",
+    privateBadge: "Private",
+    messageFacilitatorPrivately: "Message facilitator privately",
+    publicMode: "Public chat",
+    privateModeToFacilitator: "Private to facilitator",
+    privateModeTo: (name) => `Private to ${name}`,
+    returnToPublic: "Return to public",
+    recipientLabel: "Send to",
+    everyone: "Everyone",
+    replyPrivately: "Reply privately",
     send: "Send",
     sending: "Sending…",
   },
@@ -521,6 +539,15 @@ const zh: Dictionary = {
     askAnonymously: "匿名提问",
     anonymousLearner: "匿名学员",
     anonymousBadge: "匿名",
+    privateBadge: "私密",
+    messageFacilitatorPrivately: "私信主持人",
+    publicMode: "公开聊天",
+    privateModeToFacilitator: "私信主持人",
+    privateModeTo: (name) => `私信 ${name}`,
+    returnToPublic: "返回公开",
+    recipientLabel: "发送给",
+    everyone: "所有人",
+    replyPrivately: "私密回复",
     send: "发送",
     sending: "发送中……",
   },
@@ -707,6 +734,15 @@ const es: Dictionary = {
     askAnonymously: "Preguntar de forma anónima",
     anonymousLearner: "Estudiante anónimo",
     anonymousBadge: "Anónimo",
+    privateBadge: "Privado",
+    messageFacilitatorPrivately: "Enviar mensaje privado al facilitador",
+    publicMode: "Chat público",
+    privateModeToFacilitator: "Privado al facilitador",
+    privateModeTo: (name) => `Privado para ${name}`,
+    returnToPublic: "Volver a público",
+    recipientLabel: "Enviar a",
+    everyone: "Todos",
+    replyPrivately: "Responder en privado",
     send: "Enviar",
     sending: "Enviando…",
   },

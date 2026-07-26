@@ -45,7 +45,8 @@ model User {
   createdAt         DateTime             @default(now())
   sessions          Session[]            @relation("SessionFacilitator")
   participations    SessionParticipant[]
-  messages          Message[]
+  sentMessages      Message[]            @relation("MessageSender")
+  receivedMessages  Message[]            @relation("MessageRecipient")
 }
 
 model Session {
@@ -173,14 +174,19 @@ model Message {
   id           String               @id @default(cuid())
   sessionId    String
   senderId     String
+  recipientId  String?
   originalText String
   language     String
   kind         String
   isAnonymous  Boolean              @default(false)
   sentAt       DateTime             @default(now())
   session      Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  sender       User                 @relation(fields: [senderId], references: [id])
+  sender       User                 @relation("MessageSender", fields: [senderId], references: [id])
+  recipient    User?                @relation("MessageRecipient", fields: [recipientId], references: [id])
   translations MessageTranslation[]
+
+  @@index([sessionId, recipientId])
+  @@index([sessionId, senderId])
 }
 
 model MessageTranslation {

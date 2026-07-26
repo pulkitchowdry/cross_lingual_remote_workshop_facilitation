@@ -95,6 +95,7 @@ export interface TranslatedMessageEvent {
   sessionId: string;
   messageId: string;
   senderId: string;
+  recipientId: string | null;
   kind: "CHAT" | "QUESTION" | "REPLY";
   originalText: string;
   language: SupportedLanguage;
