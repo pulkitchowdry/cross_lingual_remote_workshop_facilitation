@@ -108,6 +108,9 @@ export default async function FacilitatorSessionPage({
   // as soon as it's due, not just once the delete has actually happened.
   if (isSessionRetentionExpired(session)) notFound();
 
+  // session.insights is capped at INSIGHT_HISTORY_LIMIT (see the query above); that cap
+  // can only truncate the CONFUSION count when insight volume is already high enough to be
+  // well past the HIGH threshold regardless, so the computed level stays correct.
   const confusionTimestamps = session.insights
     .filter((item) => item.type === "CONFUSION")
     .map((item) => item.createdAt);
