@@ -56,12 +56,7 @@ def _tokenizer():
 
 
 def is_loaded() -> bool:
-    try:
-        _translator()
-        _tokenizer()
-        return True
-    except Exception:
-        return False
+    return _translator_instance is not None and _tokenizer_instance is not None
 
 
 def translate(text: str, source_language: str, target_language: str) -> str:

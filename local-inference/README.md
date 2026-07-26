@@ -86,11 +86,17 @@ download, no dependency on Hugging Face being reachable at startup.
 
 1. Create a new Railway service pointed at this directory (`local-inference/`
    as the root), builder `DOCKERFILE` — already configured in `railway.json`.
-2. **Give the service at least 2GB of memory before the first deploy** — see
-   "Known limitations" below; the default allocation on most Railway plans is
-   not enough and the service will boot, pass startup, then get OOM-killed
-   the moment Railway's healthcheck hits `/health`. In the Railway dashboard:
-   this service → Settings → look for a Resources/Memory limit control (exact
+2. **Budget at least ~2GB of memory for this service once it's actually
+   serving traffic** — see "Known limitations" below. `/health` no longer
+   forces all three models to load (it just reports whether each singleton
+   has been constructed), so a fresh deploy will pass its healthcheck on a
+   much smaller memory allocation than before. But the first real translate/
+   STT/TTS request still lazily loads its model, and combined real memory use
+   for NLLB + faster-whisper + all three Piper voices loaded together still
+   runs well above the on-disk ~1-1.5GB estimate. On a plan capped below
+   ~2GB, expect `Killed` (OOM) once traffic has touched all three
+   capabilities, not on the healthcheck. In the Railway dashboard: this
+   service → Settings → look for a Resources/Memory limit control (exact
    location depends on your Railway plan; a Hobby-tier project may need
    upgrading to a plan that allows custom resource limits) and raise it.
 3. Set `LOCAL_INFERENCE_SECRET` on this service (generate any random string).
@@ -125,22 +131,28 @@ download, no dependency on Hugging Face being reachable at startup.
 - **Latency budgets** in `docs/TRANSLATION_ARCHITECTURE.md`'s performance
   table (<1s STT/MT) were written against managed cloud APIs; CPU inference
   for all three models sharing one Railway instance may not hit those numbers.
-- **Needs at least ~2GB of memory on Railway, confirmed by an actual failed
-  deploy** (not just the "~1-1.5GB combined" model-file-size estimate above —
-  real memory use during loading/inference runs higher than the on-disk
-  weights). `GET /health` calls `is_loaded()` for all three models
-  (`app/main.py`), and each one lazily constructs its model on first call —
-  so the *first* healthcheck hit after boot forces NLLB (ctranslate2 +
-  tokenizer), faster-whisper, and all three Piper voices to load
-  simultaneously. Undersized memory shows up as: `Application startup
-  complete` / `Uvicorn running` in the logs, immediately followed by `Killed`
-  (the OOM killer, not an application crash) and a restart loop. The
-  `None of PyTorch, TensorFlow >= 2.0, or Flax have been found` line
-  right before that is unrelated noise from `transformers` and expected —
+- **Needs at least ~2GB of memory on Railway once all three models have been
+  used, confirmed by an actual failed deploy** (not just the "~1-1.5GB
+  combined" model-file-size estimate above — real memory use during loading/
+  inference runs higher than the on-disk weights). Each model module's
+  `is_loaded()` (`app/models/{nllb,piper,whisper}.py`) only reports whether
+  its singleton has already been constructed — it does not construct it, so
+  hitting `/health` no longer forces a load. NLLB (ctranslate2 + tokenizer),
+  faster-whisper, and each Piper voice still lazily load into memory on their
+  *first real request*, and none of them ever unload, so a deploy that
+  actually serves translate + STT + TTS traffic still needs the combined
+  footprint of all three. Undersized memory shows up as: `Application startup
+  complete` / `Uvicorn running` in the logs, then — once traffic exercises
+  the remaining capabilities — `Killed` (the OOM killer, not an application
+  crash) and a restart loop. The `None of PyTorch, TensorFlow >= 2.0, or Flax
+  have been found` line is unrelated noise from `transformers` and expected —
   this service uses `ctranslate2` for the actual translation model, not
   PyTorch, and only uses `transformers` for tokenization. Fix: raise the
-  Railway service's memory limit (see "Deploying to Railway" step 2), not a
-  code change.
+  Railway service's memory limit (see "Deploying to Railway" step 2); on a
+  plan hard-capped below ~2GB, either drop one of the three capabilities from
+  this service or route it to a cloud provider instead (see root
+  `docs/DEPLOYMENT.md` — most features fall back to cloud/mock providers when
+  their local-inference route isn't available).
 
 ## Running tests
 

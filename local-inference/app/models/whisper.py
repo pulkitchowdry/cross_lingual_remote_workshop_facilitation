@@ -35,11 +35,7 @@ def _model() -> WhisperModel:
 
 
 def is_loaded() -> bool:
-    try:
-        _model()
-        return True
-    except Exception:
-        return False
+    return _model_instance is not None
 
 
 def transcribe(audio_bytes: bytes, expected_language: str) -> str:

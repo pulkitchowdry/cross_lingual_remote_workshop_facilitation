@@ -115,16 +115,24 @@ This repo follows that shape for its two Railway services — `railway.json`
    New → GitHub Repo → same repo.
    - Root Directory: `/local-inference`
    - Config-as-code path: `/local-inference/railway.json`
-   - **Before the first deploy, raise this service's memory limit to at
-     least 2GB** (Settings → Resources, or similar — exact location depends
-     on your Railway plan). This service holds ~1.5GB of ML models (NLLB,
-     faster-whisper, Piper voices) in memory; Railway's default allocation is
-     not enough, and the visible symptom is the service booting successfully,
-     then getting silently OOM-killed (logged as plain `Killed`, not an
-     error) the moment its first healthcheck forces all three models to
-     load — not a code bug, and the `None of PyTorch, TensorFlow >= 2.0, or
-     Flax have been found` line in the same logs is unrelated, expected
-     noise (this service uses `ctranslate2`, not PyTorch, for inference).
+   - **Budget at least 2GB of memory for this service once it's actually
+     serving traffic** (Settings → Resources, or similar — exact location
+     depends on your Railway plan). `/health` only reports whether each
+     model singleton has already been constructed, so a fresh deploy passes
+     its healthcheck without loading anything — but NLLB, faster-whisper,
+     and the Piper voices (~1.5GB combined) each still lazily load into
+     memory on their first real request and never unload, so a deploy that
+     actually serves translate + STT + TTS traffic still needs that combined
+     footprint. On a plan hard-capped below ~2GB, the visible symptom is the
+     service booting and passing its healthcheck successfully, then getting
+     silently OOM-killed (logged as plain `Killed`, not an error) once
+     traffic has touched all three capabilities — not a code bug, and the
+     `None of PyTorch, TensorFlow >= 2.0, or Flax have been found` line in
+     the same logs is unrelated, expected noise (this service uses
+     `ctranslate2`, not PyTorch, for inference). If the plan can't go above
+     1GB, either drop one of the three capabilities from this service or
+     leave its route unset so `web` falls back to a cloud provider for it
+     instead (`src/lib/env.ts`).
    - Variables: `LOCAL_INFERENCE_SECRET` (any random string).
    - On `web`, set two variables to reach this service over Railway's
      private network (no public URL, and no separate "connect this to that"

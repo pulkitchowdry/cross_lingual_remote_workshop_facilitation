@@ -38,12 +38,7 @@ def _voice(language: str) -> PiperVoice:
 
 
 def is_loaded() -> bool:
-    try:
-        for language in PIPER_VOICE:
-            _voice(language)
-        return True
-    except Exception:
-        return False
+    return all(language in _voices for language in PIPER_VOICE)
 
 
 def synthesize(text: str, language: str) -> bytes:
