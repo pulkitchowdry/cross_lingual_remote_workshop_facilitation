@@ -125,10 +125,24 @@ function WorkshopVideoStage({
       });
   }, []);
 
+  // `caption-agent.ts` (the server-side LiveKit Agents worker that subscribes to the
+  // facilitator's mic for captions — see docs/TRANSLATION_ARCHITECTURE.md Part 2) joins
+  // this same room as its own participant (identity like "agent-AJ_...") so it can
+  // subscribe to audio. With `withPlaceholder: true` below, `useTracks` creates a camera
+  // placeholder tile for EVERY participant with no camera publication — including that
+  // agent, which never publishes one. Confirmed live (two real browser sessions): the
+  // agent shows up as a third, blank tile labeled with its raw job ID next to
+  // "Facilitator"/"Learner", polluting the grid for both roles. Real participants are
+  // always issued a `"facilitator:<id>"`/`"learner:<id>"` identity (room.ts's
+  // `issueCredential`) — filtering to that prefix excludes the agent (and any other
+  // future non-participant service identity) without needing to know its exact naming
+  // scheme.
   const tracks = useTracks([
     { source: Track.Source.Camera, withPlaceholder: true },
     { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]);
+  ]).filter(
+    (track) => track.participant.identity.startsWith("facilitator:") || track.participant.identity.startsWith("learner:"),
+  );
   const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
   const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
   const [showCaptions, setShowCaptions] = useState(true);

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
-import { SUPPORTED_LANGUAGES, type FormActionResult, type SupportedLanguage } from "@/lib/session-contracts";
+import { CHAT_MESSAGE_MAX_LENGTH, SUPPORTED_LANGUAGES, type FormActionResult, type SupportedLanguage } from "@/lib/session-contracts";
 import { translateText } from "@/lib/providers/translation";
 import { isRateLimited } from "@/lib/rate-limit";
 import { isPrivateMessageRequest, validateFacilitatorPrivateRecipient } from "@/lib/message-visibility";
@@ -24,8 +24,8 @@ export async function sendChatMessage(
   formData: FormData,
 ): Promise<FormActionResult> {
   const text = formData.get("message");
-  if (typeof text !== "string" || !text.trim() || text.trim().length > 1_000) {
-    return { error: "Enter a message of up to 1,000 characters." };
+  if (typeof text !== "string" || !text.trim() || text.trim().length > CHAT_MESSAGE_MAX_LENGTH) {
+    return { error: `Enter a message of up to ${CHAT_MESSAGE_MAX_LENGTH.toLocaleString()} characters.` };
   }
   const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
   const isAnonymous = role === "learner" && formData.get("isAnonymous") === "true";

@@ -31,6 +31,11 @@ describe("resolveLanguageFromAcceptLanguage", () => {
   it("supports a custom fallback", () => {
     expect(resolveLanguageFromAcceptLanguage("fr-FR", "zh")).toBe("zh");
   });
+
+  it("tolerates optional whitespace around the ;q= delimiter (RFC 7231 OWS)", () => {
+    expect(resolveLanguageFromAcceptLanguage("zh; q=0.9, en;q=0.5")).toBe("zh");
+    expect(resolveLanguageFromAcceptLanguage("en ; q=0.5, zh ; q=0.9")).toBe("zh");
+  });
 });
 
 describe("learner caption comprehension templates", () => {

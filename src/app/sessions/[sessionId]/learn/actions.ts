@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { SessionStatus } from "@/generated/prisma/client";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import { isSupportedLanguage } from "@/lib/i18n";
 
 export async function updateLearnerLanguage(sessionId: string, lang: SupportedLanguage) {
@@ -28,13 +28,17 @@ export async function updateLearnerLanguage(sessionId: string, lang: SupportedLa
  * in the room. Recorded as a transcript segment (not a chat message) so it
  * shows up in the Captions tab and gets translated/synthesized the same way.
  */
-export async function publishLearnerCaption(sessionId: string, formData: FormData) {
+export async function publishLearnerCaption(
+  sessionId: string,
+  _prevState: FormActionResult,
+  formData: FormData,
+): Promise<FormActionResult> {
   const participantId = await learnerParticipantId(sessionId);
   if (!participantId) redirect("/setup");
 
   const captionText = formData.get("captionText");
   if (typeof captionText !== "string" || !captionText.trim() || captionText.trim().length > 3_000) {
-    throw new Error("Enter a caption of up to 3,000 characters.");
+    return { error: "Enter a caption of up to 3,000 characters." };
   }
 
   const participant = await prisma.sessionParticipant.findUnique({
@@ -43,16 +47,28 @@ export async function publishLearnerCaption(sessionId: string, formData: FormDat
   });
   if (!participant || participant.sessionId !== sessionId) redirect("/setup");
   if (participant.session.status !== SessionStatus.LIVE) {
-    throw new Error("The session must be live before publishing captions.");
+    return { error: "The session must be live before publishing captions." };
   }
 
   const now = new Date();
-  await publishTranslatedCaption(participant.session, {
-    speakerId: participant.user.displayName,
-    originalText: captionText.trim(),
-    language: participant.preferredLanguage as SupportedLanguage,
-    startedAt: now,
-    endedAt: now,
-    isTyped: true,
-  });
+  try {
+    await publishTranslatedCaption(participant.session, {
+      speakerId: participant.user.displayName,
+      originalText: captionText.trim(),
+      language: participant.preferredLanguage as SupportedLanguage,
+      startedAt: now,
+      endedAt: now,
+      isTyped: true,
+    });
+  } catch (error) {
+    // Mirrors facilitator/actions.ts's publishCaption: publishTranslatedCaption's own
+    // translation fan-out can take up to ~16s — long enough for the facilitator to
+    // click "End session" while this is in flight, which makes its own re-check throw.
+    // Left uncaught, that propagated out of this useActionState-bound action, past
+    // the entire session route's error boundary, replacing the live video/chat with a
+    // generic error screen for what's just a mistimed submission.
+    console.error("publishLearnerCaption failed", error);
+    return { error: "This session ended while your caption was being translated. It was not published." };
+  }
+  return { error: null };
 }
