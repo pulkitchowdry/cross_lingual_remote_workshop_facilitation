@@ -20,11 +20,14 @@ learner said, so there is no reliable per-learner join through this path.
 
 ## Data source
 
-Learner caption-comprehension actions (`CaptionComprehensionActions.tsx`,
-added for issue #89) already create a `Message` with `kind: "QUESTION"`
-attributed to a real `senderId`. A learner explicitly asking "Explain
-simply" / "Give an example" about a caption is a genuine, self-reported,
-per-learner confusion signal — no new LLM call, no schema change.
+Two UI entry points both produce a `Message` with `kind: "QUESTION"`
+attributed to a real `senderId`, with no field distinguishing which one was
+used: learner caption-comprehension actions (`CaptionComprehensionActions.tsx`,
+added for issue #89 — "Explain simply" / "Give an example" about a caption),
+and the plain "Question" checkbox in the regular chat composer
+(`SessionChatPanel.tsx`, via `src/app/sessions/actions.ts`). Either is a
+genuine, self-reported, per-learner confusion signal — no new LLM call, no
+schema change — so both are treated as the same signal.
 
 `facilitator/page.tsx` already fetches `session.messages` (`sender: true`,
 capped at `MESSAGE_HISTORY_LIMIT`) and `session.participants` (role

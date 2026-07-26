@@ -11,10 +11,14 @@ export interface LearnerConfusionEntry {
 /**
  * Per-learner counterpart to computeConfusionLevel (src/lib/confusion-level.ts):
  * same rolling window and thresholds, but grouped by sender instead of
- * session-wide, over QUESTION messages from CaptionComprehensionActions
- * ("Explain simply" / "Give an example") rather than inferred CONFUSION
- * insights — TranscriptSegment.speakerId can't attribute those to a learner
- * (see design doc), but a learner explicitly asking for clarification can.
+ * session-wide, over any learner QUESTION message rather than inferred
+ * CONFUSION insights — TranscriptSegment.speakerId can't attribute those to
+ * a learner (see design doc), but a learner explicitly asking for
+ * clarification can. QUESTION messages come from two UI entry points that
+ * produce an identical Message shape with no field distinguishing them:
+ * CaptionComprehensionActions ("Explain simply" / "Give an example" on a
+ * caption) and the plain "Question" checkbox in the chat composer
+ * (SessionChatPanel). Both are counted.
  */
 export function computeLearnerConfusionLevels(
   questionMessages: { senderId: string; sentAt: Date }[],
