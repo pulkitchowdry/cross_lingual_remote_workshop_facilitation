@@ -7,23 +7,32 @@ import type { FacilitatorAnalytics } from "@/lib/facilitator-analytics";
 export function AnalyticsDrawer({
   analytics,
   isFrozen,
-  dict,
+  labels,
+  participationRows,
+  blockersSummary,
+  languageRows,
 }: {
   analytics: FacilitatorAnalytics;
   isFrozen: boolean;
-  dict: {
+  labels: {
     analyticsDrawerLabel: string;
     analyticsDrawerOpen: string;
     analyticsDrawerClose: string;
     analyticsConfusionTrendHeading: string;
     analyticsParticipationHeading: string;
-    analyticsParticipationRow: (displayName: string, messages: number, questions: number) => string;
     analyticsBlockersHeading: string;
-    analyticsBlockersSummary: (raised: number, resolved: number, open: number) => string;
     analyticsLanguagesHeading: string;
-    analyticsLanguagesRow: (language: string, count: number) => string;
     analyticsEmptyState: string;
   };
+  // Precomputed server-side (dict.analyticsParticipationRow/analyticsLanguagesRow/
+  // analyticsBlockersSummary called in the RSC page, not passed here) — functions
+  // cannot cross the server->client prop boundary this component sits behind, so only
+  // their plain-string return values are passed in. Order matches
+  // analytics.participation / analytics.languages 1:1; the entries themselves are still
+  // used for React `key`s.
+  participationRows: string[];
+  blockersSummary: string;
+  languageRows: string[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const isEmpty =
@@ -33,24 +42,24 @@ export function AnalyticsDrawer({
     analytics.languages.length === 0;
 
   return (
-    <aside className="flex flex-col gap-2" aria-label={dict.analyticsDrawerLabel}>
+    <aside className="flex flex-col gap-2" aria-label={labels.analyticsDrawerLabel}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         className="font-data w-fit rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]"
       >
-        {isOpen ? dict.analyticsDrawerClose : dict.analyticsDrawerOpen}
+        {isOpen ? labels.analyticsDrawerClose : labels.analyticsDrawerOpen}
       </button>
       {isOpen && (
         <div className="flex flex-col gap-3">
           {isEmpty ? (
             <Card>
-              <p className="text-muted-foreground">{dict.analyticsEmptyState}</p>
+              <p className="text-muted-foreground">{labels.analyticsEmptyState}</p>
             </Card>
           ) : (
             <>
-              <Card eyebrow={dict.analyticsConfusionTrendHeading}>
+              <Card eyebrow={labels.analyticsConfusionTrendHeading}>
                 <div className="flex items-end gap-1" aria-hidden="true">
                   {analytics.confusionTrend.map((point) => (
                     <div
@@ -69,26 +78,24 @@ export function AnalyticsDrawer({
                   ))}
                 </div>
               </Card>
-              <Card eyebrow={dict.analyticsParticipationHeading}>
+              <Card eyebrow={labels.analyticsParticipationHeading}>
                 <ul className="flex flex-col gap-1">
-                  {analytics.participation.map((entry) => (
+                  {analytics.participation.map((entry, index) => (
                     <li key={entry.userId} className="text-xs">
-                      {dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount)}
+                      {participationRows[index]}
                     </li>
                   ))}
                 </ul>
               </Card>
-              <Card eyebrow={dict.analyticsBlockersHeading}>
-                <p className="text-xs">
-                  {dict.analyticsBlockersSummary(analytics.blockers.raised, analytics.blockers.resolved, analytics.blockers.open)}
-                </p>
+              <Card eyebrow={labels.analyticsBlockersHeading}>
+                <p className="text-xs">{blockersSummary}</p>
               </Card>
               {analytics.languages.length > 0 && (
-                <Card eyebrow={dict.analyticsLanguagesHeading}>
+                <Card eyebrow={labels.analyticsLanguagesHeading}>
                   <ul className="flex flex-col gap-1">
-                    {analytics.languages.map((entry) => (
+                    {analytics.languages.map((entry, index) => (
                       <li key={entry.language} className="text-xs">
-                        {dict.analyticsLanguagesRow(entry.language, entry.translationCount)}
+                        {languageRows[index]}
                       </li>
                     ))}
                   </ul>

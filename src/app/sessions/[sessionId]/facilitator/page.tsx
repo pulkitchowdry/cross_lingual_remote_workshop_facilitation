@@ -212,6 +212,32 @@ export default async function FacilitatorSessionPage({
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
   const commonDict = getDictionary(lang).common;
+  // AnalyticsDrawer is a "use client" component — RSC cannot serialize functions across
+  // that prop boundary, so the formatter functions on `dict` (analyticsParticipationRow/
+  // analyticsBlockersSummary/analyticsLanguagesRow) must be called here, server-side, and
+  // only their plain-string return values passed down. Computed once and reused at both
+  // AnalyticsDrawer render sites below (LIVE and ENDED) rather than duplicated.
+  const analyticsLabels = {
+    analyticsDrawerLabel: dict.analyticsDrawerLabel,
+    analyticsDrawerOpen: dict.analyticsDrawerOpen,
+    analyticsDrawerClose: dict.analyticsDrawerClose,
+    analyticsConfusionTrendHeading: dict.analyticsConfusionTrendHeading,
+    analyticsParticipationHeading: dict.analyticsParticipationHeading,
+    analyticsBlockersHeading: dict.analyticsBlockersHeading,
+    analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
+    analyticsEmptyState: dict.analyticsEmptyState,
+  };
+  const analyticsParticipationRows = analytics.participation.map((entry) =>
+    dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount),
+  );
+  const analyticsBlockersSummary = dict.analyticsBlockersSummary(
+    analytics.blockers.raised,
+    analytics.blockers.resolved,
+    analytics.blockers.open,
+  );
+  const analyticsLanguageRows = analytics.languages.map((entry) =>
+    dict.analyticsLanguagesRow(entry.language, entry.translationCount),
+  );
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
   // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
   // above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N *most recent* segments — but
@@ -418,7 +444,14 @@ export default async function FacilitatorSessionPage({
               />
             }
           />
-          <AnalyticsDrawer analytics={analytics} isFrozen={false} dict={dict} />
+          <AnalyticsDrawer
+            analytics={analytics}
+            isFrozen={false}
+            labels={analyticsLabels}
+            participationRows={analyticsParticipationRows}
+            blockersSummary={analyticsBlockersSummary}
+            languageRows={analyticsLanguageRows}
+          />
         </section>
       )}
       {/* Once a session ends, WorkshopRoomLayout above stops rendering entirely (its
@@ -465,7 +498,14 @@ export default async function FacilitatorSessionPage({
               )}
             </div>
           </Card>
-          <AnalyticsDrawer analytics={analytics} isFrozen={true} dict={dict} />
+          <AnalyticsDrawer
+            analytics={analytics}
+            isFrozen={true}
+            labels={analyticsLabels}
+            participationRows={analyticsParticipationRows}
+            blockersSummary={analyticsBlockersSummary}
+            languageRows={analyticsLanguageRows}
+          />
           <SessionSidePanel
             chat={{
               messages: chatMessages,
