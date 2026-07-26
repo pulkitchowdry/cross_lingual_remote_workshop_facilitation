@@ -75,6 +75,8 @@ export interface Dictionary {
     actNow: string;
     blocker: string;
     confusion: string;
+    confusionLevelSome: (count: number) => string;
+    confusionLevelHigh: (count: number) => string;
     resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
@@ -244,6 +246,8 @@ const en: Dictionary = {
     actNow: "Act now",
     blocker: "Blocker",
     confusion: "Possible confusion",
+    confusionLevelSome: (count) => `Some confusion (${count})`,
+    confusionLevelHigh: (count) => `High confusion (${count})`,
     resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers or confusion detected yet.",
@@ -414,6 +418,8 @@ const zh: Dictionary = {
     actNow: "立即处理",
     blocker: "障碍",
     confusion: "可能存在困惑",
+    confusionLevelSome: (count) => `一些困惑 (${count})`,
+    confusionLevelHigh: (count) => `困惑较多 (${count})`,
     resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍或困惑。",
@@ -585,6 +591,8 @@ const es: Dictionary = {
     actNow: "Actuar ahora",
     blocker: "Bloqueo",
     confusion: "Posible confusión",
+    confusionLevelSome: (count) => `Algo de confusión (${count})`,
+    confusionLevelHigh: (count) => `Mucha confusión (${count})`,
     resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos ni confusión.",

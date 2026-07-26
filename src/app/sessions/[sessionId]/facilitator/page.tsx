@@ -21,6 +21,7 @@ import { insightProvider } from "@/lib/providers/insight";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { computeConfusionLevel } from "@/lib/confusion-level";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -106,6 +107,14 @@ export default async function FacilitatorSessionPage({
   // if the cron never runs (e.g. CRON_SECRET was never set). Treat it as gone
   // as soon as it's due, not just once the delete has actually happened.
   if (isSessionRetentionExpired(session)) notFound();
+
+  // session.insights is capped at INSIGHT_HISTORY_LIMIT (see the query above); that cap
+  // can only truncate the CONFUSION count when insight volume is already high enough to be
+  // well past the HIGH threshold regardless, so the computed level stays correct.
+  const confusionTimestamps = session.insights
+    .filter((item) => item.type === "CONFUSION")
+    .map((item) => item.createdAt);
+  const confusionLevel = computeConfusionLevel(confusionTimestamps, new Date());
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -283,7 +292,22 @@ export default async function FacilitatorSessionPage({
       )}
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
+            {confusionLevel.level !== "CALM" && (
+              <span
+                className="font-data rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                style={{
+                  color: confusionLevel.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
+                  borderColor: "currentColor",
+                }}
+              >
+                {confusionLevel.level === "HIGH"
+                  ? dict.confusionLevelHigh(confusionLevel.count)
+                  : dict.confusionLevelSome(confusionLevel.count)}
+              </span>
+            )}
+          </div>
         </div>
         {activeActionItems.length > 0 ? (
           <div className="flex flex-col gap-3">
