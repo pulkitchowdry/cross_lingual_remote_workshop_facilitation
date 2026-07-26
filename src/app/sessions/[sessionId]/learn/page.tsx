@@ -76,6 +76,10 @@ export default async function LearnerSessionPage({
     // The fallback "Translation unavailable." string is fixed English UI copy, not a
     // translation — tag it "en" rather than the learner's preferred language.
     const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+    // segment.originalText, not primaryText — primaryText can hold the fixed
+    // "Translation unavailable" placeholder, which should never end up quoted
+    // in the comprehension question below.
+    const originalText = segment.originalText;
     return {
       id: segment.id,
       time: timeFormatter.format(segment.startedAt),
@@ -85,6 +89,18 @@ export default async function LearnerSessionPage({
       primaryIsFallback: !isOwnLanguage && !translation,
       secondaryText: !isOwnLanguage ? segment.originalText : undefined,
       secondaryLang: !isOwnLanguage ? segment.language : undefined,
+      // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'
+      // doc comment for why (this page is a Server Component; the feed isn't).
+      actions: (
+        <CaptionComprehensionActions
+          sendAction={sendChatAction}
+          explainSimplyLabel={learnerDict.explainSimply}
+          giveExampleLabel={learnerDict.giveExample}
+          sendingLabel={dict.chat.sending}
+          explainSimplyMessage={learnerDict.explainSimplyQuestion(originalText)}
+          giveExampleMessage={learnerDict.giveExampleQuestion(originalText)}
+        />
+      ),
     };
   });
   const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
@@ -142,23 +158,6 @@ export default async function LearnerSessionPage({
                   entries: transcriptEntries,
                   emptyLabel: learnerDict.captionsWillAppear,
                   jumpToLatestLabel: dict.common.jumpToLatest,
-                  renderActions: (entry) => {
-                    // `secondaryText` holds the original-language quote when a translation
-                    // was shown as `primaryText`; for a caption already in the learner's own
-                    // language there's no secondaryText, and primaryText already is the
-                    // original — either way this is never the "Translation unavailable" copy.
-                    const originalText = entry.secondaryText ?? entry.primaryText;
-                    return (
-                      <CaptionComprehensionActions
-                        sendAction={sendChatAction}
-                        explainSimplyLabel={learnerDict.explainSimply}
-                        giveExampleLabel={learnerDict.giveExample}
-                        sendingLabel={dict.chat.sending}
-                        explainSimplyMessage={learnerDict.explainSimplyQuestion(originalText)}
-                        giveExampleMessage={learnerDict.giveExampleQuestion(originalText)}
-                      />
-                    );
-                  },
                 }}
                 captionsHeader={
                   textToSpeechProvider.isConfigured && (

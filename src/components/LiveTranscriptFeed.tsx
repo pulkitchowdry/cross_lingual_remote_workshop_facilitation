@@ -12,6 +12,13 @@ export interface TranscriptFeedEntry {
   primaryIsFallback?: boolean;
   secondaryText?: string;
   secondaryLang?: string;
+  /** Learner-only per-line actions (e.g. "explain simply"), rendered below an entry
+   * once it's expanded. A pre-built element, not a callback — this crosses the
+   * server/client component boundary (LearnerSessionPage is a Server Component;
+   * this feed is a Client Component), and only React elements serialize across
+   * that boundary, not arbitrary functions. Omitted entirely on the facilitator's
+   * read-only feed. */
+  actions?: ReactNode;
 }
 
 const BOTTOM_THRESHOLD_PX = 48;
@@ -31,18 +38,12 @@ export function LiveTranscriptFeed({
   jumpToLatestLabel,
   header,
   composer,
-  renderActions,
 }: {
   entries: TranscriptFeedEntry[];
   emptyLabel: string;
   jumpToLatestLabel: string;
   header?: ReactNode;
   composer?: ReactNode;
-  /** Learner-only per-line actions (e.g. "explain simply"), rendered below an entry
-   * once it's expanded. Kept out of the row's own toggle `<button>` — a `<form>`
-   * with its own submit button can't nest inside another `<button>`. Omitted
-   * entirely on the facilitator's read-only feed. */
-  renderActions?: (entry: TranscriptFeedEntry) => ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
@@ -93,10 +94,10 @@ export function LiveTranscriptFeed({
           {entries.length > 0 ? (
             entries.map((entry) => {
               const hasSecondary = Boolean(entry.secondaryText);
-              // With `renderActions`, every line is expandable — a learner may want to
-              // ask about a caption spoken in their own preferred language too, where
+              // With `actions`, every line is expandable — a learner may want to ask
+              // about a caption spoken in their own preferred language too, where
               // there's no secondaryText (original-language quote) to reveal.
-              const isExpandable = hasSecondary || Boolean(renderActions);
+              const isExpandable = hasSecondary || Boolean(entry.actions);
               const revealed = isExpandable && revealedIds.has(entry.id);
               return (
                 <div key={entry.id}>
@@ -130,9 +131,7 @@ export function LiveTranscriptFeed({
                       )}
                     </div>
                   </button>
-                  {revealed && renderActions && (
-                    <div className="pb-1 pl-9 pr-2">{renderActions(entry)}</div>
-                  )}
+                  {revealed && entry.actions && <div className="pb-1 pl-9 pr-2">{entry.actions}</div>}
                 </div>
               );
             })

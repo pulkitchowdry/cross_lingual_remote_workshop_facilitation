@@ -49,7 +49,10 @@ test("learner can ask comprehension questions from live captions", async ({ brow
     await facilitator.getByRole("button", { name: "Publish" }).click();
 
     await learner.getByRole("tab", { name: "Captions" }).click();
-    const captionRow = learner.getByText("Normalize the request payload before validating fields.");
+    // A button, not plain text: WorkshopRoomLayout also overlays the latest caption on
+    // the video itself, so a plain text locator matches both that overlay and the feed
+    // row below — the feed row is the one that's an (expandable) button.
+    const captionRow = learner.getByRole("button", { name: /Normalize the request payload/ });
     await expect(captionRow).toBeVisible();
 
     // Comprehension actions only appear once a caption line is expanded (see
