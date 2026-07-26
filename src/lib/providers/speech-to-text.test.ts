@@ -200,4 +200,51 @@ describe("speechToTextProvider", () => {
     expect(stream).toBeInstanceOf(LocalBufferingSpeechToTextStream);
     stream.close();
   });
+
+  it("reports a timed-out connection (and terminates the socket) if Deepgram's WebSocket never opens", async () => {
+    process.env.STT_API_KEY = "test-key";
+    vi.useFakeTimers();
+
+    const handlers: Record<string, (...args: unknown[]) => void> = {};
+    const fakeSocket = {
+      readyState: 0, // ws.CONNECTING
+      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        handlers[event] = handler;
+      }),
+      terminate: vi.fn(),
+      close: vi.fn(),
+      send: vi.fn(),
+    };
+    const FakeWebSocket = vi.fn(function FakeWebSocket() {
+      return fakeSocket;
+    }) as unknown as { new (...args: unknown[]): typeof fakeSocket } & {
+      CONNECTING: number;
+      OPEN: number;
+      CLOSING: number;
+      CLOSED: number;
+    };
+    FakeWebSocket.CONNECTING = 0;
+    FakeWebSocket.OPEN = 1;
+    FakeWebSocket.CLOSING = 2;
+    FakeWebSocket.CLOSED = 3;
+    vi.doMock("ws", () => ({ WebSocket: FakeWebSocket }));
+
+    const { speechToTextProvider } = await import("./speech-to-text");
+    const onError = vi.fn();
+    speechToTextProvider.openStream!({ expectedLanguage: "en", onSegment: () => {}, onError });
+
+    // A network path that silently drops packets (no `error`/`close` event ever fires)
+    // must still surface within a bounded time — see DeepgramStreamingSession's
+    // `connectTimeout` comment for why a hang here used to be indistinguishable from
+    // captions just quietly working.
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+    expect((onError.mock.calls[0][0] as Error).message).toMatch(/timed out connecting/i);
+    expect(fakeSocket.terminate).toHaveBeenCalledTimes(1);
+
+    vi.doUnmock("ws");
+    vi.useRealTimers();
+  });
 });

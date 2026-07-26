@@ -33,12 +33,13 @@ export const metadata: Metadata = {
 };
 
 // Runs before paint so a returning visitor's stored theme and accessibility
-// preferences apply with no flash. Dark / normal text / standard contrast are
-// the defaults whenever nothing is stored yet.
+// preferences apply with no flash. Slate Night / normal text / standard
+// contrast are the defaults whenever nothing is stored yet.
 const THEME_INIT_SCRIPT = `
 try {
   var stored = localStorage.getItem("theme");
-  var theme = stored === "light" ? "light" : "dark";
+  var validThemes = ["beige", "ink-copper", "slate-night", "warm-dusk"];
+  var theme = validThemes.indexOf(stored) !== -1 ? stored : "slate-night";
   document.documentElement.setAttribute("data-theme", theme);
 
   var fontSize = localStorage.getItem("accessibility-font-size");
@@ -72,6 +73,18 @@ export default async function RootLayout({
       className={`${heading.variable} ${bodyFont.variable} ${dataFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/*
+          A plain <script> tag here reliably runs (the browser executes a <script> it parses
+          from the initial HTML before React ever hydrates, avoiding a theme flash) — but React's
+          DEV-mode renderer warns regardless ("Encountered a script tag while rendering React
+          component"), and `next/script`'s `beforeInteractive` strategy doesn't avoid it either:
+          for an inline (no `src`) script under the App Router, its own implementation
+          (node_modules/next/dist/client/script.js) still returns a real `<script>` JSX element,
+          just with the content wrapped for Next's runtime — so the exact same warning fires,
+          just pointing at that line instead. See dev-console-filter.ts (imported from AppShell,
+          which every route mounts) for why this specific, otherwise-unavoidable warning is
+          filtered rather than "fixed" by switching components.
+        */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <AppShell>{children}</AppShell>
       </body>

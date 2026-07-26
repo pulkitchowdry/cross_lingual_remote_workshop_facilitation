@@ -1,7 +1,10 @@
+/** `nativeLabel` is the language's own autonym (e.g. "中文" for Chinese) — used as-is
+ * regardless of UI language, unlike `label`/the translated `languageNames` dictionary
+ * in `@/lib/i18n`. */
 export const SUPPORTED_LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "zh", label: "Chinese" },
-  { value: "es", label: "Spanish" },
+  { value: "en", label: "English", nativeLabel: "English" },
+  { value: "zh", label: "Chinese", nativeLabel: "中文" },
+  { value: "es", label: "Spanish", nativeLabel: "Español" },
 ] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];
@@ -14,7 +17,36 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["value"];
  */
 export const MESSAGE_HISTORY_LIMIT = 50;
 
+/**
+ * Same rationale as `MESSAGE_HISTORY_LIMIT`, applied to `Session.transcript` —
+ * unlike `messages`, the transcript query had no cap at all, so a long-running
+ * LIVE session's full caption/STT history was re-fetched and re-rendered on
+ * every 2s poll for as long as it stayed live, on both the facilitator and
+ * every learner's page.
+ */
+export const TRANSCRIPT_HISTORY_LIMIT = 100;
+
+/**
+ * Same rationale as `TRANSCRIPT_HISTORY_LIMIT`/`MESSAGE_HISTORY_LIMIT`, applied to
+ * `Session.insights` — unlike those two, the facilitator dashboard's `insights`
+ * include (with a heavier nested evidence -> transcriptSegment -> translations join)
+ * had no cap at all, so a long-running session's full, ever-growing insight history
+ * was re-fetched and re-joined on every 2s poll.
+ */
+export const INSIGHT_HISTORY_LIMIT = 50;
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
+
+/**
+ * Return shape for a `useActionState`-driven Server Action whose expected, routine
+ * failures (rate limited, session not live, input too long) should show up as an
+ * inline message next to the form instead of throwing — a thrown Error with no
+ * boundary in the tree crashes the whole route (see RouteErrorFallback.tsx), taking
+ * down the live video call along with it for what's often just a mistimed click.
+ */
+export interface FormActionResult {
+  error: string | null;
+}
 
 export type TranslationMode = "AUTO" | "LOCAL_ONLY";
 

@@ -44,11 +44,21 @@ services:
 
   livekit:
     image: livekit/livekit-server:latest
-    command: ["--dev", "--bind", "0.0.0.0"]
+    # `--dev` never advertises a reachable external candidate address and runs
+    # no TURN listener, so participants behind real NATs/firewalls (i.e. any
+    # genuinely remote workshop participant, not just same-host testing) can
+    # get an initial connection but fail to receive tracks added mid-call —
+    # notably screen share. `livekit.yaml` turns on `use_external_ip` + a TURN
+    # relay to fix that; see the file's comments for details.
+    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
     ports:
       - "7880:7880" # WebSocket/HTTP signaling — same port .env.example's LIVEKIT_URL uses
       - "7881:7881" # RTC over TCP (fallback when UDP is blocked)
       - "7882:7882/udp" # RTC over UDP
+      - "3478:3478/udp" # TURN relay (livekit.yaml's turn.udp_port)
+      - "50000-50100:50000-50100/udp" # RTC media port range (livekit.yaml's rtc.port_range)
 
   local-inference:
     build:

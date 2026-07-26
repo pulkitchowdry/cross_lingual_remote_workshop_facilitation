@@ -7,12 +7,16 @@ export interface SynthesizedSpeech {
   provider: string;
 }
 
-/** ElevenLabs voice IDs per supported language — multilingual model, language-appropriate default voice. */
-const ELEVENLABS_VOICE_BY_LANGUAGE: Record<SupportedLanguage, string> = {
-  en: "21m00Tcm4TlvDq8ikWAM", // Rachel
-  zh: "TxGEqnHWrfWFTfGW9XjX", // Josh (multilingual model handles zh)
-  es: "TxGEqnHWrfWFTfGW9XjX",
-};
+/**
+ * One "premade" ElevenLabs voice for every language — Voice Library voices
+ * require a paid plan to use via the API (a free-tier key gets a 402
+ * `paid_plan_required`), but premade voices (the stock set every account
+ * ships with) work on the free tier. `eleven_multilingual_v2` handles
+ * English/Chinese/Spanish regardless of the voice's native accent, so one
+ * voice ID covers all supported languages — no need to pick a different one
+ * per language. See `GET /v1/voices` for the full list an account can use.
+ */
+const ELEVENLABS_VOICE_ID = "SAz9YHcvj6GT2YYXdXww"; // River — premade
 
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
@@ -22,14 +26,13 @@ const ELEVENLABS_MODEL = "eleven_multilingual_v2";
  * thrown error into an HTTP 502, and that contract is preserved deliberately
  * rather than reconciled with translation's null-degrade convention.
  */
-async function synthesizeWithElevenLabs(text: string, language: SupportedLanguage): Promise<SynthesizedSpeech | null> {
+async function synthesizeWithElevenLabs(text: string): Promise<SynthesizedSpeech | null> {
   const apiKey = process.env.TTS_API_KEY;
   if (!apiKey) {
     throw new Error("ElevenLabs is not configured: TTS_API_KEY is missing.");
   }
 
-  const voiceId = ELEVENLABS_VOICE_BY_LANGUAGE[language];
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
     method: "POST",
     headers: {
       "xi-api-key": apiKey,
@@ -84,7 +87,7 @@ async function synthesizeSpeech(
   }
 
   if (!cloudConfigured) return null; // No cloud tier to fall back to — matches the mock's always-null contract.
-  return synthesizeWithElevenLabs(text, language);
+  return synthesizeWithElevenLabs(text);
 }
 
 /**

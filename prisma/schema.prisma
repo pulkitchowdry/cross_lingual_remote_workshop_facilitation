@@ -30,42 +30,51 @@ enum InsightType {
   CONFUSION
 }
 
-/** AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5. */
+/**
+ * AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5.
+ */
 enum TranslationMode {
   AUTO
   LOCAL_ONLY
 }
 
 model User {
-  id             String               @id @default(cuid())
-  displayName    String
+  id                String               @id @default(cuid())
+  displayName       String
   preferredLanguage String?
-  createdAt      DateTime             @default(now())
-  sessions       Session[]            @relation("SessionFacilitator")
-  participations SessionParticipant[]
-  messages       Message[]
+  createdAt         DateTime             @default(now())
+  sessions          Session[]            @relation("SessionFacilitator")
+  participations    SessionParticipant[]
+  messages          Message[]
 }
 
 model Session {
-  id              String               @id @default(cuid())
-  title           String
-  goal            String
-  sourceLanguage  String
-  learnerLanguages String[]
-  retentionDays   Int                  @default(7)
-  translationMode TranslationMode      @default(AUTO)
-  status          SessionStatus        @default(DRAFT)
-  facilitatorId   String
-  facilitator     User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
-  createdAt       DateTime             @default(now())
-  startedAt       DateTime?
-  endedAt         DateTime?
-  participants    SessionParticipant[]
-  joinLinks       JoinLink[]
-  transcript      TranscriptSegment[]
-  messages        Message[]
-  insights        Insight[]
-  glossaryTerms   GlossaryTerm[]
+  id                 String               @id @default(cuid())
+  title              String
+  goal               String
+  sourceLanguage     String
+  learnerLanguages   String[]
+  retentionDays      Int                  @default(7)
+  translationMode    TranslationMode      @default(AUTO)
+  status             SessionStatus        @default(DRAFT)
+  // Whether the server-side caption agent (caption-agent.ts) is currently streaming this
+  // session's facilitator audio. Must live in the database, not in-process memory: the
+  // LiveKit Agents worker that sets this runs in a forked OS process (see server.ts /
+  // @livekit/agents' per-job JobProcExecutor), a different process from the one serving
+  // the facilitator dashboard that reads it — an in-memory flag set in one and read from
+  // the other is silently always false.
+  captionAgentActive Boolean              @default(false)
+  facilitatorId      String
+  facilitator        User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
+  createdAt          DateTime             @default(now())
+  startedAt          DateTime?
+  endedAt            DateTime?
+  participants       SessionParticipant[]
+  joinLinks          JoinLink[]
+  transcript         TranscriptSegment[]
+  messages           Message[]
+  insights           Insight[]
+  glossaryTerms      GlossaryTerm[]
 }
 
 model SessionParticipant {
@@ -95,29 +104,31 @@ model SessionParticipant {
 }
 
 model JoinLink {
-  id         String          @id @default(cuid())
-  sessionId  String
-  role       ParticipantRole @default(LEARNER)
-  tokenHash  String          @unique
-  expiresAt  DateTime?
-  revokedAt  DateTime?
-  maxUses    Int?
-  useCount   Int             @default(0)
-  createdAt  DateTime        @default(now())
-  session    Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  sessionId String
+  role      ParticipantRole @default(LEARNER)
+  tokenHash String          @unique
+  expiresAt DateTime?
+  revokedAt DateTime?
+  maxUses   Int?
+  useCount  Int             @default(0)
+  createdAt DateTime        @default(now())
+  session   Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model TranscriptSegment {
-  id           String    @id @default(cuid())
+  id           String            @id @default(cuid())
   sessionId    String
   speakerId    String?
   originalText String
   language     String
   startedAt    DateTime
   endedAt      DateTime
-  isFinal      Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  isFinal      Boolean           @default(true)
+  /// True for the facilitator's typed-caption composer, false for anything transcribed from live audio.
+  isTyped      Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  session      Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   translations Translation[]
   evidence     InsightEvidence[]
 }
@@ -148,38 +159,39 @@ model GlossaryTerm {
 }
 
 model Message {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   sessionId    String
   senderId     String
   originalText String
   language     String
   kind         String
-  sentAt       DateTime @default(now())
-  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  sender       User     @relation(fields: [senderId], references: [id])
+  isAnonymous  Boolean              @default(false)
+  sentAt       DateTime             @default(now())
+  session      Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender       User                 @relation(fields: [senderId], references: [id])
   translations MessageTranslation[]
 }
 
 model MessageTranslation {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   messageId      String
   targetLanguage String
   text           String
   provider       String
   qualitySignal  String?
-  message        Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message        Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, targetLanguage])
 }
 
 model Insight {
-  id        String       @id @default(cuid())
+  id        String            @id @default(cuid())
   sessionId String
   type      InsightType
   summary   String
-  status    String       @default("ACTIVE")
-  createdAt DateTime     @default(now())
-  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  status    String            @default("ACTIVE")
+  createdAt DateTime          @default(now())
+  session   Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   evidence  InsightEvidence[]
 }
 

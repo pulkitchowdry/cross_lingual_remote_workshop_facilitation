@@ -7,7 +7,7 @@ export function Button({
 }) {
   const variantStyles =
     variant === "primary"
-      ? "bg-accent text-accent-foreground hover:opacity-90"
+      ? "bg-accent-fill text-accent-foreground hover:opacity-90"
       : "border border-border-strong bg-surface text-foreground hover:bg-background";
 
   return (

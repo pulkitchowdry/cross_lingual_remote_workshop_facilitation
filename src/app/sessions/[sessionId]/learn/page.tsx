@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/Card";
-import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { ChatSendButton } from "@/components/ChatSendButton";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
-import { CaptionComprehensionButton } from "@/components/CaptionComprehensionButton";
+import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { MESSAGE_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
+import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
 
@@ -32,10 +35,17 @@ export default async function LearnerSessionPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+          // A secondary `id` tiebreaker: see the matching comment in facilitator/page.tsx —
+          // without one, two rows created within the same millisecond can silently swap
+          // relative order between successive SessionAutoRefresh polls.
+          transcript: {
+            include: { translations: true },
+            orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+            take: TRANSCRIPT_HISTORY_LIMIT,
+          },
           messages: {
             include: { sender: true, translations: true },
-            orderBy: { sentAt: "desc" },
+            orderBy: [{ sentAt: "desc" }, { id: "desc" }],
             take: MESSAGE_HISTORY_LIMIT,
           },
         },
@@ -53,6 +63,41 @@ export default async function LearnerSessionPage({
   const dict = getDictionary(lang);
   const learnerDict = dict.learner;
   const isLive = participant.session.status === SessionStatus.LIVE;
+  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
+    participant.session.learnerLanguages.includes(language.value),
+  );
+  const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
+  const publishCaptionAction = publishLearnerCaption.bind(null, sessionId);
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  const transcriptEntries: TranscriptFeedEntry[] = participant.session.transcript.map((segment) => {
+    const isOwnLanguage = segment.language === participant.preferredLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
+    const primaryText = isOwnLanguage ? segment.originalText : (translation?.text ?? dict.common.translationUnavailable);
+    // The fallback "Translation unavailable." string is fixed English UI copy, not a
+    // translation — tag it "en" rather than the learner's preferred language.
+    const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? dict.common.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isOwnLanguage && !translation,
+      secondaryText: !isOwnLanguage ? segment.originalText : undefined,
+      secondaryLang: !isOwnLanguage ? segment.language : undefined,
+      comprehensionActions: [
+        {
+          label: learnerDict.explainSimply,
+          message: learnerDict.explainSimplyQuestion(segment.originalText),
+        },
+        {
+          label: learnerDict.giveExample,
+          message: learnerDict.giveExampleQuestion(segment.originalText),
+        },
+      ],
+    };
+  });
+  const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,119 +111,89 @@ export default async function LearnerSessionPage({
       {(participant.session.status === SessionStatus.DRAFT || isLive) && (
         <SessionAutoRefresh />
       )}
-      <div>
-        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {learnerDict.welcome(participant.user.displayName)}
-        </p>
-        <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
-        <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+      <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
+      {/* Narrower than the page's workshop-room-wide shell (see AppShell) — before the
+          video room renders below, this is just two lines of text and a small card, which
+          read as oddly sparse stretched across a wide monitor with nothing else to fill
+          it. The video room and transcript grid further down keep the full page width. */}
+      <div className="flex max-w-2xl flex-col gap-6">
+        <div>
+          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {learnerDict.welcome(participant.user.displayName)}
+          </p>
+          <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
+          <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+        </div>
+        <Card eyebrow={learnerDict.preferencesCard}>
+          <p>
+            {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
+          </p>
+        </Card>
       </div>
-      <Card eyebrow={learnerDict.preferencesCard}>
-        <p>
-          {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
-        </p>
-      </Card>
       {isLive && (
         <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {dict.facilitator.workshopRoom}
-            </p>
-            <h2 className="font-heading text-lg font-semibold">{dict.facilitator.liveAudioVideo}</h2>
-            <p className="text-sm text-muted-foreground">{dict.facilitator.micCameraHint}</p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <LiveSessionRoom sessionId={participant.session.id} role="learner" lang={lang} />
-            <SessionChatPanel
-              messages={[...participant.session.messages].reverse()}
-              targetLanguage={participant.preferredLanguage}
-              sendAction={sendChatAction}
-              allowQuestions
-            />
-          </div>
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {dict.facilitator.workshopRoom}
+          </h2>
+          <WorkshopRoomLayout
+            sessionId={participant.session.id}
+            role="learner"
+            lang={lang}
+            captionText={latestCaptionText}
+            sidebar={
+              <SessionSidePanel
+                chat={{
+                  messages: [...participant.session.messages].reverse(),
+                  targetLanguage: participant.preferredLanguage,
+                  sendAction: sendChatAction,
+                  allowQuestions: true,
+                }}
+                captions={{
+                  entries: transcriptEntries,
+                  emptyLabel: learnerDict.captionsWillAppear,
+                  jumpToLatestLabel: dict.common.jumpToLatest,
+                  questionAction: sendChatAction,
+                  questionPendingLabel: dict.chat.sending,
+                }}
+                captionsHeader={
+                  textToSpeechProvider.isConfigured && (
+                    <TranslatedAudioPlayer
+                      segments={participant.session.transcript.map((segment) => ({
+                        id: segment.id,
+                        hasTranslation:
+                          segment.language === participant.preferredLanguage ||
+                          segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+                        isTyped: segment.isTyped,
+                      }))}
+                      preferredLanguage={participant.preferredLanguage}
+                    />
+                  )
+                }
+                captionComposer={
+                  <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+                    <label className="sr-only" htmlFor="learner-caption">{learnerDict.captionComposerLabel}</label>
+                    <textarea
+                      id="learner-caption"
+                      className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      name="captionText"
+                      rows={2}
+                      required
+                      maxLength={3000}
+                      placeholder={learnerDict.captionComposerPlaceholder}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">{learnerDict.captionAudioHint}</p>
+                      <ChatSendButton label={learnerDict.publish} sendingLabel={learnerDict.publishing} />
+                    </div>
+                  </form>
+                }
+                chatTabLabel={dict.common.chatTab}
+                captionsTabLabel={dict.common.captionsTab}
+              />
+            }
+          />
         </section>
       )}
-      <section className="flex flex-col gap-3" aria-live="polite">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{learnerDict.liveCaptions}</p>
-          <h2 className="font-heading text-lg font-semibold">
-            {isLive
-              ? learnerDict.followExplanation
-              : participant.session.status === SessionStatus.ENDED
-                ? learnerDict.sessionEnded
-                : learnerDict.waitingForFacilitator}
-          </h2>
-        </div>
-        {textToSpeechProvider.isConfigured && (
-          <TranslatedAudioPlayer
-            segments={participant.session.transcript.map((segment) => ({
-              id: segment.id,
-              hasTranslation:
-                segment.language === participant.preferredLanguage ||
-                segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-            }))}
-            preferredLanguage={participant.preferredLanguage}
-          />
-        )}
-        {participant.session.transcript.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {participant.session.transcript.map((segment) => {
-              const isOwnLanguage = segment.language === participant.preferredLanguage;
-              const translation = segment.translations.find(
-                (item) => item.targetLanguage === participant.preferredLanguage,
-              );
-              const primaryText = isOwnLanguage
-                ? segment.originalText
-                : (translation?.text ?? dict.common.translationUnavailable);
-              // The fallback "Translation unavailable." string is fixed English UI copy, not a
-              // translation — tag it "en" rather than the learner's preferred language.
-              const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
-                  <p
-                    className="text-base leading-relaxed"
-                    lang={primaryLang}
-                    style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
-                  >
-                    {primaryText}
-                  </p>
-                  {!isOwnLanguage && (
-                    <p className="mt-2 text-xs italic text-muted-foreground" lang={segment.language}>
-                      {segment.originalText}
-                    </p>
-                  )}
-                  {isLive && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <form action={sendChatAction}>
-                        <input type="hidden" name="kind" value="QUESTION" />
-                        <input
-                          type="hidden"
-                          name="message"
-                          value={learnerDict.explainSimplyQuestion(segment.originalText)}
-                        />
-                        <CaptionComprehensionButton label={learnerDict.explainSimply} pendingLabel={dict.chat.sending} />
-                      </form>
-                      <form action={sendChatAction}>
-                        <input type="hidden" name="kind" value="QUESTION" />
-                        <input
-                          type="hidden"
-                          name="message"
-                          value={learnerDict.giveExampleQuestion(segment.originalText)}
-                        />
-                        <CaptionComprehensionButton label={learnerDict.giveExample} pendingLabel={dict.chat.sending} />
-                      </form>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card eyebrow={learnerDict.captionStream}>
-            <p className="text-muted-foreground">{learnerDict.captionsWillAppear}</p>
-          </Card>
-        )}
-      </section>
     </div>
   );
 }

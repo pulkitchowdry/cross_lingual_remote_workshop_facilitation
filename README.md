@@ -31,6 +31,7 @@ flowchart LR
 - **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
 - **Speech-to-text:** Deepgram Nova-3 (multi-speaker diarization)
 - **Translation & understanding:** Claude API (prompt-cached over the growing transcript)
+- **Text-to-speech:** self-hosted Piper (via `local-inference`) first, falling back to ElevenLabs — opt-in
 - **Real-time transport:** LiveKit + WebSockets
 - **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
 - **Facilitator authentication:** opaque cookie/token flow (`session-security.ts`) for both facilitator and learner today; migrating the facilitator side to Clerk is a decided-but-not-yet-implemented follow-up (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
@@ -103,20 +104,26 @@ The app needs four services configured before it runs end to end: **PostgreSQL**
    INSIGHT_MODEL_API_KEY="your-claude-key"
    ```
 
-6. Apply migrations and generate the Prisma client:
+6. **Text-to-speech** (optional — opt-in feature, the app runs fine without it) — either run `local-inference` (see its own README for setup) for self-hosted Piper TTS, or get an ElevenLabs key from [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) as a cloud-only/fallback tier:
+
+   ```env
+   TTS_API_KEY="your-elevenlabs-key"
+   ```
+
+7. Apply migrations and generate the Prisma client:
 
    ```bash
    npx prisma migrate deploy
    npx prisma generate
    ```
 
-7. (Optional) Seed a demo session with a facilitator and a ready learner join link:
+8. (Optional) Seed a demo session with a facilitator and a ready learner join link:
 
    ```bash
    npm run db:seed
    ```
 
-8. Run the dev server:
+9. Run the dev server:
 
    ```bash
    npm run dev
@@ -138,7 +145,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 - `TranslationProvider` (`translation.ts`) — Claude-backed today.
 - `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream` and the caption agent worker) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 - `InsightProvider` (`insight.ts`) — Claude-backed once `INSIGHT_MODEL_API_KEY` is set (analyzes the recent transcript for ACTIVITY/DECISION/BLOCKER/CONFUSION after each caption, via `waitUntil` so it never blocks the live caption path); returns no insights otherwise. `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
-- `TextToSpeechProvider` (`text-to-speech.ts`) — ElevenLabs adapter once `TTS_API_KEY` is set; mock (returns no audio) otherwise. Opt-in only — see `docs/TRANSLATION_ARCHITECTURE.md` Part 3.
+- `TextToSpeechProvider` (`text-to-speech.ts`) — tiered like speech-to-text: self-hosted Piper (via `local-inference`) first, falling back to a free-tier-compatible ElevenLabs premade voice once `TTS_API_KEY` is set, mock (returns no audio) if neither is configured. A session's strict-privacy mode disables the cloud fallback (`allowCloudFallback: false`), same as translation/STT. Opt-in only — see `docs/TRANSLATION_ARCHITECTURE.md` Part 3.
 
 `src/lib/caption-agent.ts` is the LiveKit Agents worker that subscribes to the facilitator's audio track server-side, so captions work without the browser mic control. It's registered by `server.ts` and runs in the same process/deploy as the rest of the app (no separate `package.json` or service) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 

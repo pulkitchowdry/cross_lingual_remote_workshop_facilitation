@@ -49,6 +49,12 @@ const ENV_SPEC: EnvSpec[] = [
     required: false,
     description: "Shared secret authorizing scheduled /api/retention/cleanup calls",
   },
+  {
+    key: "NEXT_PUBLIC_APP_URL",
+    required: false,
+    description:
+      "Public base URL used to build the learner invite link/QR code (facilitator page). Silently falls back to http://localhost:3000 if unset — must be set to the real deployed URL in any non-local deployment, or the invite link/QR handed to learners points at localhost.",
+  },
 ];
 
 export interface EnvValidationResult {
