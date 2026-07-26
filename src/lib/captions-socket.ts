@@ -4,6 +4,7 @@ import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 /**
  * Wires a raw WebSocket (already upgraded and authorized — see `server.ts`)
@@ -38,6 +39,7 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
 export function attachCaptionSocket(ws: WebSocket, session: Session) {
   const sourceLanguage = session.sourceLanguage as SupportedLanguage;
   let segmentStartedAt = new Date();
+  let firstAudioSubmittedAtMs: number | undefined;
 
   // server.ts's upgrade handler only checks `captionAgentActive` once, at handshake
   // time. If the LiveKit caption-agent worker starts capturing this same
@@ -77,7 +79,10 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
         // `segmentStartedAt`, since the previous reassignment hadn't run yet.
         const startedAt = segmentStartedAt;
         const endedAt = new Date();
+        const originalCaptionReadyAtMs = captionLatencyNowMs();
+        const audioSubmittedAtMs = firstAudioSubmittedAtMs;
         segmentStartedAt = endedAt;
+        firstAudioSubmittedAtMs = undefined;
         void (async () => {
           // Re-fetch the full session per segment, not just once at connect — the
           // facilitator may click "End session" while this socket is still open, or
@@ -96,6 +101,11 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
             language: current.sourceLanguage as SupportedLanguage,
             startedAt,
             endedAt,
+            instrumentation: {
+              source: "browser-ws",
+              audioSubmittedAtMs,
+              originalCaptionReadyAtMs,
+            },
           });
         })().catch((error) => console.error(`[captions/stream] failed to publish a segment for ${session.id}:`, error));
       },
@@ -115,6 +125,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
   }
 
   ws.on("message", (data) => {
+    firstAudioSubmittedAtMs ??= captionLatencyNowMs();
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });
   ws.on("close", () => {

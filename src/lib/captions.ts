@@ -6,6 +6,11 @@ import { generateSessionInsights } from "@/lib/insights";
 import { insightProvider } from "@/lib/providers/insight";
 import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import {
+  captionLatencyNowMs,
+  logCaptionLatency,
+  type CaptionInstrumentationContext,
+} from "@/lib/caption-latency-log";
 
 /**
  * Translates `originalText` into every learner language, persists it as a
@@ -23,8 +28,10 @@ export async function publishTranslatedCaption(
     startedAt: Date;
     endedAt: Date;
     isTyped?: boolean;
+    instrumentation?: CaptionInstrumentationContext;
   },
 ) {
+  const originalCaptionReadyAtMs = input.instrumentation?.originalCaptionReadyAtMs ?? captionLatencyNowMs();
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations = await Promise.all(
     SUPPORTED_LANGUAGES.map(async ({ value: target }) => {
@@ -39,6 +46,14 @@ export async function publishTranslatedCaption(
         : null;
     }),
   );
+  const translationsCompleteAtMs = captionLatencyNowMs();
+  const requestedTargetLanguages = SUPPORTED_LANGUAGES.map(({ value }) => value).filter((target) => target !== input.language);
+  const successfulTranslations = translations.filter(
+    (translation): translation is NonNullable<typeof translation> => translation !== null,
+  );
+  const translatedTargetLanguageSet = new Set(successfulTranslations.map((translation) => translation.targetLanguage));
+  const translatedTargetLanguages = successfulTranslations.map((translation) => translation.targetLanguage);
+  const missingTargetLanguages = requestedTargetLanguages.filter((target) => !translatedTargetLanguageSet.has(target));
 
   // Every caller checks LIVE status before starting this function, but the
   // translation batch above can take up to ~16s worst case (each language tries
@@ -53,7 +68,7 @@ export async function publishTranslatedCaption(
     throw new Error("This session is not live — captions can only be published while it is in progress.");
   }
 
-  await prisma.transcriptSegment.create({
+  const segment = await prisma.transcriptSegment.create({
     data: {
       sessionId: session.id,
       speakerId: input.speakerId,
@@ -63,11 +78,28 @@ export async function publishTranslatedCaption(
       endedAt: input.endedAt,
       isTyped: input.isTyped ?? false,
       translations: {
-        create: translations.filter(
-          (translation): translation is NonNullable<typeof translation> => translation !== null,
-        ),
+        create: successfulTranslations,
       },
     },
+  });
+  const persistedAtMs = captionLatencyNowMs();
+  logCaptionLatency({
+    sessionId: session.id,
+    segmentId: segment.id,
+    source: input.instrumentation?.source ?? (input.isTyped ? "typed-facilitator" : "browser-ws"),
+    sourceLanguage: input.language,
+    requestedTargetLanguages,
+    translatedTargetLanguages,
+    missingTargetLanguages,
+    translationProviders: Array.from(
+      new Set(
+        successfulTranslations.map((translation) => translation.provider),
+      ),
+    ),
+    audioSubmittedAtMs: input.instrumentation?.audioSubmittedAtMs,
+    originalCaptionReadyAtMs,
+    translationsCompleteAtMs,
+    persistedAtMs,
   });
 
   safeRevalidatePath(`/sessions/${session.id}/facilitator`);

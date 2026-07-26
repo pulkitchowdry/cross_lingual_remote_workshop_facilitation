@@ -93,6 +93,7 @@ export async function publishCaption(
       startedAt: now,
       endedAt: now,
       isTyped: true,
+      instrumentation: { source: "typed-facilitator" },
     });
   } catch (error) {
     // publishTranslatedCaption's own translation fan-out can take up to ~16s —
