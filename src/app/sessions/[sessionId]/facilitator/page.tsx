@@ -21,6 +21,14 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS } from "@/lib/confusion-level";
 import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
+import {
+  computeConfusionTrend,
+  computeParticipationFromGroups,
+  computeBlockerStats,
+  computeLanguageStats,
+  type FacilitatorAnalytics,
+} from "@/lib/facilitator-analytics";
+import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -68,8 +76,17 @@ export default async function FacilitatorSessionPage({
   // "10"), so the confusion badges' tooltip text below can never drift from the window
   // they're actually computed over.
   const confusionWindowMinutes = DEFAULT_CONFUSION_WINDOW_MS / 60_000;
-  const [session, activeActionItems, recentConfusionInsights, recentLearnerQuestions, messageCount, questionCount] =
-    await Promise.all([
+  const [
+    session,
+    activeActionItems,
+    recentConfusionInsights,
+    recentLearnerQuestions,
+    messageCount,
+    questionCount,
+    allBlockerInsights,
+    allMessagesForParticipation,
+    allConfusionInsights,
+  ] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
@@ -137,6 +154,23 @@ export default async function FacilitatorSessionPage({
     // whatever fits in the chat panel's most-recent page.
     prisma.message.count({ where: { sessionId } }),
     prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
+    prisma.insight.findMany({
+      where: { sessionId, type: "BLOCKER" },
+      select: { status: true, createdAt: true },
+    }),
+    prisma.message.groupBy({
+      by: ["senderId", "kind", "isAnonymous"],
+      where: { sessionId },
+      _count: true,
+    }),
+    // Unbounded by time (unlike recentConfusionInsights above, which is scoped to the
+    // last DEFAULT_CONFUSION_WINDOW_MS for the live group-confusion gauge) — the
+    // confusion *trend* buckets the whole session from start to now, so feeding it a
+    // 10-minute-windowed query would leave every earlier bucket permanently empty.
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION" },
+      select: { createdAt: true },
+    }),
   ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
@@ -163,9 +197,58 @@ export default async function FacilitatorSessionPage({
     session.participants.map((participant) => [participant.userId, participant.user.displayName]),
   );
 
+  const analytics: FacilitatorAnalytics = {
+    // Fed allConfusionInsights (unbounded), not confusionTimestamps (10-minute-windowed,
+    // used only for the live gauge above) — and once the session has ended, `now` is
+    // pinned to session.endedAt so the trend stops growing empty buckets on every
+    // subsequent page load.
+    confusionTrend: computeConfusionTrend(
+      allConfusionInsights.map((item) => item.createdAt),
+      session.startedAt ?? session.createdAt,
+      session.status === SessionStatus.ENDED ? (session.endedAt ?? new Date()) : new Date(),
+    ),
+    participation: computeParticipationFromGroups(
+      allMessagesForParticipation,
+      session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
+    ),
+    blockers: computeBlockerStats(
+      allBlockerInsights.map((item) => ({ ...item, type: "BLOCKER", resolvedAt: null })),
+    ),
+    languages: computeLanguageStats(
+      session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
+    ),
+  };
+
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
   const commonDict = getDictionary(lang).common;
+  // AnalyticsDrawer is a "use client" component — RSC cannot serialize functions across
+  // that prop boundary, so the formatter functions on `dict` (analyticsParticipationRow/
+  // analyticsBlockersSummary/analyticsLanguagesRow) must be called here, server-side, and
+  // only their plain-string return values passed down. Computed once and reused at both
+  // AnalyticsDrawer render sites below (LIVE and ENDED) rather than duplicated.
+  const analyticsLabels = {
+    analyticsDrawerLabel: dict.analyticsDrawerLabel,
+    analyticsDrawerOpen: dict.analyticsDrawerOpen,
+    analyticsDrawerClose: dict.analyticsDrawerClose,
+    analyticsConfusionTrendHeading: dict.analyticsConfusionTrendHeading,
+    analyticsParticipationHeading: dict.analyticsParticipationHeading,
+    analyticsBlockersHeading: dict.analyticsBlockersHeading,
+    analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
+    analyticsEmptyState: dict.analyticsEmptyState,
+    analyticsFrozenNotice: dict.analyticsFrozenNotice,
+  };
+  const analyticsParticipationRows = analytics.participation.map((entry) =>
+    dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount, entry.isAnonymousAny),
+  );
+  const analyticsBlockersSummary = dict.analyticsBlockersSummary(
+    analytics.blockers.raised,
+    analytics.blockers.resolved,
+    analytics.blockers.open,
+  );
+  const analyticsLanguageRows = analytics.languages.map((entry) =>
+    dict.analyticsLanguagesRow(entry.language, entry.translationCount),
+  );
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
   // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
   // above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N *most recent* segments — but
@@ -300,15 +383,25 @@ export default async function FacilitatorSessionPage({
         </span>
       </div>
       {session.status === SessionStatus.LIVE && (
-        <Card eyebrow={dict.workshopRoom} title={dict.liveAudioVideo} accent="var(--tick-high)">
-          <p className="text-muted-foreground">{dict.micCameraHint}</p>
-          <Link
-            href={`/sessions/${sessionId}/facilitator/room`}
-            className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
-          >
-            {getDictionary(lang).common.joinLiveSession}
-          </Link>
-        </Card>
+        <section className="flex flex-col gap-3">
+          <Card eyebrow={dict.workshopRoom} title={dict.liveAudioVideo} accent="var(--tick-high)">
+            <p className="text-muted-foreground">{dict.micCameraHint}</p>
+            <Link
+              href={`/sessions/${sessionId}/facilitator/room`}
+              className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+            >
+              {getDictionary(lang).common.joinLiveSession}
+            </Link>
+          </Card>
+          <AnalyticsDrawer
+            analytics={analytics}
+            isFrozen={false}
+            labels={analyticsLabels}
+            participationRows={analyticsParticipationRows}
+            blockersSummary={analyticsBlockersSummary}
+            languageRows={analyticsLanguageRows}
+          />
+        </section>
       )}
       {/* Once a session ends, the "join live session" card above stops rendering
           entirely (there's no live room left to join) — without a replacement here, the
@@ -354,6 +447,14 @@ export default async function FacilitatorSessionPage({
               )}
             </div>
           </Card>
+          <AnalyticsDrawer
+            analytics={analytics}
+            isFrozen={true}
+            labels={analyticsLabels}
+            participationRows={analyticsParticipationRows}
+            blockersSummary={analyticsBlockersSummary}
+            languageRows={analyticsLanguageRows}
+          />
           <SessionSidePanel
             chat={{
               messages: chatMessages,
