@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -27,9 +28,20 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * long-running process; oldest-inserted entries are evicted first (a `Map`'s
  * natural iteration order), not a true LRU, which is a fine tradeoff for how
  * infrequently this needs to evict anything in practice.
+ *
+ * The cache stores the in-flight `Promise`, not just its resolved value: two
+ * requests for the same (segment, language) arriving close together (two
+ * browser tabs, or a re-render re-triggering a fetch before the first
+ * resolves) both need to land on the SAME synthesis call rather than each
+ * kicking off (and paying for) their own. If that promise rejects, the entry
+ * is deleted so a transient synthesis failure doesn't permanently poison the
+ * cache for that key.
  */
 const MAX_CACHE_ENTRIES = 500;
-const audioCache = new Map<string, { audio: Uint8Array; mimeType: string }>();
+const audioCache = new Map<string, Promise<{ audio: Uint8Array; mimeType: string }>>();
+
+/** Distinguishes "provider returned no audio" from a thrown/rejected synthesize() call. */
+class NoAudioError extends Error {}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ segmentId: string }> }) {
   if (!textToSpeechProvider.isConfigured) {
@@ -54,51 +66,67 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
   }
 
-  const cacheKey = `${segmentId}:${language}`;
-  const cached = audioCache.get(cacheKey);
-  if (cached) {
-    return new Response(Buffer.from(cached.audio), {
-      headers: { "Content-Type": cached.mimeType, "Cache-Control": "private, max-age=3600" },
-    });
-  }
-
-  const text =
-    segment.language === language
-      ? segment.originalText
-      : segment.translations.find((translation) => translation.targetLanguage === language)?.text;
-  if (!text) {
-    return Response.json({ error: "No text available in the requested language." }, { status: 404 });
-  }
-
   const session = await prisma.session.findUnique({
     where: { id: segment.sessionId },
-    select: { translationMode: true },
+    select: { status: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true, translationMode: true },
   });
+  // Unlike every other route/page serving session content, this one had no retention
+  // check at all — an authorized facilitator/learner could keep re-synthesizing (and
+  // this process's own in-memory cache kept serving) a segment's audio indefinitely
+  // past the session's own "delete after N days" privacy choice, as long as the
+  // cleanup cron just hadn't physically deleted the row yet.
+  if (!session || isSessionRetentionExpired(session)) {
+    return Response.json({ error: "This session's data is no longer available." }, { status: 404 });
+  }
 
-  let speech;
+  const cacheKey = `${segmentId}:${language}`;
+  let synthesizing = audioCache.get(cacheKey);
+
+  if (!synthesizing) {
+    const text =
+      segment.language === language
+        ? segment.originalText
+        : segment.translations.find((translation) => translation.targetLanguage === language)?.text;
+    if (!text) {
+      return Response.json({ error: "No text available in the requested language." }, { status: 404 });
+    }
+
+    // Set the in-flight promise into the cache *before* awaiting anything, so a
+    // concurrent request for the same key (checked above) lands on this same
+    // promise instead of racing its own synthesize() call — see the module doc
+    // comment above.
+    synthesizing = textToSpeechProvider
+      .synthesize(text, language as SupportedLanguage, {
+        allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
+      })
+      .then((speech) => {
+        if (!speech) throw new NoAudioError();
+        return { audio: Buffer.from(speech.audio), mimeType: speech.mimeType };
+      });
+
+    if (audioCache.size >= MAX_CACHE_ENTRIES && !audioCache.has(cacheKey)) {
+      const oldestKey = audioCache.keys().next().value;
+      if (oldestKey !== undefined) audioCache.delete(oldestKey);
+    }
+    audioCache.set(cacheKey, synthesizing);
+    // A failed synthesis must not permanently poison the cache for this key —
+    // drop the entry so the next request retries instead of re-awaiting (and
+    // re-throwing) the same rejected promise forever.
+    synthesizing.catch(() => audioCache.delete(cacheKey));
+  }
+
+  let result;
   try {
-    speech = await textToSpeechProvider.synthesize(text, language as SupportedLanguage, {
-      // Fail closed (no cloud fallback) if `session` is unexpectedly gone —
-      // e.g. the retention-cleanup cron deleted it between this route's two
-      // queries — rather than defaulting a privacy gate to permissive.
-      allowCloudFallback: session !== null && session.translationMode !== "LOCAL_ONLY",
-    });
+    result = await synthesizing;
   } catch (error) {
+    if (error instanceof NoAudioError) {
+      return Response.json({ error: "Speech synthesis returned no audio." }, { status: 502 });
+    }
     console.error("textToSpeechProvider.synthesize failed", error);
     return Response.json({ error: "Speech synthesis failed." }, { status: 502 });
   }
-  if (!speech) {
-    return Response.json({ error: "Speech synthesis returned no audio." }, { status: 502 });
-  }
 
-  const audioBuffer = Buffer.from(speech.audio);
-  if (audioCache.size >= MAX_CACHE_ENTRIES && !audioCache.has(cacheKey)) {
-    const oldestKey = audioCache.keys().next().value;
-    if (oldestKey !== undefined) audioCache.delete(oldestKey);
-  }
-  audioCache.set(cacheKey, { audio: audioBuffer, mimeType: speech.mimeType });
-
-  return new Response(audioBuffer, {
-    headers: { "Content-Type": speech.mimeType, "Cache-Control": "private, max-age=3600" },
+  return new Response(Buffer.from(result.audio), {
+    headers: { "Content-Type": result.mimeType, "Cache-Control": "private, max-age=3600" },
   });
 }

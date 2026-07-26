@@ -18,11 +18,29 @@
   --accent-foreground: #f5f8ff;
   /* --accent is already high-contrast against dark surfaces at small text sizes. */
   --accent-text: var(--accent);
+  /* --accent itself, as a BUTTON FILL behind --accent-foreground text (every primary
+     CTA — Button.tsx's primary variant, ChatSendButton, RouteErrorFallback's retry,
+     "Start session", AppShell's own "Skip to main content" link), only reaches 3.73:1
+     against --accent-foreground — below WCAG AA's 4.5:1 minimum for normal-size text.
+     A separate, darker fill (this variable) fixes that pairing specifically, without
+     darkening --accent itself and regressing its other, already-passing uses (as text
+     color via --accent-text, and CopyLinkButton's hover:text-accent) against the dark
+     background. The other three themes' accent/accent-foreground pairing already
+     clears 4.5:1 as-is (verified), so they alias straight through unchanged. */
+  --accent-fill: #3f6bc2;
 
   /* Confidence ticks — coarse buckets, not fake-precise scores */
   --tick-high: #4fbf8f;
   --tick-medium: #d9a94a;
   --tick-low: #e2687a;
+
+  /* A dedicated fill for destructive-action buttons (ConfirmSubmitButton's "danger"
+     variant — End Session, Revoke Invite Link) — `--tick-low` is tuned for use as
+     small status/error TEXT against a dark surface (3.23:1 white-on-tick-low fails
+     WCAG AA as a button fill), not as a solid fill behind white button-label text.
+     One shared value across all four themes (paired with fixed white text, so the
+     surrounding theme's palette doesn't change what it needs to contrast against). */
+  --danger-fill: #b83a52;
 
   /* Per-speaker identity (Facilitator uses --accent instead, to read as a distinct role).
      Chosen to stay clearly outside the tick (green/gold/red) and accent (azure) hues. */
@@ -49,6 +67,9 @@
      colors body-sized text (buttons/borders keep using --accent directly —
      the 3:1 non-text minimum is unaffected). */
   --accent-text: #8a3f1f;
+  /* Unlike the default theme, --accent-as-button-fill already clears 4.5:1 against
+     --accent-foreground here (~4.55:1) — no separate fill color needed. */
+  --accent-fill: var(--accent);
 
   --tick-high: #3f7d52;
   --tick-medium: #9c7a1f;
@@ -73,6 +94,8 @@
   --accent: #d97a4a;
   --accent-foreground: #171310;
   --accent-text: var(--accent);
+  /* Already clears 4.5:1 against --accent-foreground (~6.0:1) — no separate fill needed. */
+  --accent-fill: var(--accent);
 
   --tick-high: #6fb37f;
   --tick-medium: #d1a53f;
@@ -97,6 +120,8 @@
   --accent: #cf9a4a;
   --accent-foreground: #241f19;
   --accent-text: var(--accent);
+  /* Already clears 4.5:1 against --accent-foreground (~6.5:1) — no separate fill needed. */
+  --accent-fill: var(--accent);
 
   --tick-high: #7bb98a;
   --tick-medium: #c2a53f;
@@ -132,6 +157,18 @@
   --tick-low: #ff8595;
 }
 
+/* Only the default (Slate Night — no data-theme attribute set) theme's --accent-fill
+   needs a high-contrast boost: it's the one theme whose base value was tuned to just
+   clear WCAG AA (4.5:1) rather than sail past it. ink-copper/warm-dusk already clear
+   AA comfortably at their own base value, and their --accent-fill aliases straight to
+   each theme's own orange/gold --accent — overriding it here with this blue value (as
+   the old shared-block approach would have) would replace it with a color mismatched
+   to either theme's palette. `:not([data-theme])` keeps this scoped to Slate Night
+   only, same specificity trick the theme blocks above already use. */
+:root[data-contrast="high"]:not([data-theme]) {
+  --accent-fill: #2a4f96;
+}
+
 :root[data-theme="beige"][data-contrast="high"] {
   --border-subtle: rgba(43, 36, 24, 0.35);
   --border-strong: rgba(43, 36, 24, 0.6);
@@ -150,7 +187,9 @@
   --color-border-strong: var(--border-strong);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
   --color-accent-foreground: var(--accent-foreground);
+  --color-danger-fill: var(--danger-fill);
   --font-sans: var(--font-body);
   --font-heading: var(--font-heading);
   --font-mono: var(--font-data);
@@ -182,4 +221,52 @@ body {
 
 .animate-live-pulse {
   animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* A remote participant's <video> (camera or screen share — both share this
+   class, `.lk-participant-media-video`, from @livekit/components-styles) can
+   render solid black on first subscribe even though the track is decoding
+   correctly — confirmed live: `getImageData()` on the "black" element read
+   back real, non-black pixels, and forcing the element onto its own GPU
+   compositing layer fixed the on-screen render instantly with no other
+   change. This is a Chromium/Linux compositor race (the element isn't
+   promoted to a hardware layer in time for its first decoded frame), not an
+   app bug — `will-change` hints the promotion from first paint, before any
+   frame arrives, instead of leaving it to chance. No visual side effect
+   (unlike `transform`, it doesn't need a value that could conflict with the
+   local-camera mirror rule below). */
+.lk-participant-media-video {
+  will-change: transform;
+}
+
+/* Covers the OTHER black-video/screen-share cause (see LiveSessionRoom.tsx's
+   stageRef effect, which toggles this attribute): a track that's subscribed
+   but has no decoded frame yet (WebRTC's own transient "muted" state, before
+   the first keyframe arrives) is indistinguishable from a working video until
+   the spinner below tells the other party it's still connecting instead of
+   silently leaving them looking at a solid black tile. */
+.lk-participant-tile[data-video-loading] .lk-participant-media-video {
+  opacity: 0.001;
+}
+
+.lk-participant-tile[data-video-loading]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.875rem 0 0 -0.875rem;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: lk-video-loading-spin 0.8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes lk-video-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

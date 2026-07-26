@@ -1,5 +1,5 @@
 /**
- * Two specific, known-benign `console.error` calls that Next's dev-mode
+ * Three specific, known-benign `console.error` calls that Next's dev-mode
  * console interception (`intercept-console-error.ts`) promotes to a
  * full-page "Console Error" overlay indistinguishable from an actual crash —
  * each already investigated and confirmed self-recovering, not fixable by
@@ -32,7 +32,20 @@
  *    wrapped for Next's runtime), so the identical warning fires regardless
  *    of which of the two renders it.
  *
- * Both are patched narrowly, by exact message text, rather than broadly —
+ * 3. "Error while running updatePages(): " — @livekit/components-react's
+ *    internal `useVisualStableUpdate` hook (used by `GridLayout`/
+ *    `CarouselLayout` to avoid jarring tile reshuffles) reconciles the
+ *    previous vs. next track-reference array by swapping elements in place;
+ *    when a placeholder tile is replaced by its real track in the same tick
+ *    as another tile's add/remove, its own bookkeeping can look up a stale
+ *    id and throw "Element not part of the array: ...". The hook already
+ *    wraps this in its own try/catch (`node_modules/@livekit/components-
+ *    react/dist/hooks-*.mjs`) and falls back to plain sorted order on catch
+ *    — confirmed non-fatal, just a lost "stable" reorder for that one
+ *    render, logged via `loglevel`'s `console.error` (hence needing this
+ *    filter, same as the other two).
+ *
+ * All three are patched narrowly, by exact message text, rather than broadly —
  * every other `console.error` call (including a real LiveKit publish
  * failure, or a real React warning) still reaches the console/overlay
  * unchanged.
@@ -40,6 +53,7 @@
 const BENIGN_MESSAGES = [
   "could not determine track dimensions, using defaults",
   "Encountered a script tag while rendering React component.",
+  "Error while running updatePages(): ",
 ];
 
 export function wrapConsoleError(original: typeof console.error, debug: typeof console.debug): typeof console.error {

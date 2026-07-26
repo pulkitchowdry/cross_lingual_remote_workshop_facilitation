@@ -37,8 +37,19 @@ export async function createSession(formData: FormData) {
   const sourceLanguage = languageFrom(formData, "sourceLanguage");
   const retentionDays = Number(formData.get("retentionDays"));
 
-  if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 30) {
-    throw new Error("Choose a retention period between 1 and 30 days.");
+  // Was `Number.isInteger(...) && >= 1` (whole days only) — a facilitator had no way to
+  // pick a short-enough window to actually verify the cleanup cron deletes a session's
+  // data on schedule without waiting a full day. `retentionDays` is a Float column now
+  // (see the matching Prisma migration) specifically so SetupForm can offer sub-day
+  // presets (5 minutes, 1 hour) alongside the original day/week/month options. The floor
+  // is set to 4 minutes, not 5 — SetupForm's "5 minutes" option value is a truncated
+  // decimal string (JS floats can't exactly represent 5/1440), and comparing it directly
+  // against a from-scratch `5 / (24 * 60)` here would reject that exact option due to
+  // floating-point rounding landing a hair under the boundary. A 1-minute margin avoids
+  // that razor's edge without changing what's actually enforced in practice.
+  const MIN_RETENTION_DAYS = 4 / (24 * 60); // 4 minutes — headroom below the "5 minutes" option
+  if (!Number.isFinite(retentionDays) || retentionDays < MIN_RETENTION_DAYS || retentionDays > 30) {
+    throw new Error("Choose a retention period between 5 minutes and 30 days.");
   }
 
   const strictPrivacy = formData.get("strictPrivacy") === "on";

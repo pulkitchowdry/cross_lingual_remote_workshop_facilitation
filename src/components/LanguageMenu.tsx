@@ -20,10 +20,15 @@ export function LanguageMenu({
   current,
   languages = SUPPORTED_LANGUAGES,
   onSelect,
+  slotId = HEADER_SLOT_ID,
 }: {
   current: SupportedLanguage;
   languages?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   onSelect: (lang: SupportedLanguage) => Promise<void>;
+  /** Portal target id — defaults to AppShell's header slot. The meeting room's own
+   * header (hidden behind AppShell's, since the room takes over the full viewport)
+   * passes its own local slot id instead. */
+  slotId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -44,8 +49,8 @@ export function LanguageMenu({
     // comment above) and stores the result; it isn't state that could be computed
     // during render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSlot(document.getElementById(HEADER_SLOT_ID));
-  }, []);
+    setSlot(document.getElementById(slotId));
+  }, [slotId]);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -95,11 +100,26 @@ export function LanguageMenu({
       // focus wherever the user actually clicked, not wherever the menu used to be.
       triggerRef.current?.focus();
     }
+    // Tabbing away is a keyboard-only exit that neither `handlePointerDown` (no mouse
+    // event fires) nor `handleKeyDown` (Tab isn't Escape) catches, so without this the
+    // listbox would stay open — and `aria-expanded` stuck `true` — after focus moves on.
+    // `focusout` bubbles (unlike `blur`), so listening on the container catches focus
+    // leaving any descendant. Check `relatedTarget` (the element gaining focus) against
+    // the container so Tabbing *within* the menu (e.g. into the listbox itself) doesn't
+    // prematurely close it — mirrors `handlePointerDown`'s outside-target check above.
+    function handleFocusOut(event: FocusEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.relatedTarget as Node)) {
+        setOpen(false);
+      }
+    }
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
+    containerRef.current?.addEventListener("focusout", handleFocusOut);
+    const container = containerRef.current;
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
+      container?.removeEventListener("focusout", handleFocusOut);
     };
   }, [open, current, languages]);
 

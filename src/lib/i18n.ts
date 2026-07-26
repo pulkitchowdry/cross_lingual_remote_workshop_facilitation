@@ -39,6 +39,8 @@ export interface Dictionary {
     workshopGoal: string;
     workshopGoalPlaceholder: string;
     retention: string;
+    retentionMinutes: string;
+    retentionHour: string;
     retentionDay: string;
     retentionWeek: string;
     retentionMonth: string;
@@ -61,6 +63,8 @@ export interface Dictionary {
     statusEnded: string;
     startSession: string;
     endSession: string;
+    confirmEndSessionTitle: string;
+    confirmEndSessionBody: string;
     logOut: string;
     learnersJoinedCard: string;
     learnersJoinedHint: string;
@@ -69,18 +73,27 @@ export interface Dictionary {
     micCameraHint: string;
     captionLabel: string;
     captionPlaceholder: string;
+    captionAudioHint: string;
     publish: string;
     publishing: string;
     actNow: string;
     blocker: string;
+    confusion: string;
+    confusionLevelSome: (count: number) => string;
+    confusionLevelHigh: (count: number) => string;
     resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
     waitingToStart: string;
     noInterventionHintWaiting: string;
+    insightsNotConfigured: string;
     languageChangeLiveWarning: string;
     liveTranscript: string;
     transcriptEmpty: string;
+    currentLesson: string;
+    activity: string;
+    decision: string;
+    noRecentActivity: string;
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
@@ -89,31 +102,67 @@ export interface Dictionary {
     linkCopied: string;
     copyFailed: string;
     revokeInvite: string;
+    confirmRevokeInviteTitle: string;
+    confirmRevokeInviteBody: string;
     linkMissingMsg: string;
     qrAlt: string;
+    sessionEndedHeading: string;
+    sessionEndedSummary: string;
+    /** The one-shot, end-of-session AI narrative (Session.summary — see insights.ts's
+     * generateAndPersistSessionSummary) is plain text, not structured data — these three
+     * cover its only three render states: not yet generated (still LIVE-adjacent),
+     * generated, or never available (no INSIGHT_MODEL_API_KEY / generation failed). */
+    sessionSummaryHeading: string;
+    sessionSummaryPending: string;
+    sessionSummaryUnavailable: string;
+    /** Deterministic participation stats shown above the AI narrative — computed
+     * synchronously from already-fetched data, so they render immediately even while
+     * session.summary is still pending or unconfigured. */
+    sessionSummaryDuration: (minutes: number) => string;
+    sessionSummaryMessages: string;
+    sessionSummaryQuestions: string;
+    sessionSummaryMisunderstoodTopics: string;
   };
   learner: {
     welcome: (name: string) => string;
     subtitle: string;
     preferencesCard: string;
     preferredLanguageLabel: string;
-    liveCaptions: string;
-    followExplanation: string;
-    sessionEnded: string;
-    waitingForFacilitator: string;
-    captionStream: string;
     captionsWillAppear: string;
     playTranslatedAudio: string;
+    typedCaptionsAlwaysAudible: string;
     audioBlocked: string;
     audioSkipped: string;
+    captionComposerLabel: string;
+    captionComposerPlaceholder: string;
+    captionAudioHint: string;
+    publish: string;
+    publishing: string;
+    explainSimply: string;
+    giveExample: string;
+    explainSimplyQuestion: (caption: string) => string;
+    giveExampleQuestion: (caption: string) => string;
+    sessionEndedHeading: string;
+    sessionEndedSummary: string;
   };
   chat: {
-    translatedChat: string;
     noMessages: string;
     question: string;
     sendMessageLabel: string;
     placeholder: string;
     flagQuestion: string;
+    askAnonymously: string;
+    anonymousLearner: string;
+    anonymousBadge: string;
+    privateBadge: string;
+    messageFacilitatorPrivately: string;
+    publicMode: string;
+    privateModeToFacilitator: string;
+    privateModeTo: (name: string) => string;
+    returnToPublic: string;
+    recipientLabel: string;
+    everyone: string;
+    replyPrivately: string;
     send: string;
     sending: string;
   };
@@ -136,11 +185,14 @@ export interface Dictionary {
     selectMicrophone: string;
     selectCamera: string;
     leaveCall: string;
+    toggleCaptions: string;
     screenShareInterrupted: string;
     disconnectedDuplicate: string;
     disconnectedOther: string;
     mediaDeviceError: string;
-    reload: string;
+    cameraUnavailable: string;
+    microphoneUnavailable: string;
+    rejoin: string;
   };
   meeting: {
     raisedHandTitle: (name: string) => string;
@@ -185,6 +237,11 @@ export interface Dictionary {
     liveNowTitle: string;
     liveNowHint: string;
     joinLiveSession: string;
+    confirm: string;
+    cancel: string;
+    jumpToLatest: string;
+    chatTab: string;
+    captionsTab: string;
   };
   notFound: {
     title: string;
@@ -222,13 +279,15 @@ const en: Dictionary = {
     workshopGoal: "Workshop goal",
     workshopGoalPlaceholder: "e.g. Implement a working REST endpoint for user signup, including input validation.",
     retention: "Transcript retention",
+    retentionMinutes: "Delete after 5 minutes (testing)",
+    retentionHour: "Delete after 1 hour",
     retentionDay: "Delete after 1 day",
     retentionWeek: "Delete after 7 days",
     retentionMonth: "Delete after 30 days",
     privacyNote: "You'll receive a private learner link after creating the session. Live audio is not recorded by default.",
     strictPrivacyLabel: "Strict privacy mode",
     strictPrivacyHint:
-      "Nothing is ever sent to Claude or another cloud translation provider — audio and text stay on this server. This requires a local-inference server to be configured; if none is set up (the default for local testing), captions and translations will show as unavailable for the whole session instead of using the cloud, not just when the network is unreliable.",
+      "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
   },
   join: {
@@ -236,7 +295,7 @@ const en: Dictionary = {
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
     yourName: "Your name",
     consent:
-      "I agree to speech and text being processed to provide live captions, translation, and facilitator support for this session. Raw audio is not stored by default. My camera and microphone will join the workshop room live as soon as I enter (visible/audible to other participants) — my microphone starts muted, and I can turn my camera off at any time.",
+      "I agree to speech and text being processed for live captions, translation, and facilitator support. Raw audio isn't stored by default. My camera and mic join live as soon as I enter — mic starts muted, camera can be turned off anytime.",
     submit: "Join session",
     submitting: "Joining…",
   },
@@ -246,6 +305,8 @@ const en: Dictionary = {
     statusEnded: "ended",
     startSession: "Start session",
     endSession: "End session",
+    confirmEndSessionTitle: "End this session?",
+    confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
     logOut: "Log out",
     learnersJoinedCard: "Learners joined",
     learnersJoinedHint: "Learners have completed consent and joined.",
@@ -254,18 +315,27 @@ const en: Dictionary = {
     micCameraHint: "Your camera joins live; your microphone starts muted — click the microphone icon below to turn it on.",
     captionLabel: "Type a caption for learners",
     captionPlaceholder: "Type a caption for learners in their selected language…",
+    captionAudioHint: "Read aloud to every learner in their language, even if they haven't turned on translated audio.",
     publish: "Publish",
     publishing: "Publishing…",
     actNow: "Act now",
     blocker: "Blocker",
+    confusion: "Possible confusion",
+    confusionLevelSome: (count) => `Some confusion (${count})`,
+    confusionLevelHigh: (count) => `High confusion (${count})`,
     resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
-    noInterventionHintOnTrack: "The group's discussion looks on track — no blockers detected yet.",
+    noInterventionHintOnTrack: "The group's discussion looks on track — no blockers or confusion detected yet.",
     waitingToStart: "Waiting to begin",
     noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
+    insightsNotConfigured: "Automatic insight detection isn't configured for this session — nothing here is analyzed. Use the typed caption/chat tools to follow along manually.",
     languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
+    currentLesson: "Current lesson",
+    activity: "Activity",
+    decision: "Decision",
+    noRecentActivity: "No activity or decisions noted yet.",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
@@ -274,31 +344,60 @@ const en: Dictionary = {
     linkCopied: "Copied!",
     copyFailed: "Couldn't copy the link. Select and copy it manually instead.",
     revokeInvite: "Revoke invite link",
+    confirmRevokeInviteTitle: "Revoke this invite link?",
+    confirmRevokeInviteBody: "Anyone who hasn't joined yet will no longer be able to use this link.",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
+    sessionEndedHeading: "Session transcript",
+    sessionEndedSummary: "This session has ended. The video room is closed, but the full transcript and chat history below remain available until the session's retention period expires.",
+    sessionSummaryHeading: "AI session summary",
+    sessionSummaryPending: "Generating a summary of this session…",
+    sessionSummaryUnavailable: "No AI summary is available for this session.",
+    sessionSummaryDuration: (minutes) => `${minutes} min`,
+    sessionSummaryMessages: "Messages",
+    sessionSummaryQuestions: "Questions",
+    sessionSummaryMisunderstoodTopics: "Misunderstood topics",
   },
   learner: {
     welcome: (name) => `Welcome, ${name}`,
     subtitle: "Your captions and facilitator replies will appear in your selected language.",
     preferencesCard: "Your learning preferences",
     preferredLanguageLabel: "Preferred language:",
-    liveCaptions: "Live captions",
-    followExplanation: "Follow the explanation in your language",
-    sessionEnded: "Session ended",
-    waitingForFacilitator: "Waiting for the facilitator to start",
-    captionStream: "Caption stream",
     captionsWillAppear: "Captions will appear here as soon as the facilitator starts speaking.",
     playTranslatedAudio: "Play translated audio for new captions",
+    typedCaptionsAlwaysAudible: "The facilitator's typed captions are always read aloud, even if this is off.",
     audioBlocked: "Translated audio playback was blocked by the browser.",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
+    captionComposerLabel: "Type a caption for everyone",
+    captionComposerPlaceholder: "Type something to be read aloud to everyone…",
+    captionAudioHint: "Read aloud to everyone in their language, even if they haven't turned on translated audio — useful if you can't speak.",
+    publish: "Publish",
+    publishing: "Publishing…",
+    explainSimply: "Explain simply",
+    giveExample: "Give an example",
+    explainSimplyQuestion: (caption) => `Please explain this simply: "${caption}"`,
+    giveExampleQuestion: (caption) => `Please give an example for this: "${caption}"`,
+    sessionEndedHeading: "This session has ended",
+    sessionEndedSummary: "The facilitator ended this session. You can still review the transcript and chat history below until it's automatically deleted per this session's retention setting.",
   },
   chat: {
-    translatedChat: "Translated chat",
     noMessages: "No messages yet. Say hello or ask for help.",
     question: "Question",
     sendMessageLabel: "Send a message",
     placeholder: "Write in your own language…",
     flagQuestion: "Flag as a question for the facilitator",
+    askAnonymously: "Ask anonymously",
+    anonymousLearner: "Anonymous learner",
+    anonymousBadge: "Anonymous",
+    privateBadge: "Private",
+    messageFacilitatorPrivately: "Message facilitator privately",
+    publicMode: "Public chat",
+    privateModeToFacilitator: "Private to facilitator",
+    privateModeTo: (name) => `Private to ${name}`,
+    returnToPublic: "Return to public",
+    recipientLabel: "Send to",
+    everyone: "Everyone",
+    replyPrivately: "Reply privately",
     send: "Send",
     sending: "Sending…",
   },
@@ -307,9 +406,9 @@ const en: Dictionary = {
     stop: "Stop live captions",
     agentCapturing: "Live captions are already running from your mic",
     connectionFailed:
-      "Live caption connection failed. Use the typed caption box above instead.",
+      "Live captions disconnected. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
     connectionBlocked:
-      "Couldn't open the live caption connection. Try unmuting your microphone in the video room instead — captions will start automatically. You can also use the typed caption box above.",
+      "Live captions couldn't connect. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -323,11 +422,14 @@ const en: Dictionary = {
     selectMicrophone: "Select microphone",
     selectCamera: "Select camera",
     leaveCall: "Leave call",
+    toggleCaptions: "Toggle captions",
     screenShareInterrupted: "Your screen share was interrupted by a reconnect — click Share screen again to resume.",
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    reload: "Reload",
+    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
+    microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
+    rejoin: "Rejoin",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} raised their hand`,
@@ -372,6 +474,11 @@ const en: Dictionary = {
     liveNowTitle: "Live now",
     liveNowHint: "The workshop room is live. Join to see and hear the group.",
     joinLiveSession: "Join live session",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    jumpToLatest: "Jump to latest",
+    chatTab: "Chat",
+    captionsTab: "Captions",
   },
   notFound: {
     title: "Link not found",
@@ -408,13 +515,15 @@ const zh: Dictionary = {
     workshopGoal: "工作坊目标",
     workshopGoalPlaceholder: "例如：实现一个可用的用户注册 REST 接口，并包含输入校验。",
     retention: "转录保留时长",
+    retentionMinutes: "5 分钟后删除（测试用）",
+    retentionHour: "1 小时后删除",
     retentionDay: "1 天后删除",
     retentionWeek: "7 天后删除",
     retentionMonth: "30 天后删除",
     privacyNote: "创建场次后，你会收到一个学员专属链接。默认不会保存实时录音。",
     strictPrivacyLabel: "严格隐私模式",
     strictPrivacyHint:
-      "绝不会将音频或文本发送给 Claude 或其他云端翻译服务——数据始终留在本服务器上。此选项需要配置本地推理服务器；如果未配置（本地测试的默认情况），整场活动的字幕和翻译都会显示为不可用，而不仅仅是网络不稳定时才会如此。",
+      "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
   },
   join: {
@@ -422,7 +531,7 @@ const zh: Dictionary = {
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
     yourName: "你的姓名",
     consent:
-      "我同意为提供本场次的实时字幕、翻译及主持人协助而处理我的语音与文字。默认不会保存原始音频。进入后我的摄像头和麦克风会立即接入活动室（其他参与者可以看到/听到）——麦克风默认静音，摄像头可随时关闭。",
+      "我同意为提供实时字幕、翻译及主持人协助而处理我的语音与文字。默认不保存原始音频。进入后摄像头和麦克风立即接入——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
     submitting: "加入中……",
   },
@@ -432,6 +541,8 @@ const zh: Dictionary = {
     statusEnded: "已结束",
     startSession: "开始场次",
     endSession: "结束场次",
+    confirmEndSessionTitle: "确定要结束此场次吗？",
+    confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
     logOut: "退出登录",
     learnersJoinedCard: "已加入学员",
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
@@ -440,18 +551,27 @@ const zh: Dictionary = {
     micCameraHint: "你的摄像头会立即接入；麦克风默认静音——点击下方麦克风图标可开启。",
     captionLabel: "为学员输入字幕",
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
+    captionAudioHint: "会以每位学员的语言朗读给他们听，即使他们未开启翻译语音。",
     publish: "发布",
     publishing: "发布中……",
     actNow: "立即处理",
     blocker: "障碍",
+    confusion: "可能存在困惑",
+    confusionLevelSome: (count) => `一些困惑 (${count})`,
+    confusionLevelHigh: (count) => `困惑较多 (${count})`,
     resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
-    noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍。",
+    noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍或困惑。",
     waitingToStart: "等待开始",
     noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
+    insightsNotConfigured: "此场次未配置自动洞察检测——此处内容不会被分析。请改用手动输入字幕/聊天工具跟进。",
     languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
+    currentLesson: "当前课程",
+    activity: "动态",
+    decision: "决定",
+    noRecentActivity: "暂无记录的动态或决定。",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
@@ -460,31 +580,60 @@ const zh: Dictionary = {
     linkCopied: "已复制！",
     copyFailed: "复制链接失败，请手动选择并复制。",
     revokeInvite: "撤销邀请链接",
+    confirmRevokeInviteTitle: "确定要撤销此邀请链接吗？",
+    confirmRevokeInviteBody: "尚未加入的人将无法再使用此链接。",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
+    sessionEndedHeading: "场次转录记录",
+    sessionEndedSummary: "此场次已结束。视频会议室已关闭，但以下完整转录和聊天记录会保留，直到该场次的保留期限到期为止。",
+    sessionSummaryHeading: "AI 场次摘要",
+    sessionSummaryPending: "正在生成此场次的摘要……",
+    sessionSummaryUnavailable: "此场次暂无 AI 摘要。",
+    sessionSummaryDuration: (minutes) => `${minutes} 分钟`,
+    sessionSummaryMessages: "消息数",
+    sessionSummaryQuestions: "提问数",
+    sessionSummaryMisunderstoodTopics: "未理解的主题",
   },
   learner: {
     welcome: (name) => `欢迎，${name}`,
     subtitle: "字幕与主持人回复都会以你所选的语言显示。",
     preferencesCard: "你的学习偏好",
     preferredLanguageLabel: "偏好语言：",
-    liveCaptions: "实时字幕",
-    followExplanation: "以你的语言跟随讲解",
-    sessionEnded: "场次已结束",
-    waitingForFacilitator: "等待主持人开始",
-    captionStream: "字幕流",
     captionsWillAppear: "主持人开始发言后，字幕会显示在这里。",
     playTranslatedAudio: "为新字幕播放翻译语音",
+    typedCaptionsAlwaysAudible: "主持人输入的字幕始终会朗读，即使此项关闭。",
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
+    captionComposerLabel: "为所有人输入字幕",
+    captionComposerPlaceholder: "输入内容，将朗读给所有人听……",
+    captionAudioHint: "会以每个人的语言朗读给他们听，即使他们未开启翻译语音——适合无法说话时使用。",
+    publish: "发布",
+    publishing: "发布中……",
+    explainSimply: "简单解释",
+    giveExample: "举个例子",
+    explainSimplyQuestion: (caption) => `请用简单的话解释这段字幕：“${caption}”`,
+    giveExampleQuestion: (caption) => `请针对这段字幕举一个例子：“${caption}”`,
+    sessionEndedHeading: "此场次已结束",
+    sessionEndedSummary: "主持人已结束此场次。你仍可在下方查看转录记录和聊天记录，直到根据此场次的保留设置被自动删除为止。",
   },
   chat: {
-    translatedChat: "翻译聊天",
     noMessages: "暂无消息。打个招呼或提出问题吧。",
     question: "提问",
     sendMessageLabel: "发送消息",
     placeholder: "用你自己的语言书写……",
     flagQuestion: "标记为向主持人提出的问题",
+    askAnonymously: "匿名提问",
+    anonymousLearner: "匿名学员",
+    anonymousBadge: "匿名",
+    privateBadge: "私密",
+    messageFacilitatorPrivately: "私信主持人",
+    publicMode: "公开聊天",
+    privateModeToFacilitator: "私信主持人",
+    privateModeTo: (name) => `私信 ${name}`,
+    returnToPublic: "返回公开",
+    recipientLabel: "发送给",
+    everyone: "所有人",
+    replyPrivately: "私密回复",
     send: "发送",
     sending: "发送中……",
   },
@@ -493,9 +642,9 @@ const zh: Dictionary = {
     stop: "停止实时字幕",
     agentCapturing: "已在通过你的麦克风自动生成实时字幕",
     connectionFailed:
-      "实时字幕连接失败。请改用上方的手动输入字幕框。",
+      "实时字幕连接已断开。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
     connectionBlocked:
-      "无法建立实时字幕连接。可以改为在视频通话中开启麦克风——字幕会自动开始生成。你也可以改用上方的手动输入字幕框。",
+      "实时字幕未能连接。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -509,11 +658,14 @@ const zh: Dictionary = {
     selectMicrophone: "选择麦克风",
     selectCamera: "选择摄像头",
     leaveCall: "离开通话",
+    toggleCaptions: "开关字幕",
     screenShareInterrupted: "屏幕共享因重新连接而中断——请点击“共享屏幕”以恢复。",
     disconnectedDuplicate: "你已断开连接，因为此链接同时在另一个标签页或窗口中被打开。",
     disconnectedOther: "你已从媒体房间断开连接。",
     mediaDeviceError: "麦克风或摄像头出现问题。",
-    reload: "重新加载",
+    cameraUnavailable: "摄像头不可用（权限被拒绝、被占用或未找到）——将不使用摄像头继续。你仍可以只用音频加入。",
+    microphoneUnavailable: "麦克风不可用（权限被拒绝、被占用或未找到）——将不使用麦克风继续。",
+    rejoin: "重新加入",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} 举手了`,
@@ -558,6 +710,11 @@ const zh: Dictionary = {
     liveNowTitle: "正在直播",
     liveNowHint: "活动室已开始直播。加入即可看到并听到大家。",
     joinLiveSession: "加入直播会议",
+    confirm: "确认",
+    cancel: "取消",
+    jumpToLatest: "跳到最新",
+    chatTab: "聊天",
+    captionsTab: "字幕",
   },
   notFound: {
     title: "未找到该链接",
@@ -595,13 +752,15 @@ const es: Dictionary = {
     workshopGoal: "Objetivo del taller",
     workshopGoalPlaceholder: "p. ej. Implementar un endpoint REST funcional para el registro de usuarios, con validación de datos.",
     retention: "Retención de la transcripción",
+    retentionMinutes: "Eliminar después de 5 minutos (prueba)",
+    retentionHour: "Eliminar después de 1 hora",
     retentionDay: "Eliminar después de 1 día",
     retentionWeek: "Eliminar después de 7 días",
     retentionMonth: "Eliminar después de 30 días",
     privacyNote: "Recibirás un enlace privado para alumnos después de crear la sesión. El audio en vivo no se graba de forma predeterminada.",
     strictPrivacyLabel: "Modo de privacidad estricto",
     strictPrivacyHint:
-      "Nunca se envía audio ni texto a Claude ni a otro proveedor de traducción en la nube: todo permanece en este servidor. Esto requiere un servidor de inferencia local configurado; si no hay uno (lo habitual en pruebas locales), los subtítulos y traducciones se mostrarán como no disponibles durante toda la sesión, no solo cuando la red falle.",
+      "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
   },
   join: {
@@ -609,7 +768,7 @@ const es: Dictionary = {
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
     yourName: "Tu nombre",
     consent:
-      "Acepto que mi voz y mi texto se procesen para ofrecer subtítulos en vivo, traducción y apoyo del facilitador durante esta sesión. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán a la sala del taller en vivo en cuanto entre (visible/audible para el resto de participantes) — mi micrófono empieza silenciado y puedo apagar mi cámara en cualquier momento.",
+      "Acepto que mi voz y texto se procesen para subtítulos en vivo, traducción y apoyo del facilitador. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectan en vivo en cuanto entro — el micrófono empieza silenciado y puedo apagar la cámara en cualquier momento.",
     submit: "Unirse a la sesión",
     submitting: "Uniéndote…",
   },
@@ -619,6 +778,8 @@ const es: Dictionary = {
     statusEnded: "finalizada",
     startSession: "Iniciar sesión",
     endSession: "Finalizar sesión",
+    confirmEndSessionTitle: "¿Finalizar esta sesión?",
+    confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
     logOut: "Cerrar sesión",
     learnersJoinedCard: "Alumnos conectados",
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
@@ -627,18 +788,27 @@ const es: Dictionary = {
     micCameraHint: "Tu cámara se conecta en vivo; tu micrófono empieza silenciado — haz clic en el ícono de micrófono para activarlo.",
     captionLabel: "Escribe un subtítulo para los alumnos",
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
+    captionAudioHint: "Se leerá en voz alta a cada alumno en su idioma, aunque no hayan activado el audio traducido.",
     publish: "Publicar",
     publishing: "Publicando…",
     actNow: "Actuar ahora",
     blocker: "Bloqueo",
+    confusion: "Posible confusión",
+    confusionLevelSome: (count) => `Algo de confusión (${count})`,
+    confusionLevelHigh: (count) => `Mucha confusión (${count})`,
     resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
-    noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos.",
+    noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos ni confusión.",
     waitingToStart: "Esperando para comenzar",
     noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
+    insightsNotConfigured: "La detección automática de información no está configurada para esta sesión — nada aquí se analiza. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
     languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
+    currentLesson: "Lección actual",
+    activity: "Actividad",
+    decision: "Decisión",
+    noRecentActivity: "Aún no se ha registrado actividad ni decisiones.",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
@@ -647,31 +817,60 @@ const es: Dictionary = {
     linkCopied: "¡Copiado!",
     copyFailed: "No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.",
     revokeInvite: "Revocar enlace de invitación",
+    confirmRevokeInviteTitle: "¿Revocar este enlace de invitación?",
+    confirmRevokeInviteBody: "Quienes aún no se hayan unido ya no podrán usar este enlace.",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",
+    sessionEndedHeading: "Transcripción de la sesión",
+    sessionEndedSummary: "Esta sesión ha finalizado. La sala de video está cerrada, pero la transcripción completa y el historial de chat siguen disponibles a continuación hasta que expire el período de retención de la sesión.",
+    sessionSummaryHeading: "Resumen de la sesión (IA)",
+    sessionSummaryPending: "Generando un resumen de esta sesión…",
+    sessionSummaryUnavailable: "No hay ningún resumen de IA disponible para esta sesión.",
+    sessionSummaryDuration: (minutes) => `${minutes} min`,
+    sessionSummaryMessages: "Mensajes",
+    sessionSummaryQuestions: "Preguntas",
+    sessionSummaryMisunderstoodTopics: "Temas no comprendidos",
   },
   learner: {
     welcome: (name) => `Bienvenido/a, ${name}`,
     subtitle: "Tus subtítulos y las respuestas del facilitador aparecerán en tu idioma seleccionado.",
     preferencesCard: "Tus preferencias de aprendizaje",
     preferredLanguageLabel: "Idioma preferido:",
-    liveCaptions: "Subtítulos en vivo",
-    followExplanation: "Sigue la explicación en tu idioma",
-    sessionEnded: "Sesión finalizada",
-    waitingForFacilitator: "Esperando a que el facilitador comience",
-    captionStream: "Flujo de subtítulos",
     captionsWillAppear: "Los subtítulos aparecerán aquí en cuanto el facilitador empiece a hablar.",
     playTranslatedAudio: "Reproducir audio traducido para los nuevos subtítulos",
+    typedCaptionsAlwaysAudible: "Los subtítulos escritos por el facilitador siempre se leen en voz alta, aunque esto esté desactivado.",
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
+    captionComposerLabel: "Escribe un subtítulo para todos",
+    captionComposerPlaceholder: "Escribe algo para que se lea en voz alta a todos…",
+    captionAudioHint: "Se leerá en voz alta a todos en su idioma, aunque no hayan activado el audio traducido — útil si no puedes hablar.",
+    publish: "Publicar",
+    publishing: "Publicando…",
+    explainSimply: "Explicar sencillo",
+    giveExample: "Dar un ejemplo",
+    explainSimplyQuestion: (caption) => `Explica esto de forma sencilla: "${caption}"`,
+    giveExampleQuestion: (caption) => `Da un ejemplo para esto: "${caption}"`,
+    sessionEndedHeading: "Esta sesión ha finalizado",
+    sessionEndedSummary: "El facilitador finalizó esta sesión. Aún puedes revisar la transcripción y el historial de chat a continuación hasta que se eliminen automáticamente según la configuración de retención de esta sesión.",
   },
   chat: {
-    translatedChat: "Chat traducido",
     noMessages: "Aún no hay mensajes. Saluda o pide ayuda.",
     question: "Pregunta",
     sendMessageLabel: "Enviar un mensaje",
     placeholder: "Escribe en tu propio idioma…",
     flagQuestion: "Marcar como pregunta para el facilitador",
+    askAnonymously: "Preguntar de forma anónima",
+    anonymousLearner: "Estudiante anónimo",
+    anonymousBadge: "Anónimo",
+    privateBadge: "Privado",
+    messageFacilitatorPrivately: "Enviar mensaje privado al facilitador",
+    publicMode: "Chat público",
+    privateModeToFacilitator: "Privado al facilitador",
+    privateModeTo: (name) => `Privado para ${name}`,
+    returnToPublic: "Volver a público",
+    recipientLabel: "Enviar a",
+    everyone: "Todos",
+    replyPrivately: "Responder en privado",
     send: "Enviar",
     sending: "Enviando…",
   },
@@ -680,9 +879,9 @@ const es: Dictionary = {
     stop: "Detener subtítulos en vivo",
     agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
     connectionFailed:
-      "Falló la conexión de subtítulos en vivo. Usa el cuadro de subtítulos manual de arriba en su lugar.",
+      "Se perdió la conexión de subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
     connectionBlocked:
-      "No se pudo abrir la conexión de subtítulos en vivo. Prueba a activar el micrófono en la sala de video: los subtítulos comenzarán automáticamente. También puedes usar el cuadro de subtítulos manual de arriba.",
+      "No se pudieron conectar los subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
@@ -696,11 +895,14 @@ const es: Dictionary = {
     selectMicrophone: "Seleccionar micrófono",
     selectCamera: "Seleccionar cámara",
     leaveCall: "Salir de la llamada",
+    toggleCaptions: "Activar o desactivar subtítulos",
     screenShareInterrupted: "Tu pantalla compartida se interrumpió por una reconexión — haz clic en Compartir pantalla para reanudarla.",
     disconnectedDuplicate: "Te has desconectado porque este enlace se abrió al mismo tiempo en otra pestaña o ventana.",
     disconnectedOther: "Te has desconectado de la sala multimedia.",
     mediaDeviceError: "Hubo un problema con tu micrófono o cámara.",
-    reload: "Recargar",
+    cameraUnavailable: "Tu cámara no está disponible (permiso denegado, en uso, o no encontrada) — continuando sin ella. Aún puedes unirte solo con audio.",
+    microphoneUnavailable: "Tu micrófono no está disponible (permiso denegado, en uso, o no encontrado) — continuando sin él.",
+    rejoin: "Reincorporarse",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} levantó la mano`,
@@ -745,6 +947,11 @@ const es: Dictionary = {
     liveNowTitle: "En vivo ahora",
     liveNowHint: "La sala del taller está en vivo. Únete para ver y escuchar al grupo.",
     joinLiveSession: "Unirse a la sesión en vivo",
+    confirm: "Confirmar",
+    cancel: "Cancelar",
+    jumpToLatest: "Ir a lo último",
+    chatTab: "Chat",
+    captionsTab: "Subtítulos",
   },
   notFound: {
     title: "Enlace no encontrado",
@@ -807,7 +1014,11 @@ export function resolveLanguageFromAcceptLanguage(
   const ranges = header
     .split(",")
     .map((part) => {
-      const [tag, qPart] = part.trim().split(";q=");
+      // RFC 7231 allows optional whitespace (OWS) around the ";q=" delimiter — a literal
+      // ";q=" split misses entries like "en; q=0.9" (space after the semicolon), which
+      // some non-browser HTTP clients/proxies emit, leaving that preference's tag
+      // unsplit and rejected by isSupportedLanguage below instead of parsed and ranked.
+      const [tag, qPart] = part.trim().split(/;\s*q=/i);
       const q = qPart ? Number.parseFloat(qPart) : 1;
       return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 1 };
     })

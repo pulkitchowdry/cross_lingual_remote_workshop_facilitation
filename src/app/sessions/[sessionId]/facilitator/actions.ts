@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { roomProvider } from "@/lib/providers/room";
+import { generateAndPersistSessionSummary } from "@/lib/insights";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import { isSupportedLanguage } from "@/lib/i18n";
@@ -50,9 +51,17 @@ export async function startSession(sessionId: string) {
 export async function endSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  await prisma.session.update({
+  const session = await prisma.session.update({
     where: { id: sessionId },
     data: { status: SessionStatus.ENDED, endedAt: new Date() },
+  });
+  // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
+  // process stays alive after the response is sent, so a plain unawaited call is enough
+  // to let the summary finish generating without making "End session" wait on a Claude
+  // call. POST_SESSION_INSIGHT_GRACE_MS's short post-end poll (facilitator/page.tsx)
+  // is what picks the result up once it lands.
+  void generateAndPersistSessionSummary(session).catch((error) => {
+    console.error("generateAndPersistSessionSummary failed", error);
   });
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
@@ -76,13 +85,31 @@ export async function publishCaption(
   }
 
   const now = new Date();
-  await publishTranslatedCaption(session, {
-    speakerId: null,
-    originalText: captionText.trim(),
-    language: session.sourceLanguage as SupportedLanguage,
-    startedAt: now,
-    endedAt: now,
-  });
+  try {
+    await publishTranslatedCaption(session, {
+      speakerId: null,
+      originalText: captionText.trim(),
+      language: session.sourceLanguage as SupportedLanguage,
+      startedAt: now,
+      endedAt: now,
+      isTyped: true,
+    });
+  } catch (error) {
+    // publishTranslatedCaption's own translation fan-out can take up to ~16s —
+    // long enough for the facilitator (or a co-facilitator) to click "End session"
+    // while this is in flight, which makes its own re-check throw ("session is not
+    // live"). Unlike its other two callers (the caption WS route, caption-agent.ts —
+    // plain async functions whose own `.catch(console.error)` absorbs this fine),
+    // this is a `useActionState`-bound server action: an uncaught throw here
+    // doesn't become `state.error` the way returning one does — it propagates to
+    // the nearest error boundary (src/app/sessions/[sessionId]/error.tsx), which
+    // replaces the ENTIRE session route (live video, chat, everything) with a
+    // generic error screen, exactly what this FormActionResult pattern exists to
+    // avoid (see sendChatMessage's identical re-check, which returns instead of
+    // throwing, for the sibling case this was missing here).
+    console.error("publishCaption failed", error);
+    return { error: "This session ended while your caption was being translated. It was not published." };
+  }
   return { error: null };
 }
 

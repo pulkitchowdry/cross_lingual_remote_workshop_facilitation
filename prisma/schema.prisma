@@ -45,7 +45,8 @@ model User {
   createdAt         DateTime             @default(now())
   sessions          Session[]            @relation("SessionFacilitator")
   participations    SessionParticipant[]
-  messages          Message[]
+  sentMessages      Message[]            @relation("MessageSender")
+  receivedMessages  Message[]            @relation("MessageRecipient")
 }
 
 model Session {
@@ -54,7 +55,10 @@ model Session {
   goal               String
   sourceLanguage     String
   learnerLanguages   String[]
-  retentionDays      Int                  @default(7)
+  // Float, not Int — SetupForm offers sub-day presets (5 minutes, 1 hour) so a
+  // facilitator can actually demo/verify the cleanup cron's automatic-deletion
+  // behavior without waiting a full day; see setup/actions.ts's validation.
+  retentionDays      Float                @default(7)
   translationMode    TranslationMode      @default(AUTO)
   status             SessionStatus        @default(DRAFT)
   // Whether the server-side caption agent (caption-agent.ts) is currently streaming this
@@ -64,6 +68,14 @@ model Session {
   // the facilitator dashboard that reads it — an in-memory flag set in one and read from
   // the other is silently always false.
   captionAgentActive Boolean              @default(false)
+  // Generated once, fire-and-forget, when endSession() runs (see facilitator/actions.ts
+  // and insights.ts's generateAndPersistSessionSummary) — null until that background call
+  // finishes, at which point a poll picks it up (matches generateSessionInsights' own
+  // fire-and-forget pattern; this app runs a persistent process, not a Vercel Function, so
+  // a plain unawaited call outlives the request with no `waitUntil` needed). Nullable, not
+  // a required field with an empty-string default: distinguishes "not generated yet /
+  // insights not configured" from "generated, and genuinely came back empty".
+  summary            String?              @db.Text
   facilitatorId      String
   facilitator        User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
   createdAt          DateTime             @default(now())
@@ -126,6 +138,8 @@ model TranscriptSegment {
   startedAt    DateTime
   endedAt      DateTime
   isFinal      Boolean           @default(true)
+  /// True for the facilitator's typed-caption composer, false for anything transcribed from live audio.
+  isTyped      Boolean           @default(false)
   createdAt    DateTime          @default(now())
   session      Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   translations Translation[]
@@ -175,13 +189,19 @@ model Message {
   id           String               @id @default(cuid())
   sessionId    String
   senderId     String
+  recipientId  String?
   originalText String
   language     String
   kind         String
+  isAnonymous  Boolean              @default(false)
   sentAt       DateTime             @default(now())
   session      Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  sender       User                 @relation(fields: [senderId], references: [id])
+  sender       User                 @relation("MessageSender", fields: [senderId], references: [id])
+  recipient    User?                @relation("MessageRecipient", fields: [recipientId], references: [id])
   translations MessageTranslation[]
+
+  @@index([sessionId, recipientId])
+  @@index([sessionId, senderId])
 }
 
 model MessageTranslation {

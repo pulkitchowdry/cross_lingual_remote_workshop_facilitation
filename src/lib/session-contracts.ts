@@ -35,6 +35,16 @@ export const TRANSCRIPT_HISTORY_LIMIT = 100;
  */
 export const INSIGHT_HISTORY_LIMIT = 50;
 
+/**
+ * `sendChatMessage`'s own max chat/question message length (src/app/sessions/actions.ts).
+ * Exported so callers that *generate* a message on a learner's behalf — currently
+ * CaptionComprehensionActions' "Explain simply"/"Give an example" quick-questions,
+ * built in learn/page.tsx by wrapping a caption (itself allowed up to 3,000 characters)
+ * in a fixed phrase — can size their own truncation against the same real limit instead
+ * of guessing a safe-feeling number that silently drifts out of sync.
+ */
+export const CHAT_MESSAGE_MAX_LENGTH = 1_000;
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
 /**
@@ -85,6 +95,7 @@ export interface TranslatedMessageEvent {
   sessionId: string;
   messageId: string;
   senderId: string;
+  recipientId: string | null;
   kind: "CHAT" | "QUESTION" | "REPLY";
   originalText: string;
   language: SupportedLanguage;

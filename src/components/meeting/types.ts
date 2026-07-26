@@ -4,7 +4,9 @@ export type MeetingChatMessage = {
   language: string;
   kind?: string;
   sentAt?: string | Date;
-  sender: { displayName: string };
+  isAnonymous?: boolean;
+  recipientId?: string | null;
+  sender: { id: string; displayName: string };
   translations: Array<{ targetLanguage: string; text: string }>;
 };
 
@@ -13,5 +15,6 @@ export type MeetingTranscriptSegment = {
   speakerId: string | null;
   originalText: string;
   language: string;
+  startedAt: string | Date;
   translations: Array<{ targetLanguage: string; text: string }>;
 };

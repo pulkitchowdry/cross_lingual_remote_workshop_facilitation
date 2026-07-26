@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -12,9 +15,15 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { insightProvider } from "@/lib/providers/insight";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { INSIGHT_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS } from "@/lib/confusion-level";
+import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   endSession,
   resolveInsight,
@@ -22,6 +31,7 @@ import {
   startSession,
   updateFacilitatorLanguage,
 } from "@/app/sessions/[sessionId]/facilitator/actions";
+import { sendChatMessage } from "@/app/sessions/actions";
 
 export const metadata: Metadata = { title: "Facilitator dashboard" };
 
@@ -42,12 +52,24 @@ export default async function FacilitatorSessionPage({
   const { sessionId } = await params;
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+  const accessSession = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { facilitatorId: true },
+  });
+  if (!accessSession) notFound();
 
-  const [session, activeBlockers] = await Promise.all([
+  // Both queries below are time-bounded (not count-bounded like `session.insights`/
+  // `session.messages`) and scoped to exactly the type each confusion signal needs —
+  // see the comments at their point of use for why deriving these from the
+  // INSIGHT_HISTORY_LIMIT/MESSAGE_HISTORY_LIMIT-capped, type-agnostic lists instead
+  // (the previous approach) could silently undercount or hide real confusion.
+  const confusionWindowStart = new Date(new Date().getTime() - DEFAULT_CONFUSION_WINDOW_MS);
+  const [session, activeActionItems, recentConfusionInsights, recentLearnerQuestions, messageCount, questionCount] =
+    await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
-        participants: { where: { role: ParticipantRole.LEARNER } },
+        participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
         // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
         // timestamps, so two rows created within the same millisecond (e.g. several
         // learners' chat messages committing at once) have Postgres-undefined relative
@@ -64,21 +86,53 @@ export default async function FacilitatorSessionPage({
           orderBy: { createdAt: "desc" },
           take: INSIGHT_HISTORY_LIMIT,
         },
+        messages: {
+          where: visibleSessionMessageWhere(sessionId, accessSession.facilitatorId),
+          include: { sender: true, translations: true },
+          orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+          take: MESSAGE_HISTORY_LIMIT,
+        },
         joinLinks: { where: { role: ParticipantRole.LEARNER } },
       },
     }),
     // Queried directly, not sliced from the `insights` include above — that include is
     // capped at INSIGHT_HISTORY_LIMIT (50) most-recent insights of ANY type, so an
-    // older unresolved BLOCKER silently fell out of "Act now" as soon as 50 newer
-    // insights of any kind (activity/decision/confusion included) accumulated, even
-    // though it was never resolved. Active blockers are rare enough by nature (the
+    // older unresolved BLOCKER/CONFUSION silently fell out of "Act now" as soon as 50
+    // newer insights of any kind (activity/decision included) accumulated, even though
+    // it was never resolved. Active action items are rare enough by nature (the
     // facilitator is expected to resolve them) that fetching every one, unbounded, is
-    // the correct read here.
+    // the correct read here. BLOCKER and CONFUSION both belong in "Act now" — an
+    // unresolved problem and a sign of misunderstanding are both things the
+    // facilitator should notice and respond to live, unlike ACTIVITY/DECISION (see
+    // "Current lesson" below), which are informational context, not action items.
     prisma.insight.findMany({
-      where: { sessionId, type: "BLOCKER", status: "ACTIVE" },
+      where: { sessionId, type: { in: ["BLOCKER", "CONFUSION"] }, status: "ACTIVE" },
       include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
       orderBy: { createdAt: "desc" },
     }),
+    // Group confusion badge: scoped to exactly CONFUSION and time-bounded to the same
+    // window computeConfusionLevel itself uses, instead of deriving it from
+    // session.insights (INSIGHT_HISTORY_LIMIT-capped across EVERY insight type) — a
+    // burst of ACTIVITY/DECISION insights could otherwise push a genuinely recent
+    // CONFUSION insight out of that type-agnostic, count-bounded window.
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION", createdAt: { gte: confusionWindowStart } },
+      select: { createdAt: true },
+    }),
+    // Per-learner confusion badges: scoped to exactly QUESTION messages and
+    // time-bounded, instead of deriving from session.messages (MESSAGE_HISTORY_LIMIT-
+    // capped across every sender and every message kind) — ordinary CHAT traffic from
+    // other participants could otherwise push a learner's genuinely recent QUESTION
+    // messages out of that window, silently hiding or downgrading their badge.
+    prisma.message.findMany({
+      where: { sessionId, kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
+      select: { senderId: true, sentAt: true },
+    }),
+    // Plain totals (not the MESSAGE_HISTORY_LIMIT-capped `session.messages` array above) so
+    // the post-session participation stats reflect the session's real counts, not just
+    // whatever fits in the chat panel's most-recent page.
+    prisma.message.count({ where: { sessionId } }),
+    prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
   ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
@@ -88,8 +142,54 @@ export default async function FacilitatorSessionPage({
   // as soon as it's due, not just once the delete has actually happened.
   if (isSessionRetentionExpired(session)) notFound();
 
+  // Derived from the dedicated, time-bounded queries above — not from session.insights,
+  // which is capped at INSIGHT_HISTORY_LIMIT across every insight type (ACTIVITY/
+  // DECISION/BLOCKER/CONFUSION combined) and could silently drop a genuinely recent
+  // CONFUSION insight once enough other-typed insights accumulated.
+  const confusionTimestamps = recentConfusionInsights.map((item) => item.createdAt);
+  const confusionLevel = computeConfusionLevel(confusionTimestamps, new Date());
+
+  // Derived from the dedicated, time-bounded query above — not from session.messages,
+  // which is capped at MESSAGE_HISTORY_LIMIT across every sender and message kind and
+  // could silently drop a learner's genuinely recent QUESTION messages once enough
+  // ordinary CHAT traffic (from any participant) accumulated in between.
+  const learnerUserIds = new Set(session.participants.map((participant) => participant.userId));
+  const learnerConfusionLevels = computeLearnerConfusionLevels(recentLearnerQuestions, learnerUserIds, new Date());
+  const learnerDisplayNames = new Map(
+    session.participants.map((participant) => [participant.userId, participant.user.displayName]),
+  );
+
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
+  const commonDict = getDictionary(lang).common;
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
+  // above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N *most recent* segments — but
+  // that leaves the JS array itself newest-first too. Reversed here to chronological
+  // (oldest-first) order before mapping: LiveTranscriptFeed renders `entries` top-to-bottom
+  // and auto-scrolls to the *bottom* on growth (its own doc comment: "newest at the
+  // bottom", matching a live chat). Left un-reversed, the feed would show the newest
+  // caption at the top instead of the bottom — a confusing ordering glitch confirmed
+  // live before this reverse was added.
+  const transcriptEntries: TranscriptFeedEntry[] = [...session.transcript].reverse().map((segment) => {
+    // Segments used to always be facilitator-authored (always in sourceLanguage), but
+    // learners can now type captions too, in their own preferredLanguage — so this can no
+    // longer just show originalText and assume it's already the facilitator's language.
+    const isSourceLanguage = segment.language === session.sourceLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+    const primaryText = isSourceLanguage ? segment.originalText : (translation?.text ?? commonDict.translationUnavailable);
+    const primaryLang = isSourceLanguage ? segment.language : translation ? session.sourceLanguage : "en";
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? commonDict.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isSourceLanguage && !translation,
+      secondaryText: !isSourceLanguage ? segment.originalText : undefined,
+      secondaryLang: !isSourceLanguage ? segment.language : undefined,
+    };
+  });
   const statusLabel = {
     [SessionStatus.DRAFT]: dict.statusDraft,
     [SessionStatus.LIVE]: dict.statusLive,
@@ -109,12 +209,29 @@ export default async function FacilitatorSessionPage({
   const endAction = endSession.bind(null, sessionId);
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
-  const transcript = [...session.transcript].reverse();
+  const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
+  const chatMessages = [...session.messages].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
     session.endedAt !== null &&
     new Date().getTime() - session.endedAt.getTime() < POST_SESSION_INSIGHT_GRACE_MS;
+  // Deterministic participation stats, computed from data already fetched/queried above —
+  // shown immediately in the ended-session summary card, unlike `session.summary` (the
+  // async Claude narrative below it), which only exists once
+  // generateAndPersistSessionSummary finishes and a poll picks it up.
+  const sessionSummary = {
+    durationMinutes:
+      session.startedAt && session.endedAt
+        ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000)
+        : null,
+    messageCount,
+    questionCount,
+    misunderstoodTopics: session.insights
+      .filter((item) => item.type === "CONFUSION")
+      .slice(0, 5)
+      .map((item) => item.summary),
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,16 +269,22 @@ export default async function FacilitatorSessionPage({
       <div className="flex flex-wrap items-center gap-3" aria-live="polite">
         {session.status === SessionStatus.DRAFT && (
           <form action={startAction}>
-            <button className="font-data rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
+            <button className="font-data rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
               {dict.startSession}
             </button>
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
           <form action={endAction}>
-            <button className="font-data rounded-md border border-border-strong px-5 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-              {dict.endSession}
-            </button>
+            <ConfirmSubmitButton
+              label={dict.endSession}
+              pendingLabel={dict.endSession}
+              title={dict.confirmEndSessionTitle}
+              body={dict.confirmEndSessionBody}
+              confirmLabel={getDictionary(lang).common.confirm}
+              cancelLabel={getDictionary(lang).common.cancel}
+              variant="danger"
+            />
           </form>
         )}
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
@@ -179,16 +302,127 @@ export default async function FacilitatorSessionPage({
           </Link>
         </Card>
       )}
+      {/* Once a session ends, the "join live session" card above stops rendering
+          entirely (there's no live room left to join) — without a replacement here, the
+          transcript/chat this section's own data was already fetched for (session.transcript,
+          session.messages, both queried unconditionally above) had no UI left anywhere on
+          this page, making the whole session's record unretrievable the moment it ended. */}
+      {session.status === SessionStatus.ENDED && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.sessionEndedHeading}</h2>
+          <p className="text-sm text-muted-foreground">{dict.sessionEndedSummary}</p>
+          <Card eyebrow={dict.sessionSummaryHeading}>
+            {/* Deterministic — renders immediately from data already fetched above, unlike
+                the async narrative below it (session.summary), which only exists once
+                generateAndPersistSessionSummary finishes and a poll picks it up. */}
+            <p className="font-data text-xs text-muted-foreground">
+              {sessionSummary.durationMinutes !== null && `${dict.sessionSummaryDuration(sessionSummary.durationMinutes)} · `}
+              {sessionSummary.messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {sessionSummary.questionCount}{" "}
+              {dict.sessionSummaryQuestions.toLowerCase()}
+            </p>
+            {sessionSummary.misunderstoodTopics.length > 0 && (
+              <div className="mt-2">
+                <p className="font-data text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {dict.sessionSummaryMisunderstoodTopics}
+                </p>
+                <ul className="mt-1 list-inside list-disc text-sm">
+                  {sessionSummary.misunderstoodTopics.map((topic) => (
+                    <li key={topic}>{topic}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-2 border-t border-border-subtle pt-2">
+              {session.summary ? (
+                <p className="whitespace-pre-wrap">{session.summary}</p>
+              ) : (
+                <p className="text-muted-foreground">
+                  {!insightProvider.isConfigured
+                    ? dict.insightsNotConfigured
+                    : recentlyEnded
+                      ? dict.sessionSummaryPending
+                      : dict.sessionSummaryUnavailable}
+                </p>
+              )}
+            </div>
+          </Card>
+          <SessionSidePanel
+            chat={{
+              messages: chatMessages,
+              targetLanguage: session.sourceLanguage,
+              sendAction: sendChatAction,
+              viewerIsFacilitator: true,
+              readOnly: true,
+            }}
+            captions={{
+              entries: transcriptEntries,
+              emptyLabel: dict.transcriptEmpty,
+              jumpToLatestLabel: commonDict.jumpToLatest,
+            }}
+            captionsHeader={
+              textToSpeechProvider.isConfigured && (
+                <TranslatedAudioPlayer
+                  segments={session.transcript.map((segment) => ({
+                    id: segment.id,
+                    hasTranslation:
+                      segment.language === session.sourceLanguage ||
+                      segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+                    isTyped: segment.isTyped,
+                  }))}
+                  preferredLanguage={session.sourceLanguage}
+                />
+              )
+            }
+            chatTabLabel={commonDict.chatTab}
+            captionsTabLabel={commonDict.captionsTab}
+          />
+        </section>
+      )}
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.actNow}</h2>
+            {confusionLevel.level !== "CALM" && (
+              <span
+                className="font-data rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                style={{
+                  color: confusionLevel.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
+                  borderColor: "currentColor",
+                }}
+              >
+                {confusionLevel.level === "HIGH"
+                  ? dict.confusionLevelHigh(confusionLevel.count)
+                  : dict.confusionLevelSome(confusionLevel.count)}
+              </span>
+            )}
+          </div>
         </div>
-        {activeBlockers.length > 0 ? (
+        {learnerConfusionLevels.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {learnerConfusionLevels.map((entry) => {
+              const name = learnerDisplayNames.get(entry.userId) ?? commonDict.speaker;
+              return (
+                <span
+                  key={entry.userId}
+                  className="font-data rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                  style={{
+                    color: entry.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
+                    borderColor: "currentColor",
+                  }}
+                >
+                  {name} ·{" "}
+                  {entry.level === "HIGH" ? dict.confusionLevelHigh(entry.count) : dict.confusionLevelSome(entry.count)}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {activeActionItems.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {activeBlockers.map((blocker) => {
-              const evidence = blocker.evidence[0]?.transcriptSegment;
+            {activeActionItems.map((item) => {
+              const evidence = item.evidence[0]?.transcriptSegment;
               const evidenceIsSourceLanguage = evidence?.language === session.sourceLanguage;
-              const translation = evidence?.translations.find((item) => item.targetLanguage === session.sourceLanguage);
+              const translation = evidence?.translations.find((t) => t.targetLanguage === session.sourceLanguage);
               const evidenceText = evidenceIsSourceLanguage
                 ? evidence?.originalText
                 : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
@@ -196,10 +430,19 @@ export default async function FacilitatorSessionPage({
               // is itself localized to `lang`, not fixed English copy — tag it `lang`,
               // not "en".
               const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
-              const resolveAction = resolveInsight.bind(null, sessionId, blocker.id);
+              const resolveAction = resolveInsight.bind(null, sessionId, item.id);
+              // CONFUSION reads as a signal to check comprehension, not a hard blocker to
+              // fix — same card shape and resolve action (a facilitator "handling" either
+              // means the same thing here: they noticed and responded), different label/
+              // accent so the two aren't visually indistinguishable in the same queue.
+              const isConfusion = item.type === "CONFUSION";
               return (
-                <Card key={blocker.id} eyebrow={dict.blocker} accent="var(--tick-low)">
-                  <p>{blocker.summary}</p>
+                <Card
+                  key={item.id}
+                  eyebrow={isConfusion ? dict.confusion : dict.blocker}
+                  accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
+                >
+                  <p>{item.summary}</p>
                   {evidence && (
                     <p
                       className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
@@ -217,9 +460,16 @@ export default async function FacilitatorSessionPage({
               );
             })}
           </div>
-        ) : transcript.length === 0 ? (
+        ) : transcriptEntries.length === 0 ? (
           <Card eyebrow={dict.waitingToStart}>
             <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
+          </Card>
+        ) : !insightProvider.isConfigured ? (
+          // Distinct from "looks on track" below — that phrasing asserts insight
+          // detection actually ran and found nothing, which would be actively
+          // misleading when it never ran at all (no INSIGHT_MODEL_API_KEY set).
+          <Card eyebrow={dict.noInterventionYet}>
+            <p className="text-muted-foreground">{dict.insightsNotConfigured}</p>
           </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>
@@ -228,29 +478,39 @@ export default async function FacilitatorSessionPage({
         )}
       </section>
       <section className="flex flex-col gap-3" aria-live="polite">
-        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.liveTranscript}</h2>
-        {transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {transcript.map((segment) => {
-              const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? getDictionary(lang).common.speaker} meta={segment.language.toUpperCase()}>
-                  <p className="whitespace-pre-wrap italic text-muted-foreground" lang={segment.language}>
-                    {segment.originalText}
-                  </p>
-                  {translation && (
-                    <p className="mt-2 whitespace-pre-wrap" lang={session.sourceLanguage}>
-                      {translation.text}
-                    </p>
-                  )}
+        <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.currentLesson}</h2>
+        {(() => {
+          // Pulled from the already-fetched `session.insights` (ordered newest-first,
+          // capped at INSIGHT_HISTORY_LIMIT) rather than a separate query — ACTIVITY/
+          // DECISION are a running informational log for context, not action items
+          // needing their own unbounded "never miss an old unresolved one" query the
+          // way "Act now" above needs (there's nothing to resolve here). Capped further
+          // to the 5 most recent so this section stays a glance-able summary, not a
+          // second full transcript.
+          const recentContext = session.insights.filter((item) => item.type === "ACTIVITY" || item.type === "DECISION").slice(0, 5);
+          if (recentContext.length === 0) {
+            return (
+              <Card>
+                <p className="text-muted-foreground">{dict.noRecentActivity}</p>
+              </Card>
+            );
+          }
+          return (
+            <div className="flex flex-col gap-3">
+              {recentContext.map((item) => (
+                <Card key={item.id} eyebrow={item.type === "DECISION" ? dict.decision : dict.activity}>
+                  <p>{item.summary}</p>
                 </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{dict.transcriptEmpty}</p>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </section>
+      {/* The old standalone "Live transcript" section (a flat stacked-card list) was
+          removed here — superseded by the tabbed SessionSidePanel above, whose
+          "captions" tab (LiveTranscriptFeed) renders the exact same transcript data
+          as a YouTube-live-chat-style auto-scrolling feed instead, so keeping both
+          would just show the transcript twice. */}
       <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>
         {learnerInviteRevoked ? (
           <p className="text-muted-foreground">{dict.linkRevokedMsg}</p>
@@ -283,9 +543,15 @@ export default async function FacilitatorSessionPage({
               </div>
             </div>
             <form action={revokeInviteAction}>
-              <button className="font-data w-fit rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-low)] hover:text-[var(--tick-low)]">
-                {dict.revokeInvite}
-              </button>
+              <ConfirmSubmitButton
+                label={dict.revokeInvite}
+                pendingLabel={dict.revokeInvite}
+                title={dict.confirmRevokeInviteTitle}
+                body={dict.confirmRevokeInviteBody}
+                confirmLabel={getDictionary(lang).common.confirm}
+                cancelLabel={getDictionary(lang).common.cancel}
+                variant="danger"
+              />
             </form>
           </div>
         ) : (

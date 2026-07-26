@@ -52,7 +52,7 @@ async function main() {
   await app.prepare();
 
   const { verifyFacilitatorToken } = await import("@/lib/facilitator-token");
-  const { attachCaptionSocket } = await import("@/lib/captions-socket");
+  const { attachCaptionSocket, closeWithReason } = await import("@/lib/captions-socket");
 
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
@@ -141,7 +141,7 @@ async function main() {
         // when present.
         const reason = error instanceof Error ? error.message : "Unable to start captions.";
         console.error(`[captions/stream] rejecting after upgrade: ${reason}`);
-        ws.close(1011, reason);
+        closeWithReason(ws, 1011, reason);
       });
     });
   });

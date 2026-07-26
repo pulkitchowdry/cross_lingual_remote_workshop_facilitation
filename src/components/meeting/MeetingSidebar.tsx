@@ -1,13 +1,16 @@
 "use client";
 
-import { useRef } from "react";
-import { SessionChatPanel } from "@/components/SessionChatPanel";
+import { useRef, useState, type ReactNode } from "react";
+import { SessionChatPanel, type PrivateRecipientOption } from "@/components/SessionChatPanel";
+import { TranslationHistoryTab } from "@/components/meeting/TranslationHistoryTab";
 import { useMeetingShell, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "@/components/meeting/MeetingShellContext";
 import { ChatIcon, CloseIcon } from "@/components/meeting/icons";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { getDictionary } from "@/lib/i18n";
-import type { MeetingChatMessage } from "@/components/meeting/types";
+import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
+
+type SidebarTab = "chat" | "captions";
 
 export function MeetingSidebar({
   uiLang,
@@ -15,15 +18,33 @@ export function MeetingSidebar({
   messages,
   sendChatAction,
   allowQuestions,
+  viewerIsFacilitator,
+  viewerUserId,
+  canMessageFacilitatorPrivately,
+  privateRecipientOptions,
+  transcript,
+  captionsEmptyLabel,
+  captionsHeader,
+  captionComposer,
 }: {
   uiLang: SupportedLanguage;
   targetLanguage: string;
   messages: MeetingChatMessage[];
   sendChatAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
+  viewerIsFacilitator?: boolean;
+  viewerUserId?: string;
+  canMessageFacilitatorPrivately?: boolean;
+  privateRecipientOptions?: PrivateRecipientOption[];
+  transcript: MeetingTranscriptSegment[];
+  captionsEmptyLabel: string;
+  captionsHeader?: ReactNode;
+  captionComposer?: ReactNode;
 }) {
   const { sidebarOpen, setSidebarOpen, sidebarWidth, setSidebarWidth } = useMeetingShell();
   const dict = getDictionary(uiLang).meeting;
+  const commonDict = getDictionary(uiLang).common;
+  const [tab, setTab] = useState<SidebarTab>("chat");
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
 
@@ -88,8 +109,28 @@ export function MeetingSidebar({
 
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b border-border-subtle px-2 py-1.5">
-        <p className="font-data px-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">{dict.chatLabel}</p>
+      <div className="flex items-center gap-1 border-b border-border-subtle p-1.5">
+        <div role="tablist" className="flex flex-1 gap-1 rounded-md bg-surface p-1">
+          {(
+            [
+              ["chat", commonDict.chatTab],
+              ["captions", commonDict.captionsTab],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => setTab(value)}
+              className={`font-data flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide ${
+                tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
@@ -99,7 +140,31 @@ export function MeetingSidebar({
           <CloseIcon className="h-3.5 w-3.5" />
         </button>
       </div>
-      <SessionChatPanel messages={messages} targetLanguage={targetLanguage} sendAction={sendChatAction} allowQuestions={allowQuestions} embedded />
+      <div className="min-h-0 flex-1">
+        {tab === "chat" ? (
+          <SessionChatPanel
+            messages={messages}
+            targetLanguage={targetLanguage}
+            sendAction={sendChatAction}
+            allowQuestions={allowQuestions}
+            viewerIsFacilitator={viewerIsFacilitator}
+            viewerUserId={viewerUserId}
+            canMessageFacilitatorPrivately={canMessageFacilitatorPrivately}
+            privateRecipientOptions={privateRecipientOptions}
+            embedded
+          />
+        ) : (
+          <div className="h-full p-1.5">
+            <TranslationHistoryTab
+              transcript={transcript}
+              uiLang={uiLang}
+              emptyLabel={captionsEmptyLabel}
+              header={captionsHeader}
+              composer={captionComposer}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 

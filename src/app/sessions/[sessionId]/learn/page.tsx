@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
+import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
+import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
@@ -10,12 +13,32 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { CHAT_MESSAGE_MAX_LENGTH, MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { redactAnonymousSenders, visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { sendChatMessage } from "@/app/sessions/actions";
 import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
+
+/**
+ * "Explain simply"/"Give an example" (CaptionComprehensionActions) wrap a caption
+ * verbatim in a fixed phrase (see i18n.ts's explainSimplyQuestion/giveExampleQuestion)
+ * and submit it through the same sendChatMessage that caps every message at
+ * CHAT_MESSAGE_MAX_LENGTH — but captions themselves are allowed up to 3,000 characters
+ * (facilitator/learn actions' own publish caps). Left untruncated, any caption long
+ * enough makes the generated question exceed the chat cap, and sendChatMessage rejects
+ * it every single time with no way for the learner to shorten a caption they didn't
+ * write themselves — the button becomes permanently, silently broken for that caption.
+ * The margin below is comfortably larger than the longest wrapper phrase + quote marks
+ * across en/zh/es.
+ */
+const QUOTED_QUESTION_WRAPPER_MARGIN = 150;
+function truncateForQuotedQuestion(text: string): string {
+  const maxLength = CHAT_MESSAGE_MAX_LENGTH - QUOTED_QUESTION_WRAPPER_MARGIN;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
 
 export default async function LearnerSessionPage({
   params,
@@ -25,6 +48,11 @@ export default async function LearnerSessionPage({
   const { sessionId } = await params;
   const participantId = await learnerParticipantId(sessionId);
   if (!participantId) redirect("/setup");
+  const accessParticipant = await prisma.sessionParticipant.findFirst({
+    where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
+    select: { userId: true },
+  });
+  if (!accessParticipant) notFound();
 
   const participant = await prisma.sessionParticipant.findFirst({
     where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
@@ -38,6 +66,12 @@ export default async function LearnerSessionPage({
             include: { translations: true },
             orderBy: [{ startedAt: "desc" }, { id: "desc" }],
             take: TRANSCRIPT_HISTORY_LIMIT,
+          },
+          messages: {
+            where: visibleSessionMessageWhere(sessionId, accessParticipant.userId),
+            include: { sender: true, translations: true },
+            orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+            take: MESSAGE_HISTORY_LIMIT,
           },
         },
       },
@@ -56,7 +90,47 @@ export default async function LearnerSessionPage({
     participant.session.learnerLanguages.includes(language.value),
   );
   const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
-  const transcript = [...participant.session.transcript].reverse();
+  const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
+  const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  // participant.session.transcript is fetched newest-first (`orderBy: startedAt desc`,
+  // see the query above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N most recent
+  // segments — reversed here to chronological order before mapping so LiveTranscriptFeed
+  // (which renders top-to-bottom, newest at the bottom, per its own doc comment) reads
+  // the array the right way round. See the matching fix/comment in facilitator/page.tsx.
+  const transcriptEntries: TranscriptFeedEntry[] = [...participant.session.transcript].reverse().map((segment) => {
+    const isOwnLanguage = segment.language === participant.preferredLanguage;
+    const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
+    const primaryText = isOwnLanguage ? segment.originalText : (translation?.text ?? dict.common.translationUnavailable);
+    // The fallback "Translation unavailable." string is fixed English UI copy, not a
+    // translation — tag it "en" rather than the learner's preferred language.
+    const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+    // segment.originalText, not primaryText — primaryText can hold the fixed
+    // "Translation unavailable" placeholder, which should never end up quoted
+    // in the comprehension question below.
+    const originalText = segment.originalText;
+    return {
+      id: segment.id,
+      time: timeFormatter.format(segment.startedAt),
+      speaker: segment.speakerId ?? dict.common.speaker,
+      primaryText,
+      primaryLang,
+      primaryIsFallback: !isOwnLanguage && !translation,
+      secondaryText: !isOwnLanguage ? segment.originalText : undefined,
+      secondaryLang: !isOwnLanguage ? segment.language : undefined,
+      // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'
+      // doc comment for why (this page is a Server Component; the feed isn't).
+      actions: (
+        <CaptionComprehensionActions
+          sendAction={sendChatAction}
+          explainSimplyLabel={learnerDict.explainSimply}
+          giveExampleLabel={learnerDict.giveExample}
+          sendingLabel={dict.chat.sending}
+          explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
+          giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
+        />
+      ),
+    };
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,18 +145,24 @@ export default async function LearnerSessionPage({
         <SessionAutoRefresh />
       )}
       <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
-      <div>
-        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {learnerDict.welcome(participant.user.displayName)}
-        </p>
-        <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
-        <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+      {/* Narrower than the page's workshop-room-wide shell (see AppShell) — before the
+          video room renders below, this is just two lines of text and a small card, which
+          read as oddly sparse stretched across a wide monitor with nothing else to fill
+          it. The video room and transcript grid further down keep the full page width. */}
+      <div className="flex max-w-2xl flex-col gap-6">
+        <div>
+          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {learnerDict.welcome(participant.user.displayName)}
+          </p>
+          <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
+          <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
+        </div>
+        <Card eyebrow={learnerDict.preferencesCard}>
+          <p>
+            {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
+          </p>
+        </Card>
       </div>
-      <Card eyebrow={learnerDict.preferencesCard}>
-        <p>
-          {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
-        </p>
-      </Card>
       {participant.session.status === SessionStatus.LIVE && (
         <Card eyebrow={dict.common.liveNowTitle} title={dict.facilitator.liveAudioVideo} accent="var(--tick-high)">
           <p className="text-muted-foreground">{dict.common.liveNowHint}</p>
@@ -94,67 +174,63 @@ export default async function LearnerSessionPage({
           </Link>
         </Card>
       )}
-      <section className="flex flex-col gap-3" aria-live="polite">
-        <div>
-          <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{learnerDict.liveCaptions}</p>
-          <h2 className="font-heading text-lg font-semibold">
-            {participant.session.status === SessionStatus.LIVE
-              ? learnerDict.followExplanation
-              : participant.session.status === SessionStatus.ENDED
-                ? learnerDict.sessionEnded
-                : learnerDict.waitingForFacilitator}
+      {/* Before this, a learner had no on-page signal at all that the session had ended —
+          the page just silently reverted to looking identical to the pre-start "waiting"
+          view, and the transcript/chat data queried above (participant.session.transcript/
+          messages, unconditionally) had no UI to render into once the "join live session"
+          card above stopped rendering. Confirmed live: ending a session as the facilitator leaves the
+          learner's tab with no indication anything changed and no way to retrieve what was
+          said. */}
+      {participant.session.status === SessionStatus.ENDED && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {learnerDict.sessionEndedHeading}
           </h2>
-        </div>
-        {textToSpeechProvider.isConfigured && (
-          <TranslatedAudioPlayer
-            segments={transcript.map((segment) => ({
-              id: segment.id,
-              hasTranslation:
-                segment.language === participant.preferredLanguage ||
-                segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-            }))}
-            preferredLanguage={participant.preferredLanguage}
+          <p className="text-sm text-muted-foreground">{learnerDict.sessionEndedSummary}</p>
+          {/* Optional per FEATURE_LIST.md's "After Session" learner deliverables — reuses the
+              facilitator dict's copy (dict.facilitator.sessionSummary*) rather than duplicating
+              near-identical strings under `learner` too; the summary itself (Session.summary,
+              generated once by generateAndPersistSessionSummary) isn't per-viewer translated,
+              so it always renders in the session's source language regardless of who's reading
+              it, same as the transcript's own secondary-language quotes elsewhere on this page. */}
+          {participant.session.summary && (
+            <Card eyebrow={dict.facilitator.sessionSummaryHeading}>
+              <p className="whitespace-pre-wrap" lang={participant.session.sourceLanguage}>
+                {participant.session.summary}
+              </p>
+            </Card>
+          )}
+          <SessionSidePanel
+            chat={{
+              messages: redactAnonymousSenders([...participant.session.messages].reverse()),
+              targetLanguage: participant.preferredLanguage,
+              sendAction: sendChatAction,
+              readOnly: true,
+            }}
+            captions={{
+              entries: transcriptEntries,
+              emptyLabel: learnerDict.captionsWillAppear,
+              jumpToLatestLabel: dict.common.jumpToLatest,
+            }}
+            captionsHeader={
+              textToSpeechProvider.isConfigured && (
+                <TranslatedAudioPlayer
+                  segments={participant.session.transcript.map((segment) => ({
+                    id: segment.id,
+                    hasTranslation:
+                      segment.language === participant.preferredLanguage ||
+                      segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+                    isTyped: segment.isTyped,
+                  }))}
+                  preferredLanguage={participant.preferredLanguage}
+                />
+              )
+            }
+            chatTabLabel={dict.common.chatTab}
+            captionsTabLabel={dict.common.captionsTab}
           />
-        )}
-        {transcript.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {transcript.map((segment) => {
-              const isOwnLanguage = segment.language === participant.preferredLanguage;
-              const translation = segment.translations.find(
-                (item) => item.targetLanguage === participant.preferredLanguage,
-              );
-              const primaryText = isOwnLanguage
-                ? segment.originalText
-                : (translation?.text ?? dict.common.translationUnavailable);
-              // Both non-own-language branches resolve to the learner's preferred
-              // language: `translation.text` is translated *into* it, and the
-              // dict.common.translationUnavailable fallback is itself localized to it
-              // (see i18n.ts's `common` dictionary) — neither is fixed English copy.
-              const primaryLang = isOwnLanguage ? segment.language : participant.preferredLanguage;
-              return (
-                <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
-                  <p
-                    className="whitespace-pre-wrap text-base leading-relaxed"
-                    lang={primaryLang}
-                    style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
-                  >
-                    {primaryText}
-                  </p>
-                  {!isOwnLanguage && (
-                    <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={segment.language}>
-                      {segment.originalText}
-                    </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card eyebrow={learnerDict.captionStream}>
-            <p className="text-muted-foreground">{learnerDict.captionsWillAppear}</p>
-          </Card>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "Message" ADD COLUMN "isAnonymous" BOOLEAN NOT NULL DEFAULT false;

@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
-import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { SessionStatus } from "@/generated/prisma/client";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { learnerInviteCookieName } from "@/lib/session-security";
-import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
-import { publishCaption } from "@/app/sessions/[sessionId]/facilitator/actions";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { sendChatMessage } from "@/app/sessions/actions";
-import { CaptionPublishForm } from "@/components/CaptionPublishForm";
+import { publishCaption, updateFacilitatorLanguage } from "@/app/sessions/[sessionId]/facilitator/actions";
+import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 
 export const metadata: Metadata = { title: "Live session" };
 
@@ -32,11 +33,22 @@ export default async function FacilitatorRoomPage({
   const { sessionId } = await params;
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
+  // Queried before the main fetch below purely to get `facilitatorId` for the messages
+  // `where` filter — that filter has to be part of the same query that builds
+  // `chatMessages`, so the id it depends on has to already be in hand first.
+  const accessSession = await prisma.session.findUnique({ where: { id: sessionId }, select: { facilitatorId: true } });
+  if (!accessSession) notFound();
+
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
       transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
-      messages: { include: { sender: true, translations: true }, orderBy: { sentAt: "desc" } },
+      messages: {
+        where: visibleSessionMessageWhere(sessionId, accessSession.facilitatorId),
+        include: { sender: true, translations: true },
+        orderBy: { sentAt: "desc" },
+      },
+      participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true } },
     },
   });
   if (!session) notFound();
@@ -44,9 +56,39 @@ export default async function FacilitatorRoomPage({
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
-  const publishCaptionAction = publishCaption.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
+  const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
+  const publishCaptionAction = publishCaption.bind(null, sessionId);
   const chatMessages = [...session.messages].reverse();
+  const privateRecipientOptions = session.participants.map((participant) => ({
+    participantId: participant.id,
+    userId: participant.userId,
+    displayName: participant.user.displayName,
+  }));
+  const captionComposer = (
+    <CaptionPublishForm
+      action={publishCaptionAction}
+      dict={{
+        captionLabel: dict.captionLabel,
+        captionPlaceholder: dict.captionPlaceholder,
+        captionAudioHint: dict.captionAudioHint,
+        publish: dict.publish,
+        publishing: dict.publishing,
+      }}
+    />
+  );
+  const captionsHeader = textToSpeechProvider.isConfigured && (
+    <TranslatedAudioPlayer
+      segments={session.transcript.map((segment) => ({
+        id: segment.id,
+        hasTranslation:
+          segment.language === session.sourceLanguage ||
+          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+        isTyped: segment.isTyped,
+      }))}
+      preferredLanguage={session.sourceLanguage}
+    />
+  );
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const learnerToken = (await cookies()).get(learnerInviteCookieName(sessionId))?.value;
@@ -67,21 +109,15 @@ export default async function FacilitatorRoomPage({
           sendChatAction={sendChatAction}
           title={session.title}
           inviteLink={inviteLink}
+          viewerIsFacilitator
+          viewerUserId={session.facilitatorId}
+          privateRecipientOptions={privateRecipientOptions}
+          currentLanguage={lang}
+          onChangeLanguage={changeLanguageAction}
+          captionsHeader={captionsHeader}
+          captionComposer={captionComposer}
         />
       </div>
-      {/* Removing this part as its not necessary and might be removed in the long run */}
-      {/* <div className="flex shrink-0 flex-col gap-2 border-t border-border-subtle bg-surface p-3">
-        <CaptionPublishForm
-          action={publishCaptionAction}
-          dict={{
-            captionLabel: dict.captionLabel,
-            captionPlaceholder: dict.captionPlaceholder,
-            publish: dict.publish,
-            publishing: dict.publishing,
-          }}
-        />
-        {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} lang={lang} />}
-      </div> */}
     </div>
   );
 }

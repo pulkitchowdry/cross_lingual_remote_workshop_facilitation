@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { CaptionPublishButton } from "@/components/CaptionPublishButton";
+import { ChatSendButton } from "@/components/ChatSendButton";
 import type { FormActionResult } from "@/lib/session-contracts";
 
 /**
@@ -10,37 +10,44 @@ import type { FormActionResult } from "@/lib/session-contracts";
  * here instead of throwing — a thrown Error with no boundary in the tree crashed the
  * whole facilitator page, video call included, for what's often just a mistimed
  * click right as a session ends. Must be a client component — `useActionState` is a
- * hook, and the facilitator page that renders this is a Server Component.
+ * hook, and both the facilitator and learner pages that render this are Server
+ * Components. Shared by both roles' caption composers (not just the facilitator's,
+ * despite the component name) so publishLearnerCaption's own `(prevState, formData)`
+ * signature — needed for the same inline-error-instead-of-crash reason as
+ * publishCaption — actually gets called with the right arguments: a Server Action
+ * bound only to a plain `<form action={...}>` (no `useActionState`) receives just
+ * `formData` as its sole argument, silently shifting every parameter over by one.
  */
 export function CaptionPublishForm({
   action,
   dict,
 }: {
   action: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
-  dict: { captionLabel: string; captionPlaceholder: string; publish: string; publishing: string };
+  dict: { captionLabel: string; captionPlaceholder: string; captionAudioHint: string; publish: string; publishing: string };
 }) {
   const [state, formAction] = useActionState<FormActionResult, FormData>(action, { error: null });
 
   return (
-    <form action={formAction} className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
-        <textarea
-          id="facilitator-caption"
-          className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          name="captionText"
-          rows={1}
-          required
-          maxLength={3000}
-          placeholder={dict.captionPlaceholder}
-        />
-        <CaptionPublishButton label={dict.publish} publishingLabel={dict.publishing} />
-      </div>
+    <form action={formAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
+      <label className="sr-only" htmlFor="caption-composer">{dict.captionLabel}</label>
+      <textarea
+        id="caption-composer"
+        className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+        name="captionText"
+        rows={2}
+        required
+        maxLength={3000}
+        placeholder={dict.captionPlaceholder}
+      />
       {state.error && (
         <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {state.error}
         </p>
       )}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">{dict.captionAudioHint}</p>
+        <ChatSendButton label={dict.publish} sendingLabel={dict.publishing} />
+      </div>
     </form>
   );
 }

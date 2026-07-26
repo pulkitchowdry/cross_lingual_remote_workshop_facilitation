@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveLanguageFromAcceptLanguage } from "./i18n";
+import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { getDictionary, resolveLanguageFromAcceptLanguage } from "./i18n";
 
 describe("resolveLanguageFromAcceptLanguage", () => {
   it("falls back to English when there is no header", () => {
@@ -29,5 +30,23 @@ describe("resolveLanguageFromAcceptLanguage", () => {
 
   it("supports a custom fallback", () => {
     expect(resolveLanguageFromAcceptLanguage("fr-FR", "zh")).toBe("zh");
+  });
+
+  it("tolerates optional whitespace around the ;q= delimiter (RFC 7231 OWS)", () => {
+    expect(resolveLanguageFromAcceptLanguage("zh; q=0.9, en;q=0.5")).toBe("zh");
+    expect(resolveLanguageFromAcceptLanguage("en ; q=0.5, zh ; q=0.9")).toBe("zh");
+  });
+});
+
+describe("learner caption comprehension templates", () => {
+  it("keeps the original caption text in every comprehension question", () => {
+    const caption = "Normalize the request payload before validating fields.";
+
+    for (const { value: language } of SUPPORTED_LANGUAGES) {
+      const learner = getDictionary(language).learner;
+
+      expect(learner.explainSimplyQuestion(caption)).toContain(caption);
+      expect(learner.giveExampleQuestion(caption)).toContain(caption);
+    }
   });
 });

@@ -3,23 +3,40 @@
 import { useState } from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { CopyIcon } from "@/components/meeting/icons";
+import { AccessibilityPanel } from "@/components/AccessibilityPanel";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageMenu } from "@/components/LanguageMenu";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
+/** Distinct from AppShell's own `#header-language-slot` — that one sits behind this
+ * page's full-viewport takeover (see AppShell's `fixed inset-0` comment on the room
+ * routes), so a LanguageMenu portalled there would be invisible here. */
+const MEETING_HEADER_LANGUAGE_SLOT_ID = "meeting-header-language-slot";
+
 /**
- * Slim top-left title bar for the full-page room — the only chrome visible
- * once the dashboard's header/nav is gone. The copy-link icon only appears
- * when an invite link was passed in (facilitators only — learners have no
- * link of their own to share in this app's join model).
+ * Slim top bar for the full-page room — the only chrome visible once the
+ * dashboard's header/nav is hidden behind this page's own full-viewport
+ * takeover. Carries the same accessibility/theme/language controls AppShell's
+ * header normally provides, since that header is unreachable here, plus the
+ * copy-link icon, which only appears when an invite link was passed in
+ * (facilitators only — learners have no link of their own to share in this
+ * app's join model).
  */
 export function MeetingHeader({
   title,
   inviteLink,
   uiLang,
+  currentLanguage,
+  onChangeLanguage,
+  languageOptions,
 }: {
   title: string;
   inviteLink?: string | null;
   uiLang: SupportedLanguage;
+  currentLanguage: SupportedLanguage;
+  onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
+  languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
 }) {
   const dict = getDictionary(uiLang).meeting;
   const [copied, setCopied] = useState(false);
@@ -67,6 +84,17 @@ export function MeetingHeader({
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
+      <div className="ml-auto flex items-center gap-2">
+        <AccessibilityPanel />
+        <ThemeToggle />
+        <div id={MEETING_HEADER_LANGUAGE_SLOT_ID} />
+      </div>
+      <LanguageMenu
+        current={currentLanguage}
+        languages={languageOptions}
+        onSelect={onChangeLanguage}
+        slotId={MEETING_HEADER_LANGUAGE_SLOT_ID}
+      />
     </div>
   );
 }

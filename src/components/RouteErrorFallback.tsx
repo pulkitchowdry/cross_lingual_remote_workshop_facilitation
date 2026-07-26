@@ -35,14 +35,27 @@ export function RouteErrorFallback({
     console.error(error);
   }, [error]);
 
+  // Next redacts a production Server Component error's real message for security, but
+  // replaces it with a non-empty, generic, English string (not "" as `error.message ||
+  // dict.message` below assumed) — verified against Next's own react-server-dom runtime:
+  // "An error occurred in the Server Components render. The specific message is omitted
+  // in production builds to avoid leaking sensitive details. A digest property is
+  // included on this error instance which may provide additional details about the
+  // nature of the error." Being truthy, that string always won the `||` fallback, so a
+  // non-English-speaking facilitator/learner — this app's whole purpose — saw raw
+  // English Next.js internals instead of `dict.message` in exactly the real-world case
+  // (a genuine backend failure) where a localized, reassuring message matters most.
+  const isRedactedMessage = error.message?.startsWith("An error occurred in the Server Components render");
+  const displayMessage = isRedactedMessage ? dict.message : error.message || dict.message;
+
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
       <h1 className="font-heading text-xl font-semibold">{dict.title}</h1>
-      <p className="text-sm text-muted-foreground">{error.message || dict.message}</p>
+      <p className="text-sm text-muted-foreground">{displayMessage}</p>
       <button
         type="button"
         onClick={unstable_retry}
-        className="font-data w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+        className="font-data w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
       >
         {dict.retry}
       </button>
