@@ -23,6 +23,14 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS } from "@/lib/confusion-level";
 import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
+import {
+  computeConfusionTrend,
+  computeParticipation,
+  computeBlockerStats,
+  computeLanguageStats,
+  type FacilitatorAnalytics,
+} from "@/lib/facilitator-analytics";
+import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
@@ -72,8 +80,16 @@ export default async function FacilitatorSessionPage({
   // "10"), so the confusion badges' tooltip text below can never drift from the window
   // they're actually computed over.
   const confusionWindowMinutes = DEFAULT_CONFUSION_WINDOW_MS / 60_000;
-  const [session, activeActionItems, recentConfusionInsights, recentLearnerQuestions, messageCount, questionCount] =
-    await Promise.all([
+  const [
+    session,
+    activeActionItems,
+    recentConfusionInsights,
+    recentLearnerQuestions,
+    messageCount,
+    questionCount,
+    allBlockerInsights,
+    allMessagesForParticipation,
+  ] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
@@ -141,6 +157,14 @@ export default async function FacilitatorSessionPage({
     // whatever fits in the chat panel's most-recent page.
     prisma.message.count({ where: { sessionId } }),
     prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
+    prisma.insight.findMany({
+      where: { sessionId, type: "BLOCKER" },
+      select: { status: true, createdAt: true },
+    }),
+    prisma.message.findMany({
+      where: { sessionId },
+      select: { senderId: true, kind: true, isAnonymous: true },
+    }),
   ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
@@ -166,6 +190,24 @@ export default async function FacilitatorSessionPage({
   const learnerDisplayNames = new Map(
     session.participants.map((participant) => [participant.userId, participant.user.displayName]),
   );
+
+  const analytics: FacilitatorAnalytics = {
+    confusionTrend: computeConfusionTrend(
+      confusionTimestamps,
+      session.startedAt ?? session.createdAt,
+      new Date(),
+    ),
+    participation: computeParticipation(
+      allMessagesForParticipation,
+      session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
+    ),
+    blockers: computeBlockerStats(
+      allBlockerInsights.map((item) => ({ ...item, type: "BLOCKER", resolvedAt: null })),
+    ),
+    languages: computeLanguageStats(
+      session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
+    ),
+  };
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -376,6 +418,7 @@ export default async function FacilitatorSessionPage({
               />
             }
           />
+          <AnalyticsDrawer analytics={analytics} isFrozen={false} dict={dict} />
         </section>
       )}
       {/* Once a session ends, WorkshopRoomLayout above stops rendering entirely (its
@@ -422,6 +465,7 @@ export default async function FacilitatorSessionPage({
               )}
             </div>
           </Card>
+          <AnalyticsDrawer analytics={analytics} isFrozen={true} dict={dict} />
           <SessionSidePanel
             chat={{
               messages: chatMessages,
