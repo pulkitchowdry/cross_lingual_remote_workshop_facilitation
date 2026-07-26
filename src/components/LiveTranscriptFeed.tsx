@@ -31,12 +31,18 @@ export function LiveTranscriptFeed({
   jumpToLatestLabel,
   header,
   composer,
+  renderActions,
 }: {
   entries: TranscriptFeedEntry[];
   emptyLabel: string;
   jumpToLatestLabel: string;
   header?: ReactNode;
   composer?: ReactNode;
+  /** Learner-only per-line actions (e.g. "explain simply"), rendered below an entry
+   * once it's expanded. Kept out of the row's own toggle `<button>` — a `<form>`
+   * with its own submit button can't nest inside another `<button>`. Omitted
+   * entirely on the facilitator's read-only feed. */
+  renderActions?: (entry: TranscriptFeedEntry) => ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
@@ -87,39 +93,47 @@ export function LiveTranscriptFeed({
           {entries.length > 0 ? (
             entries.map((entry) => {
               const hasSecondary = Boolean(entry.secondaryText);
-              const revealed = hasSecondary && revealedIds.has(entry.id);
+              // With `renderActions`, every line is expandable — a learner may want to
+              // ask about a caption spoken in their own preferred language too, where
+              // there's no secondaryText (original-language quote) to reveal.
+              const isExpandable = hasSecondary || Boolean(renderActions);
+              const revealed = isExpandable && revealedIds.has(entry.id);
               return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  disabled={!hasSecondary}
-                  aria-expanded={hasSecondary ? revealed : undefined}
-                  onClick={hasSecondary ? () => toggleRevealed(entry.id) : undefined}
-                  className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left ${
-                    hasSecondary ? "cursor-pointer hover:bg-surface-raised" : ""
-                  }`}
-                >
-                  <span className="font-data shrink-0 pt-0.5 text-[10px] tabular-nums text-muted-foreground">
-                    {entry.time}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="font-data text-xs font-semibold" style={{ color: getSpeakerColor(entry.speaker) }}>
-                      {entry.speaker}
-                    </span>{" "}
-                    <span
-                      className="text-sm"
-                      lang={entry.primaryLang}
-                      style={entry.primaryIsFallback ? { color: "var(--tick-low)" } : undefined}
-                    >
-                      {entry.primaryText}
+                <div key={entry.id}>
+                  <button
+                    type="button"
+                    disabled={!isExpandable}
+                    aria-expanded={isExpandable ? revealed : undefined}
+                    onClick={isExpandable ? () => toggleRevealed(entry.id) : undefined}
+                    className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left ${
+                      isExpandable ? "cursor-pointer hover:bg-surface-raised" : ""
+                    }`}
+                  >
+                    <span className="font-data shrink-0 pt-0.5 text-[10px] tabular-nums text-muted-foreground">
+                      {entry.time}
                     </span>
-                    {revealed && (
-                      <p className="mt-0.5 text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
-                        {entry.secondaryText}
-                      </p>
-                    )}
-                  </div>
-                </button>
+                    <div className="min-w-0 flex-1">
+                      <span className="font-data text-xs font-semibold" style={{ color: getSpeakerColor(entry.speaker) }}>
+                        {entry.speaker}
+                      </span>{" "}
+                      <span
+                        className="text-sm"
+                        lang={entry.primaryLang}
+                        style={entry.primaryIsFallback ? { color: "var(--tick-low)" } : undefined}
+                      >
+                        {entry.primaryText}
+                      </span>
+                      {revealed && hasSecondary && (
+                        <p className="mt-0.5 text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
+                          {entry.secondaryText}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                  {revealed && renderActions && (
+                    <div className="pb-1 pl-9 pr-2">{renderActions(entry)}</div>
+                  )}
+                </div>
               );
             })
           ) : (

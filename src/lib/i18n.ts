@@ -116,6 +116,10 @@ export interface Dictionary {
     captionAudioHint: string;
     publish: string;
     publishing: string;
+    explainSimply: string;
+    giveExample: string;
+    explainSimplyQuestion: (caption: string) => string;
+    giveExampleQuestion: (caption: string) => string;
   };
   chat: {
     noMessages: string;
@@ -281,6 +285,10 @@ const en: Dictionary = {
     captionAudioHint: "Read aloud to everyone in their language, even if they haven't turned on translated audio — useful if you can't speak.",
     publish: "Publish",
     publishing: "Publishing…",
+    explainSimply: "Explain simply",
+    giveExample: "Give an example",
+    explainSimplyQuestion: (caption) => `Please explain this simply: "${caption}"`,
+    giveExampleQuestion: (caption) => `Please give an example for this: "${caption}"`,
   },
   chat: {
     noMessages: "No messages yet. Say hello or ask for help.",
@@ -447,6 +455,10 @@ const zh: Dictionary = {
     captionAudioHint: "会以每个人的语言朗读给他们听，即使他们未开启翻译语音——适合无法说话时使用。",
     publish: "发布",
     publishing: "发布中……",
+    explainSimply: "简单解释",
+    giveExample: "举个例子",
+    explainSimplyQuestion: (caption) => `请用简单的话解释这段字幕：“${caption}”`,
+    giveExampleQuestion: (caption) => `请针对这段字幕举一个例子：“${caption}”`,
   },
   chat: {
     noMessages: "暂无消息。打个招呼或提出问题吧。",
@@ -614,6 +626,10 @@ const es: Dictionary = {
     captionAudioHint: "Se leerá en voz alta a todos en su idioma, aunque no hayan activado el audio traducido — útil si no puedes hablar.",
     publish: "Publicar",
     publishing: "Publicando…",
+    explainSimply: "Explicar sencillo",
+    giveExample: "Dar un ejemplo",
+    explainSimplyQuestion: (caption) => `Explica esto de forma sencilla: "${caption}"`,
+    giveExampleQuestion: (caption) => `Da un ejemplo para esto: "${caption}"`,
   },
   chat: {
     noMessages: "Aún no hay mensajes. Saluda o pide ayuda.",

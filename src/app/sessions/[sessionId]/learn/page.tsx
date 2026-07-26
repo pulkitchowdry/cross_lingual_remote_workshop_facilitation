@@ -6,6 +6,7 @@ import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { ChatSendButton } from "@/components/ChatSendButton";
+import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
@@ -141,6 +142,23 @@ export default async function LearnerSessionPage({
                   entries: transcriptEntries,
                   emptyLabel: learnerDict.captionsWillAppear,
                   jumpToLatestLabel: dict.common.jumpToLatest,
+                  renderActions: (entry) => {
+                    // `secondaryText` holds the original-language quote when a translation
+                    // was shown as `primaryText`; for a caption already in the learner's own
+                    // language there's no secondaryText, and primaryText already is the
+                    // original — either way this is never the "Translation unavailable" copy.
+                    const originalText = entry.secondaryText ?? entry.primaryText;
+                    return (
+                      <CaptionComprehensionActions
+                        sendAction={sendChatAction}
+                        explainSimplyLabel={learnerDict.explainSimply}
+                        giveExampleLabel={learnerDict.giveExample}
+                        sendingLabel={dict.chat.sending}
+                        explainSimplyMessage={learnerDict.explainSimplyQuestion(originalText)}
+                        giveExampleMessage={learnerDict.giveExampleQuestion(originalText)}
+                      />
+                    );
+                  },
                 }}
                 captionsHeader={
                   textToSpeechProvider.isConfigured && (
