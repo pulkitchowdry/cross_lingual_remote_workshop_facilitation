@@ -22,6 +22,7 @@ import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { computeConfusionLevel } from "@/lib/confusion-level";
+import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -59,7 +60,7 @@ export default async function FacilitatorSessionPage({
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
-        participants: { where: { role: ParticipantRole.LEARNER } },
+        participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true } },
         // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
         // timestamps, so two rows created within the same millisecond (e.g. several
         // learners' chat messages committing at once) have Postgres-undefined relative
@@ -115,6 +116,18 @@ export default async function FacilitatorSessionPage({
     .filter((item) => item.type === "CONFUSION")
     .map((item) => item.createdAt);
   const confusionLevel = computeConfusionLevel(confusionTimestamps, new Date());
+
+  // session.messages is capped at MESSAGE_HISTORY_LIMIT (see the query above); same
+  // truncation tradeoff as confusionTimestamps above — only under-counts once message
+  // volume is already high enough to be well past HIGH regardless.
+  const learnerUserIds = new Set(session.participants.map((participant) => participant.userId));
+  const questionMessages = session.messages
+    .filter((message) => message.kind === "QUESTION")
+    .map((message) => ({ senderId: message.senderId, sentAt: message.sentAt }));
+  const learnerConfusionLevels = computeLearnerConfusionLevels(questionMessages, learnerUserIds, new Date());
+  const learnerDisplayNames = new Map(
+    session.participants.map((participant) => [participant.userId, participant.user.displayName]),
+  );
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -309,6 +322,26 @@ export default async function FacilitatorSessionPage({
             )}
           </div>
         </div>
+        {learnerConfusionLevels.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {learnerConfusionLevels.map((entry) => {
+              const name = learnerDisplayNames.get(entry.userId) ?? commonDict.speaker;
+              return (
+                <span
+                  key={entry.userId}
+                  className="font-data rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                  style={{
+                    color: entry.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
+                    borderColor: "currentColor",
+                  }}
+                >
+                  {name} ·{" "}
+                  {entry.level === "HIGH" ? dict.confusionLevelHigh(entry.count) : dict.confusionLevelSome(entry.count)}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {activeActionItems.length > 0 ? (
           <div className="flex flex-col gap-3">
             {activeActionItems.map((item) => {
