@@ -7,6 +7,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
+import { roomProvider } from "@/lib/providers/room";
 import { generateAndPersistSessionSummary } from "@/lib/insights";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
@@ -41,6 +42,10 @@ export async function startSession(sessionId: string) {
   }
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
+  // The facilitator is the one who just went live — send them straight into the
+  // full-page room instead of back to the dashboard. Learners see a "Join live
+  // session" card on their own dashboard the next time it refreshes/polls.
+  redirect(`/sessions/${sessionId}/facilitator/room`);
 }
 
 export async function endSession(sessionId: string) {
@@ -128,6 +133,17 @@ export async function resolveInsight(sessionId: string, insightId: string) {
     data: { status: "RESOLVED" },
   });
   revalidatePath(`/sessions/${sessionId}/facilitator`);
+}
+
+/**
+ * Called directly from the meeting settings popover (not a `<form>` submit)
+ * whenever the facilitator flips "allow learners to present" — every
+ * connected client picks this up live via LiveKit room metadata, see
+ * `roomProvider.setPresenterAccess`.
+ */
+export async function setPresenterAccess(sessionId: string, allowLearnerPresenting: boolean) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+  await roomProvider.setPresenterAccess(sessionId, allowLearnerPresenting);
 }
 
 /** Invalidates the learner invite link immediately — a leaked or no-longer-needed link stops working right away, rather than waiting out its expiry. */

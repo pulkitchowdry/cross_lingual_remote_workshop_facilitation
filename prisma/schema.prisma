@@ -87,6 +87,7 @@ model Session {
   messages           Message[]
   insights           Insight[]
   glossaryTerms      GlossaryTerm[]
+  whiteboard         WhiteboardSnapshot?
 }
 
 model SessionParticipant {
@@ -168,6 +169,20 @@ model GlossaryTerm {
   session             Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, sourceTerm])
+}
+
+/**
+ * One row per session — a debounced full-scene snapshot of the live whiteboard
+ * (Excalidraw's elements array, including each text element's `customData`
+ * translation payload) for late-joiners and page reloads. Not the live-sync
+ * path — that's a LiveKit DataChannel topic ("whiteboard"), see room.ts.
+ */
+model WhiteboardSnapshot {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  elements  Json
+  updatedAt DateTime @updatedAt
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model Message {

@@ -20,11 +20,16 @@ export function LanguageMenu({
   current,
   languages = SUPPORTED_LANGUAGES,
   onSelect,
+  slotId = HEADER_SLOT_ID,
   liveWarning,
 }: {
   current: SupportedLanguage;
   languages?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   onSelect: (lang: SupportedLanguage) => Promise<void>;
+  /** Portal target id — defaults to AppShell's header slot. The meeting room's own
+   * header (hidden behind AppShell's, since the room takes over the full viewport)
+   * passes its own local slot id instead. */
+  slotId?: string;
   /**
    * Shown inside the open dropdown, not as a permanent page banner — this used to render
    * unconditionally above the page title for the entire time a session was LIVE,
@@ -54,8 +59,8 @@ export function LanguageMenu({
     // comment above) and stores the result; it isn't state that could be computed
     // during render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSlot(document.getElementById(HEADER_SLOT_ID));
-  }, []);
+    setSlot(document.getElementById(slotId));
+  }, [slotId]);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);

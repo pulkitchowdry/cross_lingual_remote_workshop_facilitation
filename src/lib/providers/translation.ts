@@ -127,6 +127,13 @@ async function translateWithClaude(
   return null;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const LOCAL_TRANSLATE_ATTEMPTS = 2;
+const LOCAL_TRANSLATE_RETRY_DELAY_MS = 400;
+
 /**
  * Tries the self-hosted NLLB tier first (privacy-preserving — nothing leaves
  * this server), then falls back to Claude on any local failure, unless the
@@ -147,19 +154,28 @@ export async function translateText(
   const allowCloudFallback = options?.allowCloudFallback ?? true;
 
   if (isLocalInferenceConfigured()) {
-    try {
-      const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
-      if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
-      // localTranslate only throws when payload.text isn't a string (already logged below via
-      // catch) — an empty string passes that check and lands here instead, silently falling
-      // through to the cloud tier. Without this log, a local-inference tier that responds 200
-      // with a blank body is indistinguishable from one that's simply not configured.
-      console.error("translateText: local-inference translate returned an empty translation, falling back.");
-    } catch (error) {
-      // Fall through to the cloud tier below (or to null, if disallowed) — but log
-      // first, or a broken local-inference tier is invisible until someone notices
-      // every segment quietly reads "Translation unavailable.".
-      console.error("translateText: local-inference translate failed, falling back:", error);
+    for (let attempt = 1; attempt <= LOCAL_TRANSLATE_ATTEMPTS; attempt++) {
+      try {
+        const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
+        if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
+        // localTranslate only throws when payload.text isn't a string (handled in the catch
+        // below) — an empty string passes that check and lands here instead. Without this
+        // log, a local-inference tier that responds 200 with a blank body is indistinguishable
+        // from one that's simply not configured. Not retried: a 200 with blank text is a
+        // content problem, not the kind of transient failure the retry loop targets.
+        console.error(
+          `[translation] local-inference returned an empty translation (${sourceLanguage}->${targetLanguage}), falling back.`,
+        );
+        break;
+      } catch (error) {
+        console.error(
+          `[translation] local-inference translate attempt ${attempt}/${LOCAL_TRANSLATE_ATTEMPTS} failed ` +
+            `(${sourceLanguage}->${targetLanguage}):`,
+          error,
+        );
+        if (attempt < LOCAL_TRANSLATE_ATTEMPTS) await delay(LOCAL_TRANSLATE_RETRY_DELAY_MS);
+        // Last attempt exhausted: fall through to the cloud tier below (or to null, if disallowed).
+      }
     }
   }
 

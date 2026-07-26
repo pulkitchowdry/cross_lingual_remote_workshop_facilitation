@@ -37,7 +37,10 @@ export async function localTranslate(
     cache: "no-store",
     signal: AbortSignal.timeout(5_000),
   });
-  if (!response.ok) throw new Error(`local-inference translate failed with status ${response.status}.`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`local-inference translate failed with status ${response.status}: ${detail || "no response body"}`);
+  }
   const payload = (await response.json()) as { text?: string };
   if (typeof payload.text !== "string") throw new Error("local-inference translate returned no text.");
   return { text: payload.text };

@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import QRCode from "qrcode";
 import { Card } from "@/components/ui/Card";
-import { WorkshopRoomLayout } from "@/components/WorkshopRoomLayout";
 import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
-import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
@@ -16,7 +15,6 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
-import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { insightProvider } from "@/lib/providers/insight";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
@@ -33,11 +31,9 @@ import {
 import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
-import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   endSession,
-  publishCaption,
   resolveInsight,
   revokeLearnerInvite,
   startSession,
@@ -259,12 +255,9 @@ export default async function FacilitatorSessionPage({
   // that leaves the JS array itself newest-first too. Reversed here to chronological
   // (oldest-first) order before mapping: LiveTranscriptFeed renders `entries` top-to-bottom
   // and auto-scrolls to the *bottom* on growth (its own doc comment: "newest at the
-  // bottom", matching a live chat), and `latestCaptionText` below reads `.at(-1)` expecting
-  // the last array element to be the newest segment. Left un-reversed, both read backwards:
-  // confirmed live (three sequential captions) that the feed showed the newest at the top
-  // and the video's caption overlay stayed frozen on the very first caption of the
-  // session — which reads to a user as "captions have stopped updating" for the entire
-  // rest of a live conversation, not just a cosmetic ordering glitch.
+  // bottom", matching a live chat). Left un-reversed, the feed would show the newest
+  // caption at the top instead of the bottom — a confusing ordering glitch confirmed
+  // live before this reverse was added.
   const transcriptEntries: TranscriptFeedEntry[] = [...session.transcript].reverse().map((segment) => {
     // Segments used to always be facilitator-authored (always in sourceLanguage), but
     // learners can now type captions too, in their own preferredLanguage — so this can no
@@ -284,7 +277,6 @@ export default async function FacilitatorSessionPage({
       secondaryLang: !isSourceLanguage ? segment.language : undefined,
     };
   });
-  const latestCaptionText = transcriptEntries.at(-1)?.primaryText;
   const statusLabel = {
     [SessionStatus.DRAFT]: dict.statusDraft,
     [SessionStatus.LIVE]: dict.statusLive,
@@ -302,16 +294,10 @@ export default async function FacilitatorSessionPage({
   }
   const startAction = startSession.bind(null, sessionId);
   const endAction = endSession.bind(null, sessionId);
-  const publishCaptionAction = publishCaption.bind(null, sessionId);
   const revokeInviteAction = revokeLearnerInvite.bind(null, sessionId);
-  const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
+  const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const chatMessages = [...session.messages].reverse();
-  const privateRecipientOptions = session.participants.map((participant) => ({
-    participantId: participant.id,
-    userId: participant.userId,
-    displayName: participant.user.displayName,
-  }));
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
@@ -398,67 +384,15 @@ export default async function FacilitatorSessionPage({
       </div>
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.workshopRoom}</h2>
-          <WorkshopRoomLayout
-            sessionId={session.id}
-            role="facilitator"
-            lang={lang}
-            captionText={latestCaptionText}
-            belowVideo={
-              speechToTextProvider.isConfigured && (
-                <LiveCaptionStream
-                  sessionId={session.id}
-                  lang={lang}
-                  agentCapturing={session.captionAgentActive}
-                />
-              )
-            }
-            sidebar={
-              <SessionSidePanel
-                chat={{
-                  messages: chatMessages,
-                  targetLanguage: session.sourceLanguage,
-                  sendAction: sendChatAction,
-                  viewerIsFacilitator: true,
-                  viewerUserId: session.facilitatorId,
-                  privateRecipientOptions,
-                }}
-                captions={{
-                  entries: transcriptEntries,
-                  emptyLabel: dict.transcriptEmpty,
-                  jumpToLatestLabel: commonDict.jumpToLatest,
-                }}
-                captionsHeader={
-                  textToSpeechProvider.isConfigured && (
-                    <TranslatedAudioPlayer
-                      segments={session.transcript.map((segment) => ({
-                        id: segment.id,
-                        hasTranslation:
-                          segment.language === session.sourceLanguage ||
-                          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
-                        isTyped: segment.isTyped,
-                      }))}
-                      preferredLanguage={session.sourceLanguage}
-                    />
-                  )
-                }
-                captionComposer={
-                  <CaptionPublishForm
-                    action={publishCaptionAction}
-                    dict={{
-                      captionLabel: dict.captionLabel,
-                      captionPlaceholder: dict.captionPlaceholder,
-                      captionAudioHint: dict.captionAudioHint,
-                      publish: dict.publish,
-                      publishing: dict.publishing,
-                    }}
-                  />
-                }
-                chatTabLabel={commonDict.chatTab}
-                captionsTabLabel={commonDict.captionsTab}
-              />
-            }
-          />
+          <Card eyebrow={dict.workshopRoom} title={dict.liveAudioVideo} accent="var(--tick-high)">
+            <p className="text-muted-foreground">{dict.micCameraHint}</p>
+            <Link
+              href={`/sessions/${sessionId}/facilitator/room`}
+              className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+            >
+              {getDictionary(lang).common.joinLiveSession}
+            </Link>
+          </Card>
           <AnalyticsDrawer
             analytics={analytics}
             isFrozen={false}
@@ -469,8 +403,8 @@ export default async function FacilitatorSessionPage({
           />
         </section>
       )}
-      {/* Once a session ends, WorkshopRoomLayout above stops rendering entirely (its
-          LiveKit room has nothing left to connect to) — without a replacement here, the
+      {/* Once a session ends, the "join live session" card above stops rendering
+          entirely (there's no live room left to join) — without a replacement here, the
           transcript/chat this section's own data was already fetched for (session.transcript,
           session.messages, both queried unconditionally above) had no UI left anywhere on
           this page, making the whole session's record unretrievable the moment it ended. */}

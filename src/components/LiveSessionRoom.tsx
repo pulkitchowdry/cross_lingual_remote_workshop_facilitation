@@ -1,29 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import {
-  CarouselLayout,
-  DisconnectButton,
-  FocusLayout,
-  FocusLayoutContainer,
-  GridLayout,
-  LeaveIcon,
-  LiveKitRoom,
-  MediaDeviceMenu,
-  ParticipantTile,
-  RoomAudioRenderer,
-  TrackToggle,
-  useDataChannel,
-  useTracks,
-} from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, useDataChannel, useLocalParticipant } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { DisconnectReason, Track, type MediaDeviceFailure } from "livekit-client";
+import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
+import { MeetingRoom } from "@/components/meeting/MeetingRoom";
+import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
+import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
 import { getDictionary } from "@/lib/i18n";
-import "@/lib/media-devices";
-import type { SupportedLanguage } from "@/lib/session-contracts";
-
-type RoomDict = ReturnType<typeof getDictionary>["room"];
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 
 /**
  * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
@@ -76,249 +62,63 @@ const BACKGROUND_REFRESH_RETRY_DELAY_MS = 60 * 1000;
 const MAX_BACKGROUND_REFRESH_RETRIES = 3;
 
 /**
- * Only the facilitator gets the screen-share toggle — the room stays
- * bidirectional for audio/video (see room.ts), but screen sharing is a
- * facilitator-to-group broadcast, not a peer-to-peer one, so learners don't
- * get the control. Controls are hand-rolled (rather than LiveKit's stock
- * `ControlBar`) so each button's aria-label can come from `dict`.
+ * Mirrors the local participant's actual mic/camera/screen-share state (as
+ * toggled via MeetingToolbar's own `useTrackToggle` calls, deep inside
+ * `<MeetingRoom>`) back up to `LiveSessionRoom`, so a later forced reconnect
+ * (see `publishState` below) can restore it instead of resetting to fixed
+ * defaults. Must render inside `<LiveKitRoom>` to reach room context; renders
+ * nothing itself.
  */
-function WorkshopVideoStage({
-  role,
-  dict,
-  captionText,
-  onPublishStateChange,
-  onScreenShareActiveChange,
-  onLeave,
-}: {
-  role: Role;
-  dict: RoomDict;
-  captionText?: string;
-  /** Reports the local participant's actual mic/camera/screen-share state after every change, so a later forced reconnect (see `publishState` below) can restore it instead of resetting to fixed defaults. */
-  onPublishStateChange: (patch: Partial<PublishState>) => void;
-  /** Reports whether ANY participant's screen share is currently live in the room (not just the local one) — the page grid uses this to let the video column grow toward full width while something is actively being presented, instead of staying capped at its idle share. */
-  onScreenShareActiveChange?: (active: boolean) => void;
-  /** Fired when the user explicitly clicks Leave, distinct from a network-triggered disconnect — see `hasLeftRef` below. */
-  onLeave: () => void;
-}) {
-  // LiveKitRoom auto-publishes video but never audio (`audio={false}` below),
-  // so the browser only ever prompts for camera permission on connect. Without
-  // mic permission, `navigator.mediaDevices.enumerateDevices()` — which
-  // ControlBar's device menus call internally — returns every audio input
-  // with the same blank label and the same deviceId ("" pre-permission), and
-  // the same can happen for video inputs if camera permission is denied.
-  // Requesting (and immediately releasing) both permissions here makes the
-  // browser report real per-device labels/IDs — publishing stays governed by
-  // the `audio`/`video` props above, only the permission prompts change.
-  //
-  // This does NOT cover every cause of ControlBar's "two children with the
-  // same key" warning, though: some drivers report two real, distinct
-  // devices under one identical deviceId even with permission granted (see
-  // `dedupeEnumerateDevices` in `@/lib/media-devices`, imported above for
-  // that reason) — two earlier fixes here assumed permission state was the
-  // only cause and didn't hold up.
+function PublishStateTracker({ onChange }: { onChange: (patch: PublishState) => void }) {
+  const { isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
   useEffect(() => {
-    navigator.mediaDevices
-      ?.getUserMedia({ audio: true, video: true })
-      .then((stream) => stream.getTracks().forEach((track) => track.stop()))
-      .catch(() => {
-        // Permission denial only degrades device-menu labels, not the call.
-      });
-  }, []);
-
-  // `caption-agent.ts` (the server-side LiveKit Agents worker that subscribes to the
-  // facilitator's mic for captions — see docs/TRANSLATION_ARCHITECTURE.md Part 2) joins
-  // this same room as its own participant (identity like "agent-AJ_...") so it can
-  // subscribe to audio. With `withPlaceholder: true` below, `useTracks` creates a camera
-  // placeholder tile for EVERY participant with no camera publication — including that
-  // agent, which never publishes one. Confirmed live (two real browser sessions): the
-  // agent shows up as a third, blank tile labeled with its raw job ID next to
-  // "Facilitator"/"Learner", polluting the grid for both roles. Real participants are
-  // always issued a `"facilitator:<id>"`/`"learner:<id>"` identity (room.ts's
-  // `issueCredential`) — filtering to that prefix excludes the agent (and any other
-  // future non-participant service identity) without needing to know its exact naming
-  // scheme.
-  const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
-    { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]).filter(
-    (track) => track.participant.identity.startsWith("facilitator:") || track.participant.identity.startsWith("learner:"),
-  );
-  const screenShareTrack = tracks.find((track) => track.source === Track.Source.ScreenShare);
-  const cameraTracks = tracks.filter((track) => track.source === Track.Source.Camera);
-  const [showCaptions, setShowCaptions] = useState(true);
-  const stageRef = useRef<HTMLDivElement>(null);
-  // A freshly (re)subscribed camera/screen-share MediaStreamTrack starts in
-  // WebRTC's own "muted" state (`track.muted === true`, no decoded frames yet)
-  // until its first keyframe arrives — confirmed live: `readyState` sits at 0
-  // and `videoWidth`/`videoHeight` at 0 for several seconds after subscribing,
-  // then jumps straight to a fully-decoding video with no error or event the
-  // app currently reacts to. `@livekit/components-styles`'s own placeholder
-  // (`.lk-participant-placeholder`) only reacts to `data-lk-video-muted`
-  // (the participant explicitly turning their camera off) — not this
-  // transient no-data window — so the raw `<video>` element's own
-  // `background-color: #000` paints solid black with nothing telling the
-  // other party it's still connecting, which is what the "screen share/video
-  // is just black" reports were actually seeing (a *different* root cause
-  // than the GPU-compositing race `will-change: transform` above already
-  // fixed — that one showed correct pixel data on canvas readback; this one
-  // has zero decoded frames yet, and can recur on every reconnect, not just
-  // first subscribe). Flags each tile with `data-video-loading` (see the
-  // spinner in globals.css) until its `<video>` actually has a frame
-  // (`readyState >= 2`), and re-flags it if playback ever stalls again.
-  useEffect(() => {
-    const container = stageRef.current;
-    if (!container) return;
-    const tracked = new WeakSet<HTMLVideoElement>();
-    const updateTile = (video: HTMLVideoElement) => {
-      const tile = video.closest(".lk-participant-tile");
-      if (!tile) return;
-      tile.toggleAttribute("data-video-loading", video.readyState < 2);
-    };
-    const attach = (video: HTMLVideoElement) => {
-      if (tracked.has(video)) return;
-      tracked.add(video);
-      updateTile(video);
-      for (const eventType of ["loadeddata", "playing", "waiting", "emptied"]) {
-        video.addEventListener(eventType, () => updateTile(video));
-      }
-    };
-    const scan = (node: Node) => {
-      if (node instanceof HTMLVideoElement && node.classList.contains("lk-participant-media-video")) {
-        attach(node);
-      }
-      if (node instanceof Element) {
-        node.querySelectorAll<HTMLVideoElement>("video.lk-participant-media-video").forEach(attach);
-      }
-    };
-    scan(container);
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        mutation.addedNodes.forEach(scan);
-      }
-    });
-    observer.observe(container, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-
-  const isScreenShareActive = Boolean(screenShareTrack);
-  useEffect(() => {
-    onScreenShareActiveChange?.(isScreenShareActive);
-  }, [isScreenShareActive, onScreenShareActiveChange]);
-
-  // `useTrackToggle` (which `<TrackToggle>` wraps) re-runs an internal effect whose
-  // dependency array includes this `onChange` reference every time it changes — an
-  // inline arrow function here would be a new reference on every render, so that
-  // effect fires again, which calls `onPublishStateChange`, which (via LiveSessionRoom's
-  // `setPublishState`) re-renders this component, creating yet another new inline
-  // function: an infinite render loop ("Maximum update depth exceeded"), reproduced
-  // and confirmed live in the browser. `useCallback` keeps each handler's identity
-  // stable across renders as long as `onPublishStateChange` itself is stable (it is —
-  // see LiveSessionRoom's own `useCallback` around `setPublishState`).
-  const handleMicrophoneChange = useCallback(
-    (enabled: boolean) => onPublishStateChange({ audio: enabled }),
-    [onPublishStateChange],
-  );
-  const handleCameraChange = useCallback(
-    (enabled: boolean) => onPublishStateChange({ video: enabled }),
-    [onPublishStateChange],
-  );
-  const handleScreenShareChange = useCallback(
-    (enabled: boolean) => onPublishStateChange({ screen: enabled }),
-    [onPublishStateChange],
-  );
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div ref={stageRef} className="relative flex-1 overflow-hidden p-2">
-        {screenShareTrack ? (
-          // FocusLayoutContainer expects its FIRST child to be the small side
-          // carousel and its SECOND child to be the large focused tile — its
-          // own CSS (.lk-focus-layout { grid-template-columns: 1fr 5fr }) hands
-          // the first DOM child the narrow 1fr column. Screen share must go
-          // second (the 5fr column) or it renders as the small tile with the
-          // camera carousel blown up huge instead — the inverse of "screen
-          // share is always the biggest".
-          <FocusLayoutContainer className="h-full">
-            <CarouselLayout tracks={cameraTracks}>
-              <ParticipantTile />
-            </CarouselLayout>
-            <FocusLayout trackRef={screenShareTrack} />
-          </FocusLayoutContainer>
-        ) : (
-          <GridLayout tracks={cameraTracks} className="h-full">
-            <ParticipantTile />
-          </GridLayout>
-        )}
-        {showCaptions && captionText && (
-          <div className="pointer-events-none absolute inset-x-6 bottom-4 flex justify-center">
-            <p className="max-w-full rounded-md bg-black/75 px-3 py-1.5 text-center text-sm text-white">
-              {captionText}
-            </p>
-          </div>
-        )}
-      </div>
-      {/* `shrink-0` — defense in depth alongside globals.css's `.lk-button-group` height
-          override (see that rule's own comment for the actual root cause of the mobile
-          overlap it fixes): keeps this row's box from ever being shrunk below its wrapped
-          content's real height by its `flex-1` video-stage sibling above, the same way
-          that sibling is the one meant to absorb any space pressure in this flex column. */}
-      <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
-        <div className="lk-button-group">
-          <TrackToggle source={Track.Source.Microphone} aria-label={dict.toggleMicrophone} onChange={handleMicrophoneChange} />
-          <div className="lk-button-group-menu">
-            <MediaDeviceMenu kind="audioinput" aria-label={dict.selectMicrophone} />
-          </div>
-        </div>
-        <div className="lk-button-group">
-          <TrackToggle source={Track.Source.Camera} aria-label={dict.toggleCamera} onChange={handleCameraChange} />
-          <div className="lk-button-group-menu">
-            <MediaDeviceMenu kind="videoinput" aria-label={dict.selectCamera} />
-          </div>
-        </div>
-        {role === "facilitator" && (
-          <TrackToggle
-            source={Track.Source.ScreenShare}
-            aria-label={dict.toggleScreenShare}
-            onChange={handleScreenShareChange}
-            // Without this, getDisplayMedia() captures video only — the token still
-            // grants screen-share-audio publish rights (room.ts), but nothing ever
-            // requests the browser's shared-tab/system audio to begin with, so
-            // learners never hear it regardless of what the token allows.
-            captureOptions={{ audio: true }}
-          />
-        )}
-        <button
-          type="button"
-          className="lk-button"
-          aria-pressed={showCaptions}
-          aria-label={dict.toggleCaptions}
-          onClick={() => setShowCaptions((current) => !current)}
-        >
-          <span className="font-data text-[11px] font-bold leading-none tracking-tight" aria-hidden="true">
-            CC
-          </span>
-        </button>
-        <DisconnectButton aria-label={dict.leaveCall} onClick={onLeave}>
-          <LeaveIcon />
-        </DisconnectButton>
-      </div>
-    </div>
-  );
+    onChange({ audio: isMicrophoneEnabled, video: isCameraEnabled, screen: isScreenShareEnabled });
+  }, [isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled, onChange]);
+  return null;
 }
 
 export function LiveSessionRoom({
   sessionId,
   role,
   lang,
-  captionText,
-  onScreenShareActiveChange,
+  targetLanguage,
+  transcript,
+  messages,
+  sendChatAction,
+  allowQuestions,
+  title,
+  inviteLink,
+  viewerIsFacilitator,
+  viewerUserId,
+  canMessageFacilitatorPrivately,
+  privateRecipientOptions,
+  currentLanguage,
+  onChangeLanguage,
+  languageOptions,
+  captionsHeader,
+  captionComposer,
 }: {
   sessionId: string;
   role: Role;
   lang: SupportedLanguage;
-  captionText?: string;
-  /** See the matching prop on `WorkshopVideoStage` — bubbled straight through so the page grid wrapping this component can react to it. */
-  onScreenShareActiveChange?: (active: boolean) => void;
+  targetLanguage: string;
+  transcript: MeetingTranscriptSegment[];
+  messages: MeetingChatMessage[];
+  sendChatAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
+  allowQuestions?: boolean;
+  title: string;
+  inviteLink?: string | null;
+  viewerIsFacilitator?: boolean;
+  viewerUserId?: string;
+  canMessageFacilitatorPrivately?: boolean;
+  privateRecipientOptions?: PrivateRecipientOption[];
+  currentLanguage: SupportedLanguage;
+  onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
+  languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
+  /** Above the captions feed — the "play translated audio" opt-in control. */
+  captionsHeader?: ReactNode;
+  /** Below the captions feed — the typed-caption composer. */
+  captionComposer?: ReactNode;
 }) {
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
@@ -339,19 +139,14 @@ export function LiveSessionRoom({
   // every render (just below) sidesteps that while still always calling whichever
   // version is current.
   const fetchCredentialsRef = useRef<((args: { background: boolean }) => Promise<void>) | null>(null);
-  // The actual mic/camera/screen-share state the local participant currently wants
-  // published — starts at the same defaults <LiveKitRoom> always auto-published
-  // before this existed (mic off, camera on, no screen share), but tracks every
-  // toggle via WorkshopVideoStage's TrackToggle onChange handlers from then on.
-  // A forced reconnect (the token-refresh effect below) remounts <LiveKitRoom>
-  // (its `key` is `credentials.token`), which re-runs its own connect-time
-  // auto-publish using whatever audio/video/screen props it's given *at that
-  // moment* — reading this state there (instead of fixed constants) is what makes
-  // a reconnect preserve rather than reset an active mic/screen-share, or a camera
-  // the user had explicitly turned off. State, not a ref, deliberately — reading a
-  // ref's `.current` during render (as the JSX below does) isn't safe, and a toggle
-  // here re-rendering this component doesn't remount <LiveKitRoom> (its `key`
-  // doesn't change), so it doesn't cost an extra reconnect.
+  // The actual mic/camera/screen-share state the local participant currently has
+  // published — kept in sync by PublishStateTracker (above), which reads it
+  // straight off the LiveKit room. A forced reconnect (the token-refresh effect
+  // below) remounts <LiveKitRoom> (its `key` is `credentials.token`), which
+  // re-runs its own connect-time auto-publish using whatever audio/video/screen
+  // props it's given *at that moment* — reading this state there (instead of
+  // fixed constants) is what makes a reconnect preserve rather than reset an
+  // active mic/screen-share, or a camera the user had explicitly turned off.
   const [publishState, setPublishState] = useState<PublishState>({ audio: false, video: true, screen: false });
   // A background token refresh remounts <LiveKitRoom> (its `key` is
   // `credentials.token`), which reruns its own connect-time auto-publish for
@@ -367,33 +162,55 @@ export function LiveSessionRoom({
   }, [publishState]);
   const [screenShareInterrupted, setScreenShareInterrupted] = useState(false);
   // Stable identity (empty deps — `setPublishState` itself is already stable, and this
-  // closes over nothing else) is what lets WorkshopVideoStage's own `useCallback`s stay
-  // stable too, which is what actually avoids the infinite-render loop described below —
-  // an inline arrow function here would defeat that regardless of memoizing downstream.
+  // closes over nothing else) avoids giving any downstream consumer (PublishStateTracker,
+  // handleMediaDeviceFailure below) a new function reference on every render.
   // Set when a per-device capture failure (denied permission, no such device, device
   // held by another app) is recovered from by turning that one device off instead of
   // treating the whole room as unrecoverable — see handleMediaDeviceFailure below.
-  // Cleared once the participant successfully turns the same device back on (a retry
-  // that works, e.g. after granting permission in the browser's own UI).
+  // Cleared either once the participant successfully turns the same device back on (a
+  // retry that works, e.g. after granting permission in the browser's own UI) or after
+  // a fixed delay (see showDeviceWarning below) — a permanently-unavailable device
+  // (no camera on this machine at all, permission denied for good) has no "turns it
+  // back on" event to ever fire, and without the timeout this banner sat on screen for
+  // the rest of the call.
   const [deviceWarning, setDeviceWarning] = useState<string | null>(null);
-  const handlePublishStateChange = useCallback((patch: Partial<PublishState>) => {
-    setPublishState((prev) => ({ ...prev, ...patch }));
-    // The facilitator manually restarting their share is the one signal that clears
-    // the interruption notice below — not a timeout, since there's no way to know in
-    // advance how long they'll take to notice and click the button again.
-    if (patch.screen) setScreenShareInterrupted(false);
-    if (patch.video || patch.audio) setDeviceWarning(null);
+  const deviceWarningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearDeviceWarningTimeout = useCallback(() => {
+    if (deviceWarningTimeoutRef.current !== null) {
+      clearTimeout(deviceWarningTimeoutRef.current);
+      deviceWarningTimeoutRef.current = null;
+    }
   }, []);
-  // Set the instant the user clicks Leave (see WorkshopVideoStage's onLeave), before
+  const showDeviceWarning = useCallback(
+    (message: string) => {
+      setDeviceWarning(message);
+      clearDeviceWarningTimeout();
+      deviceWarningTimeoutRef.current = setTimeout(() => setDeviceWarning(null), 6_000);
+    },
+    [clearDeviceWarningTimeout],
+  );
+  useEffect(() => clearDeviceWarningTimeout, [clearDeviceWarningTimeout]);
+  const handlePublishStateChange = useCallback(
+    (patch: Partial<PublishState>) => {
+      setPublishState((prev) => ({ ...prev, ...patch }));
+      // The facilitator manually restarting their share is the one signal that clears
+      // the interruption notice below — not a timeout, since there's no way to know in
+      // advance how long they'll take to notice and click the button again.
+      if (patch.screen) setScreenShareInterrupted(false);
+      if (patch.video || patch.audio) {
+        setDeviceWarning(null);
+        clearDeviceWarningTimeout();
+      }
+    },
+    [clearDeviceWarningTimeout],
+  );
+  // Set the instant the user clicks Leave (MeetingToolbar's handleLeave), before
   // `room.disconnect()` itself runs — distinct from a network-triggered disconnect,
   // which must still reconnect normally. Read by the refresh effect below so a
   // background token refresh (interval/'visibilitychange'/'online', all of which
   // keep running regardless of what the user did with the room in the meantime)
   // can't remount <LiveKitRoom> and silently rejoin someone who explicitly left.
   const hasLeftRef = useRef(false);
-  const handleLeave = useCallback(() => {
-    hasLeftRef.current = true;
-  }, []);
   // Set on a *terminal* disconnect/error the room has no path to recover from on its
   // own (livekit-client already retries transient network drops internally without
   // ever firing these callbacks) — without this, <LiveKitRoom> just unmounts its
@@ -402,41 +219,52 @@ export function LiveSessionRoom({
   const [fatalError, setFatalError] = useState<string | null>(null);
   const handleDisconnected = useCallback(
     (reason?: DisconnectReason) => {
-      if (hasLeftRef.current || reason === DisconnectReason.CLIENT_INITIATED) return;
+      if (reason === DisconnectReason.CLIENT_INITIATED) {
+        hasLeftRef.current = true;
+        return;
+      }
+      if (hasLeftRef.current) return;
       setFatalError(reason === DisconnectReason.DUPLICATE_IDENTITY ? dict.disconnectedDuplicate : dict.disconnectedOther);
     },
     [dict.disconnectedDuplicate, dict.disconnectedOther],
   );
   const handleRoomError = useCallback(() => setFatalError(dict.unableToJoin), [dict.unableToJoin]);
-  // `publishState` defaults to auto-publishing the camera (`video: true`) on every
-  // connect/reconnect, so a denied permission, a machine with no webcam (very
-  // plausible on an unfamiliar or locked-down device), or the camera already held by
-  // another app is a realistic, recoverable failure — not a reason to tear down the
-  // whole room. `failure`/`kind` (from the SDK's own MediaDeviceFailure classification)
-  // tell us exactly which device the capture attempt was for; for a camera or
-  // microphone specifically, turn just that device off (so the next
-  // render/reconnect stops re-requesting it) and show a dismissible warning instead
-  // of the unrecoverable full-room error — the participant can still join
-  // audio/video-off, and the fatalError branch's "Rejoin" button wouldn't have fixed
-  // this anyway, since it doesn't reset the browser's already-made permission
-  // decision either. Any other failure kind (or
-  // none reported) has no known-safe per-device recovery, so it still falls back to
-  // the original terminal path.
+  // NOT routed through `fatalError` for a per-device failure, deliberately — this
+  // fires for a single track's device problem (mic permission denied, camera already
+  // in use elsewhere, no such device), most commonly from a manual toggle click via
+  // MeetingToolbar's own device controls, but also from <LiveKitRoom>'s own
+  // connect-time auto-publish (`publishState` defaults to `video: true` on every
+  // connect/reconnect). The room itself is still perfectly healthy; treating every
+  // device failure as fatal (as an earlier version did) unmounts <LiveKitRoom> over
+  // it, which disconnects the whole call — turning "you denied the mic prompt" into
+  // "the meeting shut down." `failure`/`kind` (from the SDK's own MediaDeviceFailure
+  // classification) tell us exactly which device the capture attempt was for; for a
+  // camera or microphone specifically, turn just that device off (so the next
+  // render/reconnect stops re-requesting it) and show a dismissible warning instead —
+  // cleared either once the participant successfully turns that same device back on
+  // (handlePublishStateChange's own `setDeviceWarning(null)` above) or after a fixed
+  // delay regardless (showDeviceWarning's own timeout), since a permanently-unavailable
+  // device (no camera at all, permission denied for good) never fires the former. The
+  // participant can still join audio/video-off, and the fatalError branch's "Rejoin"
+  // button wouldn't have fixed this anyway, since it doesn't reset the browser's
+  // already-made permission decision either. Any other failure kind (or none
+  // reported) has no known-safe per-device recovery, so it still falls back to the
+  // original terminal path.
   const handleMediaDeviceFailure = useCallback(
     (_failure?: MediaDeviceFailure, kind?: MediaDeviceKind) => {
       if (kind === "videoinput") {
         setPublishState((prev) => ({ ...prev, video: false }));
-        setDeviceWarning(dict.cameraUnavailable);
+        showDeviceWarning(dict.cameraUnavailable);
         return;
       }
       if (kind === "audioinput") {
         setPublishState((prev) => ({ ...prev, audio: false }));
-        setDeviceWarning(dict.microphoneUnavailable);
+        showDeviceWarning(dict.microphoneUnavailable);
         return;
       }
       setFatalError(dict.mediaDeviceError);
     },
-    [dict.cameraUnavailable, dict.microphoneUnavailable, dict.mediaDeviceError],
+    [dict.cameraUnavailable, dict.microphoneUnavailable, dict.mediaDeviceError, showDeviceWarning],
   );
 
   const fetchCredentials = useCallback(
@@ -450,9 +278,9 @@ export function LiveSessionRoom({
         const payload = (await response.json()) as RoomCredentials & { error?: string };
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
         // A background refresh can still be in flight when the user clicks Leave —
-        // `hasLeftRef` is set synchronously at that moment (see handleLeave), but this
-        // `fetch` was already past `maybeRefresh`'s pre-start check by then. Applying a
-        // stale in-flight refresh's result here would still remount <LiveKitRoom> (its
+        // `hasLeftRef` is set synchronously at that moment (see handleDisconnected), but
+        // this `fetch` was already past `maybeRefresh`'s pre-start check by then. Applying
+        // a stale in-flight refresh's result here would still remount <LiveKitRoom> (its
         // `key` is `credentials.token`) and silently reconnect a room the user
         // explicitly, deliberately left moments earlier.
         if (hasLeftRef.current) return;
@@ -592,23 +420,18 @@ export function LiveSessionRoom({
     return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
   }
 
+  const dashboardHref = `/sessions/${sessionId}/${role === "facilitator" ? "facilitator" : "learn"}`;
+
   return (
-    // Scales with viewport height (up to a point) instead of a flat 38rem, so the
-    // room this component takes ~2/3 of the page width for (see the facilitator/
-    // learner page grids) isn't stuck at a fixed, comparatively short height on
-    // larger displays — clamped on both ends so it stays usable on short viewports
-    // and doesn't grow unbounded on very tall ones. No `overflow-hidden` here (kept
-    // as-is from the hand-rolled controls change) — MediaDeviceMenu's dropdown
-    // needs to render outside these bounds.
-    <div className="h-[clamp(26rem,75vh,54rem)] rounded-lg border border-border-subtle bg-surface">
-      {screenShareInterrupted && (
-        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
-          {dict.screenShareInterrupted}
-        </p>
-      )}
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       {deviceWarning && (
         <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {deviceWarning}
+        </p>
+      )}
+      {screenShareInterrupted && (
+        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+          {dict.screenShareInterrupted}
         </p>
       )}
       <LiveKitRoom
@@ -626,15 +449,31 @@ export function LiveSessionRoom({
         onError={handleRoomError}
         onMediaDeviceFailure={handleMediaDeviceFailure}
         data-lk-theme="default"
+        className="flex h-full min-h-0 flex-col"
       >
-        <WorkshopVideoStage
+        <MeetingRoom
+          sessionId={sessionId}
           role={role}
-          dict={dict}
-          captionText={captionText}
-          onPublishStateChange={handlePublishStateChange}
-          onScreenShareActiveChange={onScreenShareActiveChange}
-          onLeave={handleLeave}
+          uiLang={lang}
+          targetLanguage={targetLanguage}
+          transcript={transcript}
+          messages={messages}
+          sendChatAction={sendChatAction}
+          allowQuestions={allowQuestions}
+          dashboardHref={dashboardHref}
+          title={title}
+          inviteLink={inviteLink}
+          viewerIsFacilitator={viewerIsFacilitator}
+          viewerUserId={viewerUserId}
+          canMessageFacilitatorPrivately={canMessageFacilitatorPrivately}
+          privateRecipientOptions={privateRecipientOptions}
+          currentLanguage={currentLanguage}
+          onChangeLanguage={onChangeLanguage}
+          languageOptions={languageOptions}
+          captionsHeader={captionsHeader}
+          captionComposer={captionComposer}
         />
+        <PublishStateTracker onChange={handlePublishStateChange} />
         <RoomAudioRenderer />
         <CaptionChannelRefresher />
       </LiveKitRoom>

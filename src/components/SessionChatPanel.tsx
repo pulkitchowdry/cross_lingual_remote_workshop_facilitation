@@ -16,7 +16,7 @@ type ChatMessage = {
   translations: Array<{ targetLanguage: string; text: string }>;
 };
 
-type PrivateRecipientOption = {
+export type PrivateRecipientOption = {
   participantId: string;
   userId: string;
   displayName: string;
@@ -34,6 +34,7 @@ export function SessionChatPanel({
   targetLanguage,
   sendAction,
   allowQuestions = false,
+  embedded = false,
   viewerIsFacilitator = false,
   readOnly = false,
   viewerUserId,
@@ -44,6 +45,8 @@ export function SessionChatPanel({
   targetLanguage: string;
   sendAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
+  /** True when rendered inside the meeting sidebar's Chat tab instead of standalone next to the room. */
+  embedded?: boolean;
   viewerIsFacilitator?: boolean;
   /** Hides the compose form — for a session that's already ENDED, where `sendAction`
    * would just reject every submission server-side (see sendChatMessage's own LIVE
@@ -55,6 +58,7 @@ export function SessionChatPanel({
 }) {
   const dict = getDictionary(resolveLanguage(targetLanguage)).chat;
   const translationUnavailable = getDictionary(resolveLanguage(targetLanguage)).common.translationUnavailable;
+  const Wrapper = embedded ? "div" : "aside";
   const privateModeStatusId = useId();
   const facilitatorRecipientSelectId = useId();
   const learnerPrivateCheckboxId = useId();
@@ -80,17 +84,19 @@ export function SessionChatPanel({
   const [state, formAction] = useActionState<FormActionResult, FormData>(sendAction, { error: null });
 
   return (
-    // `h-full` — this is now always nested inside SessionSidePanel.tsx's tab
-    // container, which is what actually bounds the height (a fixed clamp, matching
+    // `h-full` — this is now always nested inside either MeetingSidebar's own
+    // docked panel or SessionSidePanel.tsx's tab container, both of which already
+    // bound the height themselves (SessionSidePanel's is a fixed clamp, matching
     // LiveSessionRoom's own, so the two line up side by side and the messages list
     // below scrolls internally instead of growing without limit). The static
-    // "Translated chat" header this used to render on its own is now the tab button
-    // itself (SessionSidePanel's chatTabLabel), so it isn't repeated here too.
-    <aside className="flex h-full flex-col rounded-lg border border-border-subtle bg-surface-raised">
+    // "Translated chat" header this used to render on its own is now whichever
+    // external label the caller supplies (MeetingSidebar's "Chat" bar,
+    // SessionSidePanel's chatTabLabel tab button), so it isn't repeated here too.
+    <Wrapper className={embedded ? "flex h-full min-h-0 flex-col" : "flex h-full flex-col rounded-lg border border-border-subtle bg-surface-raised"}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
         {messages.length > 0 ? (
           messages.map((message) => (
-            <article key={message.id} className="rounded-md border border-border-subtle bg-background p-3">
+            <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-data text-xs font-medium text-[var(--accent-text)]">
                   {message.isAnonymous && !viewerIsFacilitator ? dict.anonymousLearner : message.sender.displayName}
@@ -240,6 +246,6 @@ export function SessionChatPanel({
         </div>
       </form>
       )}
-    </aside>
+    </Wrapper>
   );
 }

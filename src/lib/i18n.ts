@@ -84,6 +84,8 @@ export interface Dictionary {
     learnersJoinedLabel: (count: number) => string;
     learnersJoinedHint: string;
     workshopRoom: string;
+    liveAudioVideo: string;
+    micCameraHint: string;
     captionLabel: string;
     captionPlaceholder: string;
     captionAudioHint: string;
@@ -264,9 +266,49 @@ export interface Dictionary {
     microphoneUnavailable: string;
     rejoin: string;
   };
+  meeting: {
+    raisedHandTitle: (name: string) => string;
+    connectionQualityTitle: (quality: string) => string;
+    toolbarLabel: string;
+    muteMic: string;
+    unmuteMic: string;
+    stopCamera: string;
+    startCamera: string;
+    lowerHand: string;
+    raiseHand: string;
+    raiseHandFailed: string;
+    stopShareScreen: string;
+    shareScreen: string;
+    presentingLocked: string;
+    switchToVideo: string;
+    switchToWhiteboard: string;
+    settings: string;
+    showCaptions: string;
+    captionContentLabel: string;
+    captionModeBoth: string;
+    captionModeTranslatedOnly: string;
+    captionPositionLabel: string;
+    captionPositionBottom: string;
+    captionPositionTop: string;
+    allowLearnerPresenting: string;
+    leave: string;
+    expandSidebar: string;
+    resizeSidebar: string;
+    collapseSidebar: string;
+    chatLabel: string;
+    shrinkCaptionFont: string;
+    growCaptionFont: string;
+    whiteboardLoading: string;
+    pictureInPicture: string;
+    copyInviteLink: string;
+    linkCopied: string;
+  };
   common: {
     speaker: string;
     translationUnavailable: string;
+    liveNowTitle: string;
+    liveNowHint: string;
+    joinLiveSession: string;
     confirm: string;
     cancel: string;
     jumpToLatest: string;
@@ -356,6 +398,8 @@ const en: Dictionary = {
     learnersJoinedLabel: (count) => (count === 1 ? "1 learner joined" : `${count} learners joined`),
     learnersJoinedHint: "Learners have completed consent and joined.",
     workshopRoom: "Workshop room",
+    liveAudioVideo: "Live audio and video",
+    micCameraHint: "Your camera joins live; your microphone starts muted — click the microphone icon below to turn it on.",
     captionLabel: "Type a caption for learners",
     captionPlaceholder: "Type a caption for learners in their selected language…",
     captionAudioHint: "Read aloud to every learner in their language, even if they haven't turned on translated audio.",
@@ -500,13 +544,53 @@ const en: Dictionary = {
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
+    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found).",
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
+  },
+  meeting: {
+    raisedHandTitle: (name) => `${name} raised their hand`,
+    connectionQualityTitle: (quality) => `Connection: ${quality}`,
+    toolbarLabel: "Meeting controls",
+    muteMic: "Mute microphone",
+    unmuteMic: "Unmute microphone",
+    stopCamera: "Turn off camera",
+    startCamera: "Turn on camera",
+    lowerHand: "Lower hand",
+    raiseHand: "Raise hand",
+    raiseHandFailed: "Couldn't raise hand — check your connection and try again",
+    stopShareScreen: "Stop sharing screen",
+    shareScreen: "Share screen",
+    presentingLocked: "The facilitator hasn't turned this on for participants yet",
+    switchToVideo: "Switch to video",
+    switchToWhiteboard: "Switch to whiteboard",
+    settings: "Settings",
+    showCaptions: "Show captions",
+    captionContentLabel: "Caption content",
+    captionModeBoth: "Original + translated",
+    captionModeTranslatedOnly: "Translated only",
+    captionPositionLabel: "Caption position",
+    captionPositionBottom: "Bottom",
+    captionPositionTop: "Top",
+    allowLearnerPresenting: "Allow participants to share screen & use whiteboard",
+    leave: "Leave meeting",
+    expandSidebar: "Show chat",
+    resizeSidebar: "Resize chat panel",
+    collapseSidebar: "Hide chat",
+    chatLabel: "Chat",
+    shrinkCaptionFont: "Decrease caption text size",
+    growCaptionFont: "Increase caption text size",
+    whiteboardLoading: "Loading whiteboard…",
+    pictureInPicture: "Picture-in-picture",
+    copyInviteLink: "Copy invite link",
+    linkCopied: "Link copied!",
   },
   common: {
     speaker: "Speaker",
     translationUnavailable: "Translation unavailable.",
+    liveNowTitle: "Live now",
+    liveNowHint: "The workshop room is live. Join to see and hear the group.",
+    joinLiveSession: "Join live session",
     confirm: "Confirm",
     cancel: "Cancel",
     jumpToLatest: "Jump to latest",
@@ -592,6 +676,8 @@ const zh: Dictionary = {
     learnersJoinedLabel: (count) => `已加入学员：${count}`,
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
     workshopRoom: "活动室",
+    liveAudioVideo: "实时音视频",
+    micCameraHint: "你的摄像头会立即接入；麦克风默认静音——点击下方麦克风图标可开启。",
     captionLabel: "为学员输入字幕",
     captionPlaceholder: "输入字幕，将以学员所选语言显示……",
     captionAudioHint: "会以每位学员的语言朗读给他们听，即使他们未开启翻译语音。",
@@ -739,9 +825,49 @@ const zh: Dictionary = {
     microphoneUnavailable: "麦克风不可用（权限被拒绝、被占用或未找到）——将不使用麦克风继续。",
     rejoin: "重新加入",
   },
+  meeting: {
+    raisedHandTitle: (name) => `${name} 举手了`,
+    connectionQualityTitle: (quality) => `连接质量：${quality}`,
+    toolbarLabel: "会议控制",
+    muteMic: "静音麦克风",
+    unmuteMic: "取消静音",
+    stopCamera: "关闭摄像头",
+    startCamera: "打开摄像头",
+    lowerHand: "放下手",
+    raiseHand: "举手",
+    raiseHandFailed: "举手失败——请检查网络连接后重试",
+    stopShareScreen: "停止共享屏幕",
+    shareScreen: "共享屏幕",
+    presentingLocked: "主持人尚未为参与者开启此功能",
+    switchToVideo: "切换到视频",
+    switchToWhiteboard: "切换到白板",
+    settings: "设置",
+    showCaptions: "显示字幕",
+    captionContentLabel: "字幕内容",
+    captionModeBoth: "原文 + 译文",
+    captionModeTranslatedOnly: "仅译文",
+    captionPositionLabel: "字幕位置",
+    captionPositionBottom: "底部",
+    captionPositionTop: "顶部",
+    allowLearnerPresenting: "允许参与者共享屏幕和使用白板",
+    leave: "离开会议",
+    expandSidebar: "显示聊天",
+    resizeSidebar: "调整聊天面板大小",
+    collapseSidebar: "隐藏聊天",
+    chatLabel: "聊天",
+    shrinkCaptionFont: "减小字幕字号",
+    growCaptionFont: "增大字幕字号",
+    whiteboardLoading: "正在加载白板…",
+    pictureInPicture: "画中画",
+    copyInviteLink: "复制邀请链接",
+    linkCopied: "链接已复制！",
+  },
   common: {
     speaker: "发言者",
     translationUnavailable: "暂无译文。",
+    liveNowTitle: "正在直播",
+    liveNowHint: "活动室已开始直播。加入即可看到并听到大家。",
+    joinLiveSession: "加入直播会议",
     confirm: "确认",
     cancel: "取消",
     jumpToLatest: "跳到最新",
@@ -826,6 +952,8 @@ const es: Dictionary = {
     learnersJoinedLabel: (count) => (count === 1 ? "1 alumno conectado" : `${count} alumnos conectados`),
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
     workshopRoom: "Sala del taller",
+    liveAudioVideo: "Audio y video en vivo",
+    micCameraHint: "Tu cámara se conecta en vivo; tu micrófono empieza silenciado — haz clic en el ícono de micrófono para activarlo.",
     captionLabel: "Escribe un subtítulo para los alumnos",
     captionPlaceholder: "Escribe un subtítulo para los alumnos en su idioma seleccionado…",
     captionAudioHint: "Se leerá en voz alta a cada alumno en su idioma, aunque no hayan activado el audio traducido.",
@@ -974,9 +1102,49 @@ const es: Dictionary = {
     microphoneUnavailable: "Tu micrófono no está disponible (permiso denegado, en uso, o no encontrado) — continuando sin él.",
     rejoin: "Reincorporarse",
   },
+  meeting: {
+    raisedHandTitle: (name) => `${name} levantó la mano`,
+    connectionQualityTitle: (quality) => `Conexión: ${quality}`,
+    toolbarLabel: "Controles de la reunión",
+    muteMic: "Silenciar micrófono",
+    unmuteMic: "Activar micrófono",
+    stopCamera: "Apagar cámara",
+    startCamera: "Encender cámara",
+    lowerHand: "Bajar la mano",
+    raiseHand: "Levantar la mano",
+    raiseHandFailed: "No se pudo levantar la mano — revisa tu conexión e inténtalo de nuevo",
+    stopShareScreen: "Dejar de compartir pantalla",
+    shareScreen: "Compartir pantalla",
+    presentingLocked: "El facilitador aún no ha activado esto para los participantes",
+    switchToVideo: "Cambiar a video",
+    switchToWhiteboard: "Cambiar a pizarra",
+    settings: "Ajustes",
+    showCaptions: "Mostrar subtítulos",
+    captionContentLabel: "Contenido de subtítulos",
+    captionModeBoth: "Original + traducido",
+    captionModeTranslatedOnly: "Solo traducido",
+    captionPositionLabel: "Posición de subtítulos",
+    captionPositionBottom: "Abajo",
+    captionPositionTop: "Arriba",
+    allowLearnerPresenting: "Permitir que los participantes compartan pantalla y usen la pizarra",
+    leave: "Salir de la reunión",
+    expandSidebar: "Mostrar chat",
+    resizeSidebar: "Cambiar tamaño del panel de chat",
+    collapseSidebar: "Ocultar chat",
+    chatLabel: "Chat",
+    shrinkCaptionFont: "Reducir tamaño de texto de subtítulos",
+    growCaptionFont: "Aumentar tamaño de texto de subtítulos",
+    whiteboardLoading: "Cargando pizarra…",
+    pictureInPicture: "Imagen en imagen",
+    copyInviteLink: "Copiar enlace de invitación",
+    linkCopied: "¡Enlace copiado!",
+  },
   common: {
     speaker: "Orador",
     translationUnavailable: "Traducción no disponible.",
+    liveNowTitle: "En vivo ahora",
+    liveNowHint: "La sala del taller está en vivo. Únete para ver y escuchar al grupo.",
+    joinLiveSession: "Unirse a la sesión en vivo",
     confirm: "Confirmar",
     cancel: "Cancelar",
     jumpToLatest: "Ir a lo último",
