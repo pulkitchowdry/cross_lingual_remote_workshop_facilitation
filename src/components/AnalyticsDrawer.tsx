@@ -23,6 +23,7 @@ export function AnalyticsDrawer({
     analyticsBlockersHeading: string;
     analyticsLanguagesHeading: string;
     analyticsEmptyState: string;
+    analyticsFrozenNotice: string;
   };
   // Precomputed server-side (dict.analyticsParticipationRow/analyticsLanguagesRow/
   // analyticsBlockersSummary called in the RSC page, not passed here) — functions
@@ -35,6 +36,16 @@ export function AnalyticsDrawer({
   languageRows: string[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Plain-JS, composed entirely client-side from analytics.confusionTrend (already
+  // passed as a prop) — unlike the other dynamic strings in this component, this one
+  // doesn't need server-side precomputation since there's no RSC function-boundary to
+  // cross here.
+  const levelRank = { CALM: 0, SOME: 1, HIGH: 2 } as const;
+  const highestLevel = analytics.confusionTrend.reduce<"CALM" | "SOME" | "HIGH">(
+    (highest, point) => (levelRank[point.groupLevel] > levelRank[highest] ? point.groupLevel : highest),
+    "CALM",
+  );
+  const confusionTrendSummary = `Confusion trend: ${analytics.confusionTrend.length} time buckets, highest level: ${highestLevel}`;
   const isEmpty =
     analytics.confusionTrend.every((point) => point.count === 0) &&
     analytics.participation.every((entry) => entry.messageCount === 0) &&
@@ -53,6 +64,7 @@ export function AnalyticsDrawer({
       </button>
       {isOpen && (
         <div className="flex flex-col gap-3">
+          {isFrozen && <p className="text-muted-foreground text-xs">{labels.analyticsFrozenNotice}</p>}
           {isEmpty ? (
             <Card>
               <p className="text-muted-foreground">{labels.analyticsEmptyState}</p>
@@ -60,6 +72,7 @@ export function AnalyticsDrawer({
           ) : (
             <>
               <Card eyebrow={labels.analyticsConfusionTrendHeading}>
+                <p className="sr-only">{confusionTrendSummary}</p>
                 <div className="flex items-end gap-1" aria-hidden="true">
                   {analytics.confusionTrend.map((point) => (
                     <div

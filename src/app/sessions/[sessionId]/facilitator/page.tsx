@@ -25,7 +25,7 @@ import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS
 import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
 import {
   computeConfusionTrend,
-  computeParticipation,
+  computeParticipationFromGroups,
   computeBlockerStats,
   computeLanguageStats,
   type FacilitatorAnalytics,
@@ -89,6 +89,7 @@ export default async function FacilitatorSessionPage({
     questionCount,
     allBlockerInsights,
     allMessagesForParticipation,
+    allConfusionInsights,
   ] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
@@ -161,9 +162,18 @@ export default async function FacilitatorSessionPage({
       where: { sessionId, type: "BLOCKER" },
       select: { status: true, createdAt: true },
     }),
-    prisma.message.findMany({
+    prisma.message.groupBy({
+      by: ["senderId", "kind", "isAnonymous"],
       where: { sessionId },
-      select: { senderId: true, kind: true, isAnonymous: true },
+      _count: true,
+    }),
+    // Unbounded by time (unlike recentConfusionInsights above, which is scoped to the
+    // last DEFAULT_CONFUSION_WINDOW_MS for the live group-confusion gauge) — the
+    // confusion *trend* buckets the whole session from start to now, so feeding it a
+    // 10-minute-windowed query would leave every earlier bucket permanently empty.
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION" },
+      select: { createdAt: true },
     }),
   ]);
   if (!session) notFound();
@@ -192,12 +202,16 @@ export default async function FacilitatorSessionPage({
   );
 
   const analytics: FacilitatorAnalytics = {
+    // Fed allConfusionInsights (unbounded), not confusionTimestamps (10-minute-windowed,
+    // used only for the live gauge above) — and once the session has ended, `now` is
+    // pinned to session.endedAt so the trend stops growing empty buckets on every
+    // subsequent page load.
     confusionTrend: computeConfusionTrend(
-      confusionTimestamps,
+      allConfusionInsights.map((item) => item.createdAt),
       session.startedAt ?? session.createdAt,
-      new Date(),
+      session.status === SessionStatus.ENDED ? (session.endedAt ?? new Date()) : new Date(),
     ),
-    participation: computeParticipation(
+    participation: computeParticipationFromGroups(
       allMessagesForParticipation,
       session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
     ),
@@ -226,9 +240,10 @@ export default async function FacilitatorSessionPage({
     analyticsBlockersHeading: dict.analyticsBlockersHeading,
     analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
     analyticsEmptyState: dict.analyticsEmptyState,
+    analyticsFrozenNotice: dict.analyticsFrozenNotice,
   };
   const analyticsParticipationRows = analytics.participation.map((entry) =>
-    dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount),
+    dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount, entry.isAnonymousAny),
   );
   const analyticsBlockersSummary = dict.analyticsBlockersSummary(
     analytics.blockers.raised,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeConfusionTrend,
   computeParticipation,
+  computeParticipationFromGroups,
   computeBlockerStats,
   computeLanguageStats,
 } from "@/lib/facilitator-analytics";
@@ -78,6 +79,50 @@ describe("computeParticipation", () => {
   it("ignores messages from senders not in the participants list", () => {
     const messages = [{ senderId: "unknown", kind: "CHAT", isAnonymous: false }];
     const result = computeParticipation(messages, participants);
+    expect(result.every((r) => r.messageCount === 0)).toBe(true);
+  });
+});
+
+describe("computeParticipationFromGroups", () => {
+  const participants = [
+    { userId: "u1", displayName: "Alice" },
+    { userId: "u2", displayName: "Bob" },
+  ];
+
+  it("returns zero counts for participants with no groups", () => {
+    expect(computeParticipationFromGroups([], participants)).toEqual([
+      { userId: "u1", displayName: "Alice", messageCount: 0, questionCount: 0, isAnonymousAny: false },
+      { userId: "u2", displayName: "Bob", messageCount: 0, questionCount: 0, isAnonymousAny: false },
+    ]);
+  });
+
+  it("expands grouped counts identically to computeParticipation on the equivalent flat messages", () => {
+    const groups = [
+      { senderId: "u1", kind: "CHAT", isAnonymous: false, _count: 1 },
+      { senderId: "u1", kind: "QUESTION", isAnonymous: true, _count: 2 },
+      { senderId: "u2", kind: "CHAT", isAnonymous: false, _count: 1 },
+    ];
+    const flatMessages = [
+      { senderId: "u1", kind: "CHAT", isAnonymous: false },
+      { senderId: "u1", kind: "QUESTION", isAnonymous: true },
+      { senderId: "u1", kind: "QUESTION", isAnonymous: true },
+      { senderId: "u2", kind: "CHAT", isAnonymous: false },
+    ];
+    expect(computeParticipationFromGroups(groups, participants)).toEqual(
+      computeParticipation(flatMessages, participants),
+    );
+    expect(computeParticipationFromGroups(groups, participants).find((r) => r.userId === "u1")).toEqual({
+      userId: "u1",
+      displayName: "Alice",
+      messageCount: 3,
+      questionCount: 2,
+      isAnonymousAny: true,
+    });
+  });
+
+  it("ignores groups from senders not in the participants list", () => {
+    const groups = [{ senderId: "unknown", kind: "CHAT", isAnonymous: false, _count: 5 }];
+    const result = computeParticipationFromGroups(groups, participants);
     expect(result.every((r) => r.messageCount === 0)).toBe(true);
   });
 });

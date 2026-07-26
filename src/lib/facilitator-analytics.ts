@@ -89,6 +89,28 @@ export function computeParticipation(
   return Array.from(byUser.values());
 }
 
+/** Same output as `computeParticipation`, but sourced from a Prisma `groupBy`
+ * (`{senderId, kind, isAnonymous}` + `_count`) instead of one row per message —
+ * avoids ever materializing a flat per-message array for a 2s-polled query. */
+export function computeParticipationFromGroups(
+  groups: { senderId: string; kind: string; isAnonymous: boolean; _count: number }[],
+  participants: { userId: string; displayName: string }[],
+): ParticipationEntry[] {
+  const byUser = new Map<string, ParticipationEntry>(
+    participants.map((p) => [p.userId, { userId: p.userId, displayName: p.displayName, messageCount: 0, questionCount: 0, isAnonymousAny: false }]),
+  );
+
+  for (const group of groups) {
+    const entry = byUser.get(group.senderId);
+    if (!entry) continue;
+    entry.messageCount += group._count;
+    if (group.kind === "QUESTION") entry.questionCount += group._count;
+    if (group.isAnonymous && group._count > 0) entry.isAnonymousAny = true;
+  }
+
+  return Array.from(byUser.values());
+}
+
 /**
  * `avgResolutionMs` is always null: Insight has no `resolvedAt` column today
  * (only a plain `status` string set by resolveInsight in facilitator/actions.ts),
