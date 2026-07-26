@@ -26,6 +26,7 @@ export function MeetingSidebar({
   captionsEmptyLabel,
   captionsHeader,
   captionComposer,
+  defaultTab = "chat",
 }: {
   uiLang: SupportedLanguage;
   targetLanguage: string;
@@ -40,11 +41,18 @@ export function MeetingSidebar({
   captionsEmptyLabel: string;
   captionsHeader?: ReactNode;
   captionComposer?: ReactNode;
+  /** Captions/translation are this product's whole reason to exist for a learner (see
+   * problem_statement.md) — defaulting to the Chat tab (empty until someone types
+   * something) reads as "nothing is happening" to a first-time learner who hasn't
+   * discovered the other tab yet, right when live captions are actually the thing to
+   * look at. Facilitators still default to Chat (matching SessionSidePanel's own
+   * default), since they're the one composing captions, not just reading them. */
+  defaultTab?: SidebarTab;
 }) {
   const { sidebarOpen, setSidebarOpen, sidebarWidth, setSidebarWidth } = useMeetingShell();
   const dict = getDictionary(uiLang).meeting;
   const commonDict = getDictionary(uiLang).common;
-  const [tab, setTab] = useState<SidebarTab>("chat");
+  const [tab, setTab] = useState<SidebarTab>(defaultTab);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
 

@@ -64,6 +64,10 @@ export default async function FacilitatorSessionPage({
   // INSIGHT_HISTORY_LIMIT/MESSAGE_HISTORY_LIMIT-capped, type-agnostic lists instead
   // (the previous approach) could silently undercount or hide real confusion.
   const confusionWindowStart = new Date(new Date().getTime() - DEFAULT_CONFUSION_WINDOW_MS);
+  // Derived from the same constant confusionWindowStart uses (not a second hardcoded
+  // "10"), so the confusion badges' tooltip text below can never drift from the window
+  // they're actually computed over.
+  const confusionWindowMinutes = DEFAULT_CONFUSION_WINDOW_MS / 60_000;
   const [session, activeActionItems, recentConfusionInsights, recentLearnerQuestions, messageCount, questionCount] =
     await Promise.all([
     prisma.session.findUnique({
@@ -243,15 +247,19 @@ export default async function FacilitatorSessionPage({
       */}
       {(session.status === SessionStatus.DRAFT || session.status === SessionStatus.LIVE) && <SessionAutoRefresh />}
       {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_INSIGHT_GRACE_MS} />}
-      <LanguageMenu current={lang} onSelect={changeLanguageAction} />
-      {session.status === SessionStatus.LIVE && (
+      <LanguageMenu
+        current={lang}
+        onSelect={changeLanguageAction}
         // updateFacilitatorLanguage only updates the session's language label/translation
         // target — it doesn't (and safely can't, without risking dropped audio mid-utterance)
         // reopen the underlying Deepgram/local-inference recognition stream, which stays
         // configured for whatever language it was opened with for the rest of its life. See
-        // updateFacilitatorLanguage's own doc comment.
-        <p className="text-xs text-muted-foreground">{dict.languageChangeLiveWarning}</p>
-      )}
+        // updateFacilitatorLanguage's own doc comment. This used to render as a permanent
+        // banner above the page title for the entire LIVE duration regardless of whether
+        // it was ever relevant — now it only shows inside the menu itself, at the moment
+        // someone is actually about to change the language.
+        liveWarning={session.status === SessionStatus.LIVE ? dict.languageChangeLiveWarning : undefined}
+      />
       <div>
         <div className="flex flex-wrap items-center gap-3" aria-live="polite">
           <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
@@ -288,7 +296,7 @@ export default async function FacilitatorSessionPage({
           </form>
         )}
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
-          {session.participants.length} {dict.learnersJoinedCard.toLowerCase()}
+          {dict.learnersJoinedLabel(session.participants.length)}
         </span>
       </div>
       {session.status === SessionStatus.LIVE && (
@@ -389,6 +397,7 @@ export default async function FacilitatorSessionPage({
                   color: confusionLevel.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
                   borderColor: "currentColor",
                 }}
+                title={dict.confusionBadgeTooltip(confusionWindowMinutes)}
               >
                 {confusionLevel.level === "HIGH"
                   ? dict.confusionLevelHigh(confusionLevel.count)
@@ -409,9 +418,10 @@ export default async function FacilitatorSessionPage({
                     color: entry.level === "HIGH" ? "var(--tick-low)" : "var(--tick-medium)",
                     borderColor: "currentColor",
                   }}
+                  title={dict.learnerQuestionsBadgeTooltip(confusionWindowMinutes)}
                 >
                   {name} ·{" "}
-                  {entry.level === "HIGH" ? dict.confusionLevelHigh(entry.count) : dict.confusionLevelSome(entry.count)}
+                  {entry.level === "HIGH" ? dict.learnerQuestionsHigh(entry.count) : dict.learnerQuestionsSome(entry.count)}
                 </span>
               );
             })}
@@ -471,6 +481,16 @@ export default async function FacilitatorSessionPage({
           <Card eyebrow={dict.noInterventionYet}>
             <p className="text-muted-foreground">{dict.insightsNotConfigured}</p>
           </Card>
+        ) : confusionLevel.level !== "CALM" ? (
+          // The group confusion badge above counts RESOLVED insights too, by design
+          // (confusion-level.ts: "resolution means the facilitator responded, not that
+          // the confusion didn't happen") — so once every action item is resolved, the
+          // unconditional "no blockers or confusion detected yet" copy below would
+          // directly contradict a still-visible Some/High confusion badge in the same
+          // glance. This branch only fires when that's actually the case.
+          <Card eyebrow={dict.noInterventionYet}>
+            <p className="text-muted-foreground">{dict.noInterventionHintRecentConfusion}</p>
+          </Card>
         ) : (
           <Card eyebrow={dict.noInterventionYet}>
             <p className="text-muted-foreground">{dict.noInterventionHintOnTrack}</p>
@@ -511,6 +531,27 @@ export default async function FacilitatorSessionPage({
           "captions" tab (LiveTranscriptFeed) renders the exact same transcript data
           as a YouTube-live-chat-style auto-scrolling feed instead, so keeping both
           would just show the transcript twice. */}
+      {/* No session list exists anywhere in the app, and facilitator auth is a per-session
+          cookie, not an account — this dashboard URL, once lost, is the only way back
+          into a still-LIVE session. Same copy-link affordance as the learner invite card
+          below, so a facilitator can actually save it. */}
+      <Card eyebrow={dict.dashboardLinkCard} title={dict.dashboardLinkHeading}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            aria-label={dict.dashboardLinkAriaLabel}
+            className="w-full flex-1 rounded-md border border-border-strong bg-background px-3 py-2 font-data text-xs text-foreground"
+            readOnly
+            value={`${appUrl}/sessions/${sessionId}/facilitator`}
+          />
+          <CopyLinkButton
+            value={`${appUrl}/sessions/${sessionId}/facilitator`}
+            label={dict.copyLink}
+            copiedLabel={dict.linkCopied}
+            failedLabel={dict.copyFailed}
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">{dict.dashboardLinkHint}</p>
+      </Card>
       <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>
         {learnerInviteRevoked ? (
           <p className="text-muted-foreground">{dict.linkRevokedMsg}</p>

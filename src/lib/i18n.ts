@@ -17,6 +17,12 @@ export interface Dictionary {
     skipToContent: string;
     interfaceLanguage: string;
     language: string;
+    // Shown when "New session" is clicked from an existing facilitator dashboard — there
+    // is no session list anywhere in the app, so navigating away from a still-LIVE
+    // session without bookmarking its dashboard link first means losing the only way
+    // back into it while learners could still be connected.
+    confirmNewSessionTitle: string;
+    confirmNewSessionBody: string;
   };
   a11y: {
     fontSizeLabel: Record<FontSize, string>;
@@ -52,6 +58,12 @@ export interface Dictionary {
   join: {
     invitedTo: string;
     subtitle: string;
+    // Visible label for the language picker above the join form, and the aria-label
+    // passed to LanguageSwitcher on this page specifically — the generic
+    // `shell.interfaceLanguage` label undersells what this control does here (it's also
+    // the learner's caption/translation language, per `subtitle` above), so this page
+    // gets its own more explicit label instead of the shared default.
+    languagePickerLabel: string;
     yourName: string;
     consent: string;
     submit: string;
@@ -66,7 +78,10 @@ export interface Dictionary {
     confirmEndSessionTitle: string;
     confirmEndSessionBody: string;
     logOut: string;
-    learnersJoinedCard: string;
+    // A function, not a static string, so it can agree in number ("1 learner joined" vs
+    // "2 learners joined") — a static string interpolated as `${count} ${label}` always
+    // rendered the plural form even at count 1.
+    learnersJoinedLabel: (count: number) => string;
     learnersJoinedHint: string;
     workshopRoom: string;
     liveAudioVideo: string;
@@ -79,11 +94,32 @@ export interface Dictionary {
     actNow: string;
     blocker: string;
     confusion: string;
+    // Group-level badge: an AI-inferred signal from the room's spoken transcript —
+    // nobody asked for it, it's detected. Kept distinct from learnerQuestionsSome/High
+    // below (a *self-reported* per-learner signal from a different data source and
+    // meaning) so the two badges don't read as the same kind of thing.
     confusionLevelSome: (count: number) => string;
     confusionLevelHigh: (count: number) => string;
+    // Per-learner badge: literally a count of that learner's own QUESTION messages
+    // (them explicitly asking something) — worded around "questions asked", not
+    // "confusion", so an engaged learner asking several clarifying questions doesn't
+    // read as someone struggling (see confusionLevelSome/High's comment above).
+    learnerQuestionsSome: (count: number) => string;
+    learnerQuestionsHigh: (count: number) => string;
+    // Tooltip (`title`) text on both badges above — neither the badge text itself nor
+    // any surrounding copy said what window/count produced it or what to do about it, so
+    // a facilitator had no in-product way to calibrate whether e.g. "Some confusion (2)"
+    // was worth interrupting the session for.
+    confusionBadgeTooltip: (windowMinutes: number) => string;
+    learnerQuestionsBadgeTooltip: (windowMinutes: number) => string;
     resolveBlocker: string;
     noInterventionYet: string;
     noInterventionHintOnTrack: string;
+    // Shown instead of noInterventionHintOnTrack when every action item has been
+    // resolved but the group confusion badge (which counts resolved insights too, by
+    // design — see confusion-level.ts) is still elevated, so the "on track" copy
+    // wouldn't silently contradict a still-visible high/some-confusion badge above it.
+    noInterventionHintRecentConfusion: string;
     waitingToStart: string;
     noInterventionHintWaiting: string;
     insightsNotConfigured: string;
@@ -94,6 +130,14 @@ export interface Dictionary {
     activity: string;
     decision: string;
     noRecentActivity: string;
+    // There's no session list anywhere in the app and facilitator auth is a per-session
+    // cookie (not an account you can log back into) — this URL, once lost, is the only
+    // way back into a still-LIVE session. Surfaced with the same copy-link affordance as
+    // the learner invite link below, so a facilitator can actually bookmark/save it.
+    dashboardLinkCard: string;
+    dashboardLinkHeading: string;
+    dashboardLinkHint: string;
+    dashboardLinkAriaLabel: string;
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
@@ -142,6 +186,11 @@ export interface Dictionary {
     giveExample: string;
     explainSimplyQuestion: (caption: string) => string;
     giveExampleQuestion: (caption: string) => string;
+    // Shown while session.status is DRAFT — before this, a learner who joined before the
+    // facilitator started saw only the title/preferences card with nothing telling them
+    // that's expected, indistinguishable from the page being broken or half-loaded.
+    waitingHeading: string;
+    waitingHint: string;
     sessionEndedHeading: string;
     sessionEndedSummary: string;
   };
@@ -151,7 +200,18 @@ export interface Dictionary {
     sendMessageLabel: string;
     placeholder: string;
     flagQuestion: string;
+    // Sits directly above the unrelated "message facilitator privately" checkbox in the
+    // UI — without this, checking only "flag as question" reads as if it might also
+    // narrow who sees the message, when it doesn't; the message still goes to the whole
+    // room's chat unless "message facilitator privately" is *also* checked.
+    flagQuestionHint: string;
     askAnonymously: string;
+    // "Anonymous" only hides the sender's name from other learners — the facilitator
+    // (the only possible recipient once a message is also private) always sees who sent
+    // it, so combining this with a private message has no additional effect. Without
+    // this, a learner could believe "anonymous" hides their identity from the
+    // facilitator too.
+    askAnonymouslyHint: string;
     anonymousLearner: string;
     anonymousBadge: string;
     privateBadge: string;
@@ -242,6 +302,12 @@ export interface Dictionary {
     jumpToLatest: string;
     chatTab: string;
     captionsTab: string;
+    // The browser's own native "Please fill in this field" validation bubble is
+    // localized to the BROWSER's UI language (its own Accept-Language/OS setting), not
+    // this page's `lang` — so on a fully zh/es-localized page it shows up in English
+    // regardless. Passed to `setCustomValidity` (see RequiredFieldMessages.tsx) to
+    // replace it with real, page-language text instead.
+    requiredFieldMessage: string;
   };
   notFound: {
     title: string;
@@ -256,7 +322,15 @@ export interface Dictionary {
 }
 
 const en: Dictionary = {
-  shell: { newSession: "New session", skipToContent: "Skip to main content", interfaceLanguage: "Interface language", language: "Language" },
+  shell: {
+    newSession: "New session",
+    skipToContent: "Skip to main content",
+    interfaceLanguage: "Interface language",
+    language: "Language",
+    confirmNewSessionTitle: "Leave this dashboard?",
+    confirmNewSessionBody:
+      "If this session is still live, its learners will be left without a facilitator and there's no session list to find your way back — bookmark or copy this page's link first if you want to return to it.",
+  },
   a11y: {
     fontSizeLabel: { normal: "Normal text", large: "Large text", "x-large": "Extra-large text" },
     textSizeAriaLabel: (label) => `Aa. Text size: ${label}. Activate to change.`,
@@ -293,9 +367,10 @@ const en: Dictionary = {
   join: {
     invitedTo: "You're invited to learn",
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
+    languagePickerLabel: "Your language — also used for your captions",
     yourName: "Your name",
     consent:
-      "I agree to speech and text being processed for live captions, translation, and facilitator support. Raw audio isn't stored by default. My camera and mic join live as soon as I enter — mic starts muted, camera can be turned off anytime.",
+      "I agree to speech and text being processed for live captions, translation, and facilitator support. Raw audio isn't stored by default. My camera and mic join once the facilitator starts the session — mic starts muted, camera can be turned off anytime.",
     submit: "Join session",
     submitting: "Joining…",
   },
@@ -308,7 +383,7 @@ const en: Dictionary = {
     confirmEndSessionTitle: "End this session?",
     confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
     logOut: "Log out",
-    learnersJoinedCard: "Learners joined",
+    learnersJoinedLabel: (count) => (count === 1 ? "1 learner joined" : `${count} learners joined`),
     learnersJoinedHint: "Learners have completed consent and joined.",
     workshopRoom: "Workshop room",
     liveAudioVideo: "Live audio and video",
@@ -323,9 +398,17 @@ const en: Dictionary = {
     confusion: "Possible confusion",
     confusionLevelSome: (count) => `Some confusion (${count})`,
     confusionLevelHigh: (count) => `High confusion (${count})`,
+    learnerQuestionsSome: (count) => `Asked ${count} clarifying question${count === 1 ? "" : "s"}`,
+    learnerQuestionsHigh: (count) => `Asked ${count} clarifying questions`,
+    confusionBadgeTooltip: (windowMinutes) =>
+      `Counts CONFUSION signals detected in the room's speech over the last ${windowMinutes} minutes — includes ones you've already marked resolved, since the confusion itself still happened. "High" means more than 2 in that window.`,
+    learnerQuestionsBadgeTooltip: (windowMinutes) =>
+      `Counts this learner's own clarifying-question messages over the last ${windowMinutes} minutes. "High" means more than 2 in that window.`,
     resolveBlocker: "Mark resolved",
     noInterventionYet: "No intervention needed yet",
     noInterventionHintOnTrack: "The group's discussion looks on track — no blockers or confusion detected yet.",
+    noInterventionHintRecentConfusion:
+      "No open blockers right now, but there was confusion in the room recently (see the badge above) — worth a quick check-in.",
     waitingToStart: "Waiting to begin",
     noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
     insightsNotConfigured: "Automatic insight detection isn't configured for this session — nothing here is analyzed. Use the typed caption/chat tools to follow along manually.",
@@ -336,6 +419,10 @@ const en: Dictionary = {
     activity: "Activity",
     decision: "Decision",
     noRecentActivity: "No activity or decisions noted yet.",
+    dashboardLinkCard: "Your facilitator dashboard",
+    dashboardLinkHeading: "Bookmark this link to get back in",
+    dashboardLinkHint: "There's no session list — this is the only way back into this session if you close the tab. Unlike the learner link below, this one only works from a browser already signed in as this session's facilitator, so sharing it alone doesn't grant access.",
+    dashboardLinkAriaLabel: "Facilitator dashboard link",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
@@ -377,6 +464,8 @@ const en: Dictionary = {
     giveExample: "Give an example",
     explainSimplyQuestion: (caption) => `Please explain this simply: "${caption}"`,
     giveExampleQuestion: (caption) => `Please give an example for this: "${caption}"`,
+    waitingHeading: "Waiting for the facilitator to start",
+    waitingHint: "You're in — this page will switch to the live workshop room automatically as soon as the facilitator starts the session. No need to refresh.",
     sessionEndedHeading: "This session has ended",
     sessionEndedSummary: "The facilitator ended this session. You can still review the transcript and chat history below until it's automatically deleted per this session's retention setting.",
   },
@@ -386,7 +475,9 @@ const en: Dictionary = {
     sendMessageLabel: "Send a message",
     placeholder: "Write in your own language…",
     flagQuestion: "Flag as a question for the facilitator",
+    flagQuestionHint: "Still visible to everyone in the chat — check \"Message facilitator privately\" below to keep it between you and the facilitator.",
     askAnonymously: "Ask anonymously",
+    askAnonymouslyHint: "Hides your name from other learners. The facilitator can still see who sent it.",
     anonymousLearner: "Anonymous learner",
     anonymousBadge: "Anonymous",
     privateBadge: "Private",
@@ -479,6 +570,7 @@ const en: Dictionary = {
     jumpToLatest: "Jump to latest",
     chatTab: "Chat",
     captionsTab: "Captions",
+    requiredFieldMessage: "Please fill in this field.",
   },
   notFound: {
     title: "Link not found",
@@ -493,7 +585,14 @@ const en: Dictionary = {
 };
 
 const zh: Dictionary = {
-  shell: { newSession: "新建场次", skipToContent: "跳转到主要内容", interfaceLanguage: "界面语言", language: "语言" },
+  shell: {
+    newSession: "新建场次",
+    skipToContent: "跳转到主要内容",
+    interfaceLanguage: "界面语言",
+    language: "语言",
+    confirmNewSessionTitle: "离开此控制台？",
+    confirmNewSessionBody: "如果此场次仍在进行中，学员将没有主持人陪伴，且本应用没有场次列表可供你找回——如需之后返回，请先收藏或复制此页面的链接。",
+  },
   a11y: {
     fontSizeLabel: { normal: "标准字号", large: "大字号", "x-large": "特大字号" },
     textSizeAriaLabel: (label) => `Aa。字号：${label}。点击切换。`,
@@ -529,9 +628,10 @@ const zh: Dictionary = {
   join: {
     invitedTo: "你被邀请加入学习",
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
+    languagePickerLabel: "你的语言——同时用于你的字幕",
     yourName: "你的姓名",
     consent:
-      "我同意为提供实时字幕、翻译及主持人协助而处理我的语音与文字。默认不保存原始音频。进入后摄像头和麦克风立即接入——麦克风默认静音，摄像头可随时关闭。",
+      "我同意为提供实时字幕、翻译及主持人协助而处理我的语音与文字。默认不保存原始音频。待主持人开始场次后，摄像头和麦克风将接入——麦克风默认静音，摄像头可随时关闭。",
     submit: "加入场次",
     submitting: "加入中……",
   },
@@ -544,7 +644,10 @@ const zh: Dictionary = {
     confirmEndSessionTitle: "确定要结束此场次吗？",
     confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
     logOut: "退出登录",
-    learnersJoinedCard: "已加入学员",
+    // Chinese has no grammatical plural to get wrong, but "{count} 已加入学员" (the old
+    // literal `${count} ${label}` interpolation) still read backwards — "已加入学员：N"
+    // is the natural word order for this kind of counter in Chinese UI copy.
+    learnersJoinedLabel: (count) => `已加入学员：${count}`,
     learnersJoinedHint: "已完成同意确认并加入的学员人数。",
     workshopRoom: "活动室",
     liveAudioVideo: "实时音视频",
@@ -559,9 +662,16 @@ const zh: Dictionary = {
     confusion: "可能存在困惑",
     confusionLevelSome: (count) => `一些困惑 (${count})`,
     confusionLevelHigh: (count) => `困惑较多 (${count})`,
+    learnerQuestionsSome: (count) => `提出了 ${count} 个澄清问题`,
+    learnerQuestionsHigh: (count) => `提出了 ${count} 个澄清问题`,
+    confusionBadgeTooltip: (windowMinutes) =>
+      `统计最近 ${windowMinutes} 分钟内在讨论语音中检测到的困惑信号——即使你已将其标记为已解决也会计入，因为困惑本身确实发生过。“困惑较多”表示该时间窗口内超过 2 次。`,
+    learnerQuestionsBadgeTooltip: (windowMinutes) =>
+      `统计该学员最近 ${windowMinutes} 分钟内自己提出的澄清问题数量。超过 2 次即为较多。`,
     resolveBlocker: "标记为已解决",
     noInterventionYet: "暂无需要干预的事项",
     noInterventionHintOnTrack: "小组讨论看起来在正轨上——目前未检测到障碍或困惑。",
+    noInterventionHintRecentConfusion: "目前没有待处理的障碍，但小组近期出现过困惑（见上方标记）——建议简单确认一下大家的理解情况。",
     waitingToStart: "等待开始",
     noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
     insightsNotConfigured: "此场次未配置自动洞察检测——此处内容不会被分析。请改用手动输入字幕/聊天工具跟进。",
@@ -572,6 +682,10 @@ const zh: Dictionary = {
     activity: "动态",
     decision: "决定",
     noRecentActivity: "暂无记录的动态或决定。",
+    dashboardLinkCard: "你的主持人控制台",
+    dashboardLinkHeading: "收藏此链接以便返回",
+    dashboardLinkHint: "本应用没有场次列表——关闭标签页后，这是返回此场次的唯一方式。与下方的学员链接不同，此链接仅在已登录为该场次主持人的浏览器中有效，因此仅分享此链接本身并不会授予访问权限。",
+    dashboardLinkAriaLabel: "主持人控制台链接",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
@@ -613,6 +727,8 @@ const zh: Dictionary = {
     giveExample: "举个例子",
     explainSimplyQuestion: (caption) => `请用简单的话解释这段字幕：“${caption}”`,
     giveExampleQuestion: (caption) => `请针对这段字幕举一个例子：“${caption}”`,
+    waitingHeading: "正在等待主持人开始",
+    waitingHint: "你已加入——主持人开始场次后，本页面会自动切换到实时活动室，无需刷新。",
     sessionEndedHeading: "此场次已结束",
     sessionEndedSummary: "主持人已结束此场次。你仍可在下方查看转录记录和聊天记录，直到根据此场次的保留设置被自动删除为止。",
   },
@@ -622,7 +738,9 @@ const zh: Dictionary = {
     sendMessageLabel: "发送消息",
     placeholder: "用你自己的语言书写……",
     flagQuestion: "标记为向主持人提出的问题",
+    flagQuestionHint: "聊天中所有人仍可看到此消息——如需仅让主持人看到，请勾选下方的“私信主持人”。",
     askAnonymously: "匿名提问",
+    askAnonymouslyHint: "其他学员将看不到你的姓名，但主持人仍可以看到是谁发送的。",
     anonymousLearner: "匿名学员",
     anonymousBadge: "匿名",
     privateBadge: "私密",
@@ -715,6 +833,7 @@ const zh: Dictionary = {
     jumpToLatest: "跳到最新",
     chatTab: "聊天",
     captionsTab: "字幕",
+    requiredFieldMessage: "请填写此字段。",
   },
   notFound: {
     title: "未找到该链接",
@@ -729,7 +848,15 @@ const zh: Dictionary = {
 };
 
 const es: Dictionary = {
-  shell: { newSession: "Nueva sesión", skipToContent: "Saltar al contenido principal", interfaceLanguage: "Idioma de la interfaz", language: "Idioma" },
+  shell: {
+    newSession: "Nueva sesión",
+    skipToContent: "Saltar al contenido principal",
+    interfaceLanguage: "Idioma de la interfaz",
+    language: "Idioma",
+    confirmNewSessionTitle: "¿Salir de este panel?",
+    confirmNewSessionBody:
+      "Si esta sesión sigue en vivo, sus alumnos se quedarán sin facilitador y no hay una lista de sesiones para volver a encontrarla — guarda o copia el enlace de esta página primero si quieres volver a ella.",
+  },
   a11y: {
     fontSizeLabel: { normal: "Texto normal", large: "Texto grande", "x-large": "Texto extra grande" },
     textSizeAriaLabel: (label) => `Aa. Tamaño de texto: ${label}. Actívalo para cambiarlo.`,
@@ -766,9 +893,10 @@ const es: Dictionary = {
   join: {
     invitedTo: "Estás invitado a aprender",
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
+    languagePickerLabel: "Tu idioma — también se usa para tus subtítulos",
     yourName: "Tu nombre",
     consent:
-      "Acepto que mi voz y texto se procesen para subtítulos en vivo, traducción y apoyo del facilitador. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectan en vivo en cuanto entro — el micrófono empieza silenciado y puedo apagar la cámara en cualquier momento.",
+      "Acepto que mi voz y texto se procesen para subtítulos en vivo, traducción y apoyo del facilitador. El audio original no se guarda de forma predeterminada. Mi cámara y micrófono se conectarán cuando el facilitador inicie la sesión — el micrófono empieza silenciado y puedo apagar la cámara en cualquier momento.",
     submit: "Unirse a la sesión",
     submitting: "Uniéndote…",
   },
@@ -781,7 +909,7 @@ const es: Dictionary = {
     confirmEndSessionTitle: "¿Finalizar esta sesión?",
     confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
     logOut: "Cerrar sesión",
-    learnersJoinedCard: "Alumnos conectados",
+    learnersJoinedLabel: (count) => (count === 1 ? "1 alumno conectado" : `${count} alumnos conectados`),
     learnersJoinedHint: "Alumnos que completaron el consentimiento y se unieron.",
     workshopRoom: "Sala del taller",
     liveAudioVideo: "Audio y video en vivo",
@@ -796,9 +924,17 @@ const es: Dictionary = {
     confusion: "Posible confusión",
     confusionLevelSome: (count) => `Algo de confusión (${count})`,
     confusionLevelHigh: (count) => `Mucha confusión (${count})`,
+    learnerQuestionsSome: (count) => (count === 1 ? "Hizo 1 pregunta aclaratoria" : `Hizo ${count} preguntas aclaratorias`),
+    learnerQuestionsHigh: (count) => `Hizo ${count} preguntas aclaratorias`,
+    confusionBadgeTooltip: (windowMinutes) =>
+      `Cuenta las señales de CONFUSIÓN detectadas en el habla de la sala durante los últimos ${windowMinutes} minutos — incluye las que ya marcaste como resueltas, porque la confusión igual ocurrió. "Mucha" significa más de 2 en esa ventana.`,
+    learnerQuestionsBadgeTooltip: (windowMinutes) =>
+      `Cuenta las preguntas aclaratorias de este alumno durante los últimos ${windowMinutes} minutos. Más de 2 se considera "mucha".`,
     resolveBlocker: "Marcar como resuelto",
     noInterventionYet: "Ninguna intervención necesaria por ahora",
     noInterventionHintOnTrack: "La conversación del grupo parece ir bien — aún no se detectan bloqueos ni confusión.",
+    noInterventionHintRecentConfusion:
+      "No hay bloqueos abiertos por ahora, pero hubo confusión en el grupo recientemente (ver la insignia arriba) — vale la pena confirmar que todos entendieron.",
     waitingToStart: "Esperando para comenzar",
     noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
     insightsNotConfigured: "La detección automática de información no está configurada para esta sesión — nada aquí se analiza. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
@@ -809,6 +945,10 @@ const es: Dictionary = {
     activity: "Actividad",
     decision: "Decisión",
     noRecentActivity: "Aún no se ha registrado actividad ni decisiones.",
+    dashboardLinkCard: "Tu panel de facilitador",
+    dashboardLinkHeading: "Guarda este enlace para volver a entrar",
+    dashboardLinkHint: "No hay una lista de sesiones — esta es la única forma de volver a esta sesión si cierras la pestaña. A diferencia del enlace para alumnos de abajo, este solo funciona desde un navegador que ya inició sesión como el facilitador de esta sesión, así que compartirlo por sí solo no da acceso.",
+    dashboardLinkAriaLabel: "Enlace del panel de facilitador",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
@@ -850,6 +990,8 @@ const es: Dictionary = {
     giveExample: "Dar un ejemplo",
     explainSimplyQuestion: (caption) => `Explica esto de forma sencilla: "${caption}"`,
     giveExampleQuestion: (caption) => `Da un ejemplo para esto: "${caption}"`,
+    waitingHeading: "Esperando a que el facilitador comience",
+    waitingHint: "Ya estás dentro — esta página cambiará automáticamente a la sala de trabajo en vivo en cuanto el facilitador inicie la sesión. No hace falta recargar.",
     sessionEndedHeading: "Esta sesión ha finalizado",
     sessionEndedSummary: "El facilitador finalizó esta sesión. Aún puedes revisar la transcripción y el historial de chat a continuación hasta que se eliminen automáticamente según la configuración de retención de esta sesión.",
   },
@@ -859,7 +1001,9 @@ const es: Dictionary = {
     sendMessageLabel: "Enviar un mensaje",
     placeholder: "Escribe en tu propio idioma…",
     flagQuestion: "Marcar como pregunta para el facilitador",
+    flagQuestionHint: "Sigue siendo visible para todos en el chat — marca \"Enviar mensaje privado al facilitador\" abajo para que quede solo entre tú y el facilitador.",
     askAnonymously: "Preguntar de forma anónima",
+    askAnonymouslyHint: "Oculta tu nombre a otros alumnos. El facilitador siempre puede ver quién lo envió.",
     anonymousLearner: "Estudiante anónimo",
     anonymousBadge: "Anónimo",
     privateBadge: "Privado",
@@ -952,6 +1096,7 @@ const es: Dictionary = {
     jumpToLatest: "Ir a lo último",
     chatTab: "Chat",
     captionsTab: "Subtítulos",
+    requiredFieldMessage: "Por favor completa este campo.",
   },
   notFound: {
     title: "Enlace no encontrado",

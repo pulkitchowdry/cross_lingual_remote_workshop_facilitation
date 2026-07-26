@@ -96,6 +96,19 @@ function MeetingRoomInner({
   const primaryTrack = screenShareTrack ?? cameraTracks.find((track) => track.participant.isLocal);
   const dict = getDictionary(uiLang);
   const captionsEmptyLabel = role === "facilitator" ? dict.facilitator.transcriptEmpty : dict.learner.captionsWillAppear;
+  // Captions/translation are this product's whole reason to exist for a learner (see
+  // problem_statement.md) — defaulting to the Chat tab (empty until someone types
+  // something) reads as "nothing is happening" to a first-time learner who hasn't
+  // discovered the other tab yet, right when live captions are actually the thing to
+  // look at. Facilitators still default to Chat (matching SessionSidePanel's own
+  // default), since they're the one composing captions, not just reading them.
+  const sidebarDefaultTab = role === "learner" ? "captions" : "chat";
+  // Only the facilitator's language change affects the live speech-recognition stream
+  // (updateFacilitatorLanguage doesn't — and safely can't, without risking dropped audio
+  // mid-utterance — reopen it, so it stays configured for whatever language it was
+  // opened with) — a learner switching their own preferred/display language has no such
+  // caveat, so this stays facilitator-only, matching the dashboard's own warning.
+  const languageChangeWarning = role === "facilitator" ? dict.facilitator.languageChangeLiveWarning : undefined;
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
@@ -107,6 +120,7 @@ function MeetingRoomInner({
         currentLanguage={currentLanguage}
         onChangeLanguage={onChangeLanguage}
         languageOptions={languageOptions}
+        languageChangeWarning={languageChangeWarning}
       />
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle">
@@ -136,9 +150,16 @@ function MeetingRoomInner({
           captionsEmptyLabel={captionsEmptyLabel}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
+          defaultTab={sidebarDefaultTab}
         />
       </div>
-      <div className="flex justify-center border-t border-border-subtle p-2">
+      {/* `shrink-0` — defense in depth alongside globals.css's `.lk-button-group` height
+          override (see that rule's own comment for the actual root cause of a mobile
+          control-bar overlap it fixes): keeps this row's box from ever being shrunk
+          below its wrapped content's real height by its `flex-1` video-stage sibling
+          above, the same way that sibling is the one meant to absorb any space
+          pressure in this flex column. */}
+      <div className="flex shrink-0 justify-center border-t border-border-subtle p-2">
         <MeetingToolbar
           sessionId={sessionId}
           role={role}

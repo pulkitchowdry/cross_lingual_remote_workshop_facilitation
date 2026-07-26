@@ -155,6 +155,13 @@ export default async function LearnerSessionPage({
             {learnerDict.welcome(participant.user.displayName)}
           </p>
           <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
+          {/* The facilitator's own dashboard shows this goal right under the title
+              (facilitator/page.tsx) — this page fetches the exact same `session.goal`
+              (a plain scalar field, already included with no extra query) but never
+              rendered it anywhere, so a learner never learns what the workshop is
+              actually trying to achieve, before, during, or after it, unlike the person
+              running it. */}
+          {participant.session.goal && <p className="text-sm text-muted-foreground">{participant.session.goal}</p>}
           <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
         </div>
         <Card eyebrow={learnerDict.preferencesCard}>
@@ -163,6 +170,19 @@ export default async function LearnerSessionPage({
           </p>
         </Card>
       </div>
+      {/* Shared aria-live region for the three status-dependent blocks below (DRAFT
+          waiting card, LIVE workshop room, ENDED summary) — the DRAFT-to-LIVE swap is a
+          SessionAutoRefresh-driven poll with no user action of its own, so without this a
+          screen-reader user gets no announcement at all when the workshop actually
+          starts; the page just silently replaces itself underneath them. */}
+      <div aria-live="polite">
+      {participant.session.status === SessionStatus.DRAFT && (
+        <section className="max-w-2xl">
+          <Card eyebrow={learnerDict.waitingHeading}>
+            <p className="text-muted-foreground">{learnerDict.waitingHint}</p>
+          </Card>
+        </section>
+      )}
       {participant.session.status === SessionStatus.LIVE && (
         <Card eyebrow={dict.common.liveNowTitle} title={dict.facilitator.liveAudioVideo} accent="var(--tick-high)">
           <p className="text-muted-foreground">{dict.common.liveNowHint}</p>
@@ -231,6 +251,7 @@ export default async function LearnerSessionPage({
           />
         </section>
       )}
+      </div>
     </div>
   );
 }

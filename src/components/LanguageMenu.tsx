@@ -21,6 +21,7 @@ export function LanguageMenu({
   languages = SUPPORTED_LANGUAGES,
   onSelect,
   slotId = HEADER_SLOT_ID,
+  liveWarning,
 }: {
   current: SupportedLanguage;
   languages?: readonly { value: SupportedLanguage; nativeLabel: string }[];
@@ -29,6 +30,15 @@ export function LanguageMenu({
    * header (hidden behind AppShell's, since the room takes over the full viewport)
    * passes its own local slot id instead. */
   slotId?: string;
+  /**
+   * Shown inside the open dropdown, not as a permanent page banner — this used to render
+   * unconditionally above the page title for the entire time a session was LIVE,
+   * regardless of whether captions had ever started or the facilitator ever touched this
+   * menu, which made it constant top-of-page noise for the common case where neither
+   * happens. Surfacing it here means it only appears at the moment someone is actually
+   * about to change their language, which is the only moment it's relevant.
+   */
+  liveWarning?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -165,10 +175,20 @@ export function LanguageMenu({
     });
   }
 
+  // `selectLanguage` above deliberately focuses the trigger button right after closing
+  // the listbox — but starting the transition disables that same button (`disabled=
+  // {isPending}` below), and a disabled element can't hold focus, so the browser drops
+  // focus to <body> with nothing to restore it on every language switch. Moving focus to
+  // this stable, always-focusable container the moment `isPending` flips true keeps
+  // focus somewhere sensible instead — same fix as ConfirmSubmitButton's matching bug.
+  useEffect(() => {
+    if (isPending) containerRef.current?.focus();
+  }, [isPending]);
+
   if (!slot) return null;
 
   return createPortal(
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} tabIndex={-1} className="relative outline-none">
       <button
         ref={triggerRef}
         type="button"
@@ -177,12 +197,20 @@ export function LanguageMenu({
         aria-expanded={open}
         aria-label={dict.interfaceLanguage}
         disabled={isPending}
-        className="font-data flex items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-60"
+        // Fixed px sizing, not rem-based Tailwind defaults — see the matching comment in
+        // AccessibilityPanel.tsx: this trigger sits in the same header row as the
+        // font-size toggle, so it needs to stay immune to the font-size preference or it
+        // shifts sideways the moment text size changes.
+        className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-60"
       >
         <TranslateIcon />
         {dict.language}
       </button>
       {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] max-w-[16rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-lg">
+        {liveWarning && (
+          <p className="border-b border-border-subtle px-3 py-2 text-[11px] text-muted-foreground">{liveWarning}</p>
+        )}
         <ul
           ref={listRef}
           role="listbox"
@@ -190,7 +218,7 @@ export function LanguageMenu({
           tabIndex={0}
           aria-activedescendant={activeLanguage ? optionId(activeLanguage.value) : undefined}
           onKeyDown={handleListKeyDown}
-          className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised py-1 shadow-lg outline-none focus:ring-2 focus:ring-accent/30"
+          className="py-1 outline-none focus:ring-2 focus:ring-accent/30"
         >
           {languages.map((language, index) => (
             <li
@@ -214,6 +242,7 @@ export function LanguageMenu({
             </li>
           ))}
         </ul>
+        </div>
       )}
     </div>,
     slot,

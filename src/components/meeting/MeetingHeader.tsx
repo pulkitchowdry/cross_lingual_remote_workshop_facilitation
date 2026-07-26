@@ -30,6 +30,7 @@ export function MeetingHeader({
   currentLanguage,
   onChangeLanguage,
   languageOptions,
+  languageChangeWarning,
 }: {
   title: string;
   inviteLink?: string | null;
@@ -37,6 +38,7 @@ export function MeetingHeader({
   currentLanguage: SupportedLanguage;
   onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
+  languageChangeWarning?: string;
 }) {
   const dict = getDictionary(uiLang).meeting;
   const [copied, setCopied] = useState(false);
@@ -94,6 +96,7 @@ export function MeetingHeader({
         languages={languageOptions}
         onSelect={onChangeLanguage}
         slotId={MEETING_HEADER_LANGUAGE_SLOT_ID}
+        liveWarning={languageChangeWarning}
       />
     </div>
   );
