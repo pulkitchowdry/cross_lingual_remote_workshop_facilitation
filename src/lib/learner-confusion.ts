@@ -1,4 +1,4 @@
-const DEFAULT_WINDOW_MS = 10 * 60 * 1000;
+import { DEFAULT_WINDOW_MS } from "@/lib/confusion-level";
 
 export type LearnerConfusionLevel = "SOME" | "HIGH";
 

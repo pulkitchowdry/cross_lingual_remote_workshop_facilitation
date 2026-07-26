@@ -50,6 +50,12 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
           name="retentionDays"
           defaultValue="7"
         >
+          {/* The two short options below exist so a retention choice can actually be
+              verified working (the cleanup cron deleting a session on schedule) within a
+              single demo/testing session, instead of only ever being takeable on faith —
+              day-granularity-only made that impossible without waiting a full day. */}
+          <option value="0.00347222">{dict.setup.retentionMinutes}</option>
+          <option value="0.04166667">{dict.setup.retentionHour}</option>
           <option value="1">{dict.setup.retentionDay}</option>
           <option value="7">{dict.setup.retentionWeek}</option>
           <option value="30">{dict.setup.retentionMonth}</option>

@@ -35,6 +35,7 @@ export function SessionChatPanel({
   sendAction,
   allowQuestions = false,
   viewerIsFacilitator = false,
+  readOnly = false,
   viewerUserId,
   canMessageFacilitatorPrivately = false,
   privateRecipientOptions = [],
@@ -44,6 +45,10 @@ export function SessionChatPanel({
   sendAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
   viewerIsFacilitator?: boolean;
+  /** Hides the compose form — for a session that's already ENDED, where `sendAction`
+   * would just reject every submission server-side (see sendChatMessage's own LIVE
+   * guard) with nothing left in the room to send a message to. */
+  readOnly?: boolean;
   viewerUserId?: string;
   canMessageFacilitatorPrivately?: boolean;
   privateRecipientOptions?: PrivateRecipientOption[];
@@ -134,6 +139,7 @@ export function SessionChatPanel({
           <p className="text-sm text-muted-foreground">{dict.noMessages}</p>
         )}
       </div>
+      {!readOnly && (
       <form action={formAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
         <label className="sr-only" htmlFor="session-chat-message">{dict.sendMessageLabel}</label>
         {isPrivateComposer && <input type="hidden" name="visibility" value="PRIVATE" />}
@@ -221,6 +227,7 @@ export function SessionChatPanel({
           </div>
         </div>
       </form>
+      )}
     </aside>
   );
 }

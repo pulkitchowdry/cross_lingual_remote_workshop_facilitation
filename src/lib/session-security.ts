@@ -4,12 +4,15 @@ export function createOpaqueToken() {
   return randomBytes(32).toString("base64url");
 }
 
-/** Constant-time string comparison for shared secrets (Bearer/header tokens), to avoid leaking match length via response timing. */
+/**
+ * Constant-time string comparison for shared secrets (Bearer/header tokens), to avoid leaking match length via response timing.
+ * Compares fixed-length SHA-256 digests of the inputs rather than the raw strings, so `timingSafeEqual` always
+ * receives equal-length buffers regardless of how `a` and `b` differ in length — no length-based early return needed.
+ */
 export function secureCompare(a: string, b: string): boolean {
-  const bufferA = Buffer.from(a);
-  const bufferB = Buffer.from(b);
-  if (bufferA.length !== bufferB.length) return false;
-  return timingSafeEqual(bufferA, bufferB);
+  const digestA = createHash("sha256").update(a).digest();
+  const digestB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(digestA, digestB);
 }
 
 export function hashToken(token: string) {

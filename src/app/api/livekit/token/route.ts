@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return Response.json({ error: "Invalid room request." }, { status: 400 });
   }
+  if (typeof body !== "object" || body === null) {
+    return Response.json({ error: "Invalid room request." }, { status: 400 });
+  }
   if (typeof body.sessionId !== "string" || !isRequestedRole(body.role)) {
     return Response.json({ error: "Invalid room request." }, { status: 400 });
   }
