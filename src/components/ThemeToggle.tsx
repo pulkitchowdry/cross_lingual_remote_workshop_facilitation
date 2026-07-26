@@ -41,10 +41,14 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-label={dict.themeAriaLabel(dict.themeNames[nextTheme(theme)])}
-      className="font-data flex items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+      // Fixed px sizing, not rem-based Tailwind defaults — see the matching comment in
+      // AccessibilityPanel.tsx: this sits right next to the font-size toggle in the
+      // header, so it needs to stay immune to the very font-size preference that toggle
+      // controls, or it shifts sideways the moment text size changes.
+      className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
     >
       <span
-        className="h-1.5 w-1.5 rounded-full"
+        className="h-[6px] w-[6px] rounded-full"
         style={{ background: "var(--accent)" }}
         aria-hidden="true"
       />

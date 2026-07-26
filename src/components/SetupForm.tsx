@@ -2,12 +2,14 @@ import { Button } from "@/components/ui/Button";
 import { createSession } from "@/app/setup/actions";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
+import { RequiredFieldMessages } from "@/components/RequiredFieldMessages";
 
 export function SetupForm({ lang }: { lang: SupportedLanguage }) {
   const dict = getDictionary(lang);
 
   return (
     <form className="flex max-w-xl flex-col gap-4" action={createSession}>
+      <RequiredFieldMessages message={dict.common.requiredFieldMessage} />
       {/* The facilitator's language is whatever they've already toggled the
           UI to (see the LanguageSwitcher above this form) — no need to ask
           them to pick it again in a separate field. */}

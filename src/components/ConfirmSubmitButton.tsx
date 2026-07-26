@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useFormStatus } from "react-dom";
 
 /**
@@ -47,6 +47,22 @@ export function ConfirmSubmitButton({
     dialogRef.current?.close();
     buttonRef.current?.closest("form")?.requestSubmit();
   };
+
+  // Closing the native <dialog> restores focus to the trigger button (the browser's own
+  // default `close()` behavior) — but confirming immediately disables that same button
+  // via `pending` below, and a disabled element can't hold focus, so the browser drops
+  // focus to <body> with nothing to restore it. Once the action completes, the
+  // surrounding conditional branch this button lives in (session LIVE -> ENDED, or an
+  // active invite link -> revoked) unmounts entirely either way — a stable-looking
+  // wrapper *inside* this component would just get unmounted right along with it, so
+  // there's no in-place element here worth focusing instead. `#main-content` (AppShell's
+  // own landmark, already a valid focus target for its "Skip to main content" link) is
+  // the one thing guaranteed to survive any of these content swaps — confirmed live:
+  // without this, a keyboard user who just confirmed "End session" landed on <body> with
+  // no way back in except tabbing from the very top of the page.
+  useEffect(() => {
+    if (pending) document.getElementById("main-content")?.focus();
+  }, [pending]);
 
   return (
     <>

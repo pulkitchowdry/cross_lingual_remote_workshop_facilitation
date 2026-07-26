@@ -14,20 +14,31 @@ export function LanguageSwitcher({
   current,
   basePath,
   languages = SUPPORTED_LANGUAGES,
+  ariaLabel,
 }: {
   current: SupportedLanguage;
   basePath: string;
   languages?: readonly { value: SupportedLanguage; nativeLabel: string }[];
+  /**
+   * Overrides the default "Interface language" group label — the join page passes its
+   * own `join.languagePickerLabel` here, since on that page this same control also picks
+   * the learner's caption/translation language, which the generic default doesn't convey.
+   */
+  ariaLabel?: string;
 }) {
-  const label = getDictionary(current).shell.interfaceLanguage;
+  const label = ariaLabel ?? getDictionary(current).shell.interfaceLanguage;
   return (
-    <div className="flex items-center gap-2" role="group" aria-label={label}>
+    // Fixed px sizing, not rem-based Tailwind defaults — this switcher renders in the
+    // same header row as the font-size toggle on setup/join pages, so it needs to stay
+    // immune to the font-size preference it sits beside (see AccessibilityPanel.tsx's
+    // matching comment) instead of reflowing and shifting sideways when text size changes.
+    <div className="flex items-center gap-[8px]" role="group" aria-label={label}>
       {languages.map((language) => (
         <Link
           key={language.value}
           href={`${basePath}?lang=${language.value}`}
           aria-current={language.value === current ? "true" : undefined}
-          className={`font-data rounded-md border px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider transition-colors ${
+          className={`font-data rounded-md border px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider transition-colors ${
             language.value === current
               ? "border-accent text-foreground"
               : "border-border-strong text-muted-foreground hover:border-accent hover:text-foreground"
