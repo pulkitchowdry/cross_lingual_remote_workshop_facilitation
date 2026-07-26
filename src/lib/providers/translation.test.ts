@@ -54,7 +54,9 @@ describe("translateText", () => {
     const result = await translateText("hello", "en", "es");
 
     expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 2 local-inference attempts (translation.ts retries a transient local failure
+    // once before giving up on that tier) + 1 Claude call.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("returns null (never calls Claude) when local-inference fails and cloud fallback is disallowed", async () => {
@@ -68,7 +70,9 @@ describe("translateText", () => {
     const result = await translateText("hello", "en", "es", { allowCloudFallback: false });
 
     expect(result).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Both local-inference retry attempts still run before giving up on that tier —
+    // `allowCloudFallback` only gates what happens *after*, not the local retry itself.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("still returns a truncated Claude translation (logging a warning) rather than discarding it", async () => {

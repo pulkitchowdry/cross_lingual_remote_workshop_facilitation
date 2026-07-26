@@ -14,8 +14,11 @@
 # LIVEKIT_URL is handed to the *browser* (RoomProvider.issueCredential
 # returns it verbatim as the LiveKit client's connect URL), so it must be
 # reachable from the host, not just from inside the Compose network — hence
-# `localhost`. LIVEKIT_AGENT_URL is only used by the in-container worker to
-# reach the `livekit` service, so it uses the internal service hostname.
+# `localhost`. `agent` only ever calls it from inside the Compose network, so
+# it uses the internal service hostname. `web` additionally needs
+# LIVEKIT_AGENT_URL for its own *server-side* RoomServiceClient calls (room
+# metadata, DataChannel pushes) — those run from inside the container too, so
+# they need `http://livekit:7880`, not the browser-facing `localhost` value.
 
 services:
   postgres:
@@ -44,21 +47,20 @@ services:
 
   livekit:
     image: livekit/livekit-server:latest
-    # `--dev` never advertises a reachable external candidate address and runs
-    # no TURN listener, so participants behind real NATs/firewalls (i.e. any
-    # genuinely remote workshop participant, not just same-host testing) can
-    # get an initial connection but fail to receive tracks added mid-call —
-    # notably screen share. `livekit.yaml` turns on `use_external_ip` + a TURN
-    # relay to fix that; see the file's comments for details.
-    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+    # Plain `--dev` mode is the right default here: it's what every same-host
+    # dev/demo setup actually needs. An earlier version of this file used a
+    # mounted config (use_external_ip + a TURN relay) to let screen-share (or
+    # any mid-call added track) reach a genuinely separate device/network —
+    # removed because the external-IP discovery it depends on isn't reachable
+    # back to this container in every environment (sandboxes, restrictive
+    # egress, etc.), which broke connections outright instead of merely
+    # missing mid-call tracks. Reintroduce a config file the same way if you
+    # need real cross-device testing and confirm your network supports it.
+    command: ["--dev", "--bind", "0.0.0.0"]
     ports:
       - "7880:7880" # WebSocket/HTTP signaling — same port .env.example's LIVEKIT_URL uses
       - "7881:7881" # RTC over TCP (fallback when UDP is blocked)
       - "7882:7882/udp" # RTC over UDP
-      - "3478:3478/udp" # TURN relay (livekit.yaml's turn.udp_port)
-      - "50000-50100:50000-50100/udp" # RTC media port range (livekit.yaml's rtc.port_range)
 
   local-inference:
     build:

@@ -73,12 +73,27 @@ This repo follows that shape for its two Railway services — `railway.json`
    containerized Postgres — Railway's guidance is to prefer it for backups/
    scaling, and it gives you a `DATABASE_URL` reference variable for free.
 
-2. **Add the `web` service.** New → GitHub Repo → this repo. In its Settings:
+2. **Create a LiveKit Cloud project** — Railway cannot host `livekit-server`
+   itself as a Railway service. LiveKit's WebRTC media transport needs a wide
+   UDP port range for ICE/TURN (see `docker-compose.yml`'s local-only
+   `livekit` service for what that looks like); Railway's public networking
+   is HTTP(S)/TCP-only and can't expose that. Use a real external LiveKit
+   deployment instead:
+   - Sign up at [cloud.livekit.io](https://cloud.livekit.io) and create a
+     project (the free tier is enough for this app's scope).
+   - Note the **Project URL** (`wss://your-project-xxxx.livekit.cloud`) and,
+     under Settings → Keys, an **API Key** + **API Secret** (create a new key
+     pair if none exists).
+   - These three values are what `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+     `LIVEKIT_API_SECRET` below need to be set to — `LIVEKIT_URL` is the
+     `wss://...` project URL, not an `http://` one.
+
+3. **Add the `web` service.** New → GitHub Repo → this repo. In its Settings:
    - Root Directory: `/` (default)
    - Config-as-code path: `/railway.json`
    - Variables: `DATABASE_URL` = a **reference variable** to the Postgres
-     plugin (`${{Postgres.DATABASE_URL}}`), plus whichever of
-     `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`,
+     plugin (`${{Postgres.DATABASE_URL}}`), `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+     `LIVEKIT_API_SECRET` from step 2, plus whichever of
      `CLAUDE_API_KEY`/`CLAUDE_API_URL`, `STT_API_KEY`, `TTS_API_KEY`,
      `INSIGHT_MODEL_API_KEY`, `CRON_SECRET` you have (see `.env.example` for
      what each does). `LIVEKIT_AGENT_URL` is Docker-Compose-only (Railway has
@@ -94,17 +109,36 @@ This repo follows that shape for its two Railway services — `railway.json`
      link you hand out from a deployed instance would point at localhost
      instead of this deployment.
 
-3. **Add the `local-inference` service** (skip if you're staying on cloud
-   providers only). New → GitHub Repo → same repo.
+4. **Add the `local-inference` service** (skip if you're staying on cloud
+   providers only — see `local-inference/README.md` for full detail on
+   everything in this step, including a real failure mode and its fix).
+   New → GitHub Repo → same repo.
    - Root Directory: `/local-inference`
    - Config-as-code path: `/local-inference/railway.json`
-   - Variables: `LOCAL_INFERENCE_SECRET` (same value as `web`'s)
-   - On `web`, set `LOCAL_INFERENCE_URL` to this service's private network
-     URL (Railway private networking, `http://<service>.railway.internal:8080`,
-     or the reference-variable equivalent) so the call stays off the public
-     internet.
+   - **Before the first deploy, raise this service's memory limit to at
+     least 2GB** (Settings → Resources, or similar — exact location depends
+     on your Railway plan). This service holds ~1.5GB of ML models (NLLB,
+     faster-whisper, Piper voices) in memory; Railway's default allocation is
+     not enough, and the visible symptom is the service booting successfully,
+     then getting silently OOM-killed (logged as plain `Killed`, not an
+     error) the moment its first healthcheck forces all three models to
+     load — not a code bug, and the `None of PyTorch, TensorFlow >= 2.0, or
+     Flax have been found` line in the same logs is unrelated, expected
+     noise (this service uses `ctranslate2`, not PyTorch, for inference).
+   - Variables: `LOCAL_INFERENCE_SECRET` (any random string).
+   - On `web`, set two variables to reach this service over Railway's
+     private network (no public URL, and no separate "connect this to that"
+     step needed — any two services in the same Railway project can already
+     reference each other's variables):
+     - `LOCAL_INFERENCE_URL=http://${{local-inference.RAILWAY_PRIVATE_DOMAIN}}:8080`
+       (replace `local-inference` with your actual Railway service name if
+       you named it differently)
+     - `LOCAL_INFERENCE_SECRET=${{local-inference.LOCAL_INFERENCE_SECRET}}`
+       (references the value you set two bullets up, so it can't drift)
+   - This service does not need — and should not have — a connection to
+     Postgres or anything else; it has no database access at all.
 
-4. **Confirm each deploy's healthcheck/logs** — `web`'s `railway.json` checks
+5. **Confirm each deploy's healthcheck/logs** — `web`'s `railway.json` checks
    `/`, `local-inference`'s checks `/health`. Watch `web`'s deploy logs for
    the LiveKit Agents worker registering successfully too (it logs a warning
    and no-ops instead if `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/

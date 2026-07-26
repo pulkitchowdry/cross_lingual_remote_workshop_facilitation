@@ -135,3 +135,20 @@ export async function sendChatMessage(
   revalidatePath(`/sessions/${sessionId}/learn`);
   return { error: null };
 }
+
+/**
+ * Debounced full-scene snapshot save (see Whiteboard.tsx) — purely for
+ * late-joiners/page reloads, not the live-sync path (the "whiteboard"
+ * LiveKit DataChannel topic). Upserted, one row per session.
+ */
+export async function saveWhiteboardSnapshot(sessionId: string, elements: unknown[]) {
+  const isFacilitator = await hasFacilitatorAccess(sessionId);
+  const isLearner = Boolean(await learnerParticipantId(sessionId));
+  if (!isFacilitator && !isLearner) redirect("/setup");
+
+  await prisma.whiteboardSnapshot.upsert({
+    where: { sessionId },
+    create: { sessionId, elements: elements as object },
+    update: { elements: elements as object },
+  });
+}

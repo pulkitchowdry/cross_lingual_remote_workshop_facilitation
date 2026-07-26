@@ -1,0 +1,123 @@
+import type { Metadata } from "next";
+import { LiveSessionRoom } from "@/components/LiveSessionRoom";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
+import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
+import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { cookies } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { hasFacilitatorAccess } from "@/lib/session-access";
+import { learnerInviteCookieName } from "@/lib/session-security";
+import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { sendChatMessage } from "@/app/sessions/actions";
+import { publishCaption, updateFacilitatorLanguage } from "@/app/sessions/[sessionId]/facilitator/actions";
+import { visibleSessionMessageWhere } from "@/lib/message-visibility";
+
+export const metadata: Metadata = { title: "Live session" };
+
+/**
+ * Full-page takeover for the live meeting itself (see the dashboard page for
+ * everything else: intervention queue, transcript history, QR invite). Only
+ * reachable while the session is LIVE — `startSession` redirects the
+ * facilitator straight here, and the dashboard's "Join live session" card
+ * covers returning to an already-running one.
+ */
+export default async function FacilitatorRoomPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>;
+}) {
+  const { sessionId } = await params;
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+
+  // Queried before the main fetch below purely to get `facilitatorId` for the messages
+  // `where` filter — that filter has to be part of the same query that builds
+  // `chatMessages`, so the id it depends on has to already be in hand first.
+  const accessSession = await prisma.session.findUnique({ where: { id: sessionId }, select: { facilitatorId: true } });
+  if (!accessSession) notFound();
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+      messages: {
+        where: visibleSessionMessageWhere(sessionId, accessSession.facilitatorId),
+        include: { sender: true, translations: true },
+        orderBy: { sentAt: "desc" },
+      },
+      participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true } },
+    },
+  });
+  if (!session) notFound();
+  if (session.status !== SessionStatus.LIVE) redirect(`/sessions/${sessionId}/facilitator`);
+
+  const lang = resolveLanguage(session.sourceLanguage);
+  const dict = getDictionary(lang).facilitator;
+  const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
+  const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
+  const publishCaptionAction = publishCaption.bind(null, sessionId);
+  const chatMessages = [...session.messages].reverse();
+  const privateRecipientOptions = session.participants.map((participant) => ({
+    participantId: participant.id,
+    userId: participant.userId,
+    displayName: participant.user.displayName,
+  }));
+  const captionComposer = (
+    <CaptionPublishForm
+      action={publishCaptionAction}
+      dict={{
+        captionLabel: dict.captionLabel,
+        captionPlaceholder: dict.captionPlaceholder,
+        captionAudioHint: dict.captionAudioHint,
+        publish: dict.publish,
+        publishing: dict.publishing,
+      }}
+    />
+  );
+  const captionsHeader = textToSpeechProvider.isConfigured && (
+    <TranslatedAudioPlayer
+      segments={session.transcript.map((segment) => ({
+        id: segment.id,
+        hasTranslation:
+          segment.language === session.sourceLanguage ||
+          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+        isTyped: segment.isTyped,
+      }))}
+      preferredLanguage={session.sourceLanguage}
+    />
+  );
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const learnerToken = (await cookies()).get(learnerInviteCookieName(sessionId))?.value;
+  const inviteLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-background">
+      <SyncUiLanguage lang={lang} />
+      <SessionAutoRefresh />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <LiveSessionRoom
+          sessionId={session.id}
+          role="facilitator"
+          lang={lang}
+          targetLanguage={session.sourceLanguage}
+          transcript={session.transcript}
+          messages={chatMessages}
+          sendChatAction={sendChatAction}
+          title={session.title}
+          inviteLink={inviteLink}
+          viewerIsFacilitator
+          viewerUserId={session.facilitatorId}
+          privateRecipientOptions={privateRecipientOptions}
+          currentLanguage={lang}
+          onChangeLanguage={changeLanguageAction}
+          captionsHeader={captionsHeader}
+          captionComposer={captionComposer}
+        />
+      </div>
+    </div>
+  );
+}
