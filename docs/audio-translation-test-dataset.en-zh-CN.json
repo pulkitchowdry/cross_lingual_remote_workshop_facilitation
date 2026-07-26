@@ -1,0 +1,195 @@
+{
+  "datasetId": "audio-translation-workshop-en-zh-CN-v1",
+  "sourceLanguage": "en",
+  "targetLanguage": "zh-CN",
+  "context": "Remote software-development workshop with facilitators and learners.",
+  "scoringScale": {
+    "5": "Meaning is complete and natural; all important details and terms are preserved.",
+    "4": "Meaning is clear with only minor wording issues; no important detail is lost.",
+    "3": "Main idea is understandable, but one detail, term, or relationship is weakened.",
+    "2": "Partially understandable, but multiple details or key terms are wrong or missing.",
+    "1": "Unusable translation or transcription; meaning is mostly wrong or absent."
+  },
+  "samples": [
+    {
+      "id": "SWI-01",
+      "category": "simple_workshop_instruction",
+      "englishSource": "Please mute your microphone while your teammate is presenting.",
+      "expectedSimplifiedChineseMeaning": "当你的队友正在演示时，请将麦克风静音。",
+      "importantDetailsToPreserve": ["mute microphone", "while teammate is presenting"],
+      "technicalTermsToPreserve": ["microphone"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the translation clearly tells learners to mute the microphone only during the teammate's presentation; score lower if it implies muting permanently or omits who is presenting."
+    },
+    {
+      "id": "SWI-02",
+      "category": "simple_workshop_instruction",
+      "englishSource": "Open the shared document and add your notes under section two.",
+      "expectedSimplifiedChineseMeaning": "请打开共享文档，并在第二节下面添加你的笔记。",
+      "importantDetailsToPreserve": ["open shared document", "add notes", "under section two"],
+      "technicalTermsToPreserve": ["shared document", "section two"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the target action and location are both correct; score lower if section two becomes page two, step two, or another location."
+    },
+    {
+      "id": "SWI-03",
+      "category": "simple_workshop_instruction",
+      "englishSource": "Use the chat if you have a question during the demo.",
+      "expectedSimplifiedChineseMeaning": "如果你在演示期间有问题，请使用聊天功能。",
+      "importantDetailsToPreserve": ["use chat", "question", "during the demo"],
+      "technicalTermsToPreserve": ["chat", "demo"],
+      "suggestedAccuracyScoringRubric": "Score 5 if it preserves that questions should go through chat during the demo; score lower if it suggests speaking aloud or asking after the demo."
+    },
+    {
+      "id": "SWI-04",
+      "category": "simple_workshop_instruction",
+      "englishSource": "Take three minutes to test the login flow with your partner.",
+      "expectedSimplifiedChineseMeaning": "请花三分钟和你的搭档一起测试登录流程。",
+      "importantDetailsToPreserve": ["three minutes", "test login flow", "with partner"],
+      "technicalTermsToPreserve": ["login flow"],
+      "suggestedAccuracyScoringRubric": "Score 5 if time, collaboration, and testing the login flow are all preserved; score lower if login is mistranslated as registration or if the time is missing."
+    },
+    {
+      "id": "SWI-05",
+      "category": "simple_workshop_instruction",
+      "englishSource": "When you finish, raise your hand and wait for feedback.",
+      "expectedSimplifiedChineseMeaning": "完成后，请举手并等待反馈。",
+      "importantDetailsToPreserve": ["after finishing", "raise hand", "wait for feedback"],
+      "technicalTermsToPreserve": ["feedback"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the sequence is clear: finish first, then raise hand, then wait; score lower if the order is ambiguous or feedback is omitted."
+    },
+    {
+      "id": "TSD-01",
+      "category": "technical_software_development",
+      "englishSource": "The API returns a 401 error when the bearer token is expired.",
+      "expectedSimplifiedChineseMeaning": "当 bearer token 过期时，API 会返回 401 错误。",
+      "importantDetailsToPreserve": ["API returns error", "401", "bearer token expired"],
+      "technicalTermsToPreserve": ["API", "401", "bearer token"],
+      "suggestedAccuracyScoringRubric": "Score 5 if API, 401, bearer token, and expiration are all retained; score lower if 401 becomes 404 or the token cause is lost."
+    },
+    {
+      "id": "TSD-02",
+      "category": "technical_software_development",
+      "englishSource": "Check whether the React component re-renders after the state update.",
+      "expectedSimplifiedChineseMeaning": "请检查 React 组件在 state 更新后是否重新渲染。",
+      "importantDetailsToPreserve": ["check re-render", "after state update"],
+      "technicalTermsToPreserve": ["React component", "re-renders", "state update"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the React/state/re-render relationship is accurate; score lower if it confuses rendering with refreshing the whole page."
+    },
+    {
+      "id": "TSD-03",
+      "category": "technical_software_development",
+      "englishSource": "We need to debounce the search input before calling the database.",
+      "expectedSimplifiedChineseMeaning": "我们需要在调用数据库之前，先对搜索输入做 debounce。",
+      "importantDetailsToPreserve": ["debounce search input", "before database call"],
+      "technicalTermsToPreserve": ["debounce", "search input", "database"],
+      "suggestedAccuracyScoringRubric": "Score 5 if debounce is preserved as a technical behavior; score lower if it is translated as delay vaguely without linking it to the search input."
+    },
+    {
+      "id": "TSD-04",
+      "category": "technical_software_development",
+      "englishSource": "The migration adds an index on sessionId to speed up transcript queries.",
+      "expectedSimplifiedChineseMeaning": "这个 migration 会在 sessionId 上新增索引，以加快 transcript 查询。",
+      "importantDetailsToPreserve": ["migration adds index", "on sessionId", "speed up transcript queries"],
+      "technicalTermsToPreserve": ["migration", "index", "sessionId", "transcript queries"],
+      "suggestedAccuracyScoringRubric": "Score 5 if index location and purpose are both correct; score lower if index is confused with identifier or if transcript queries are omitted."
+    },
+    {
+      "id": "TSD-05",
+      "category": "technical_software_development",
+      "englishSource": "If the promise rejects, show the validation message instead of crashing the page.",
+      "expectedSimplifiedChineseMeaning": "如果 promise 被 rejected，请显示验证消息，而不是让页面崩溃。",
+      "importantDetailsToPreserve": ["promise rejects", "show validation message", "do not crash page"],
+      "technicalTermsToPreserve": ["promise", "rejects", "validation message"],
+      "suggestedAccuracyScoringRubric": "Score 5 if rejection handling and graceful validation display are preserved; score lower if it implies ignoring the error or retrying automatically."
+    },
+    {
+      "id": "LFS-01",
+      "category": "longer_or_faster_sentence",
+      "englishSource": "Before we move to the next exercise, make sure your branch is up to date, your tests pass, and your screen is still shared.",
+      "expectedSimplifiedChineseMeaning": "在进入下一个练习之前，请确认你的 branch 已经更新到最新、测试都通过，而且屏幕仍在共享中。",
+      "importantDetailsToPreserve": ["before next exercise", "branch up to date", "tests pass", "screen still shared"],
+      "technicalTermsToPreserve": ["branch", "tests", "screen shared"],
+      "suggestedAccuracyScoringRubric": "Score 5 if all three checklist items are preserved; score lower for omitted items, especially tests or branch status."
+    },
+    {
+      "id": "LFS-02",
+      "category": "longer_or_faster_sentence",
+      "englishSource": "I will give you one minute to read the error message, then we will compare what changed between the two commits.",
+      "expectedSimplifiedChineseMeaning": "我会给你一分钟阅读错误消息，然后我们会比较两个 commits 之间改了什么。",
+      "importantDetailsToPreserve": ["one minute", "read error message", "compare changes", "between two commits"],
+      "technicalTermsToPreserve": ["error message", "commits"],
+      "suggestedAccuracyScoringRubric": "Score 5 if timing and the compare-between-commits task are clear; score lower if commits are translated as comments or if the sequence is wrong."
+    },
+    {
+      "id": "LFS-03",
+      "category": "longer_or_faster_sentence",
+      "englishSource": "If your local server is still loading, pair with someone nearby and follow along from their browser for now.",
+      "expectedSimplifiedChineseMeaning": "如果你的本地服务器还在加载，请先和附近的人配对，暂时从他们的浏览器一起跟上。",
+      "importantDetailsToPreserve": ["local server still loading", "pair with nearby person", "follow from their browser for now"],
+      "technicalTermsToPreserve": ["local server", "browser"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the temporary workaround is clear; score lower if it suggests fixing the server instead of pairing and following along."
+    },
+    {
+      "id": "LFS-04",
+      "category": "longer_or_faster_sentence",
+      "englishSource": "After you submit the form, watch the network tab and tell us whether the request returns JSON or redirects to another page.",
+      "expectedSimplifiedChineseMeaning": "提交表单后，请观察 network tab，并告诉我们 request 是返回 JSON，还是重定向到另一个页面。",
+      "importantDetailsToPreserve": ["after submitting form", "watch network tab", "request returns JSON or redirects"],
+      "technicalTermsToPreserve": ["form", "network tab", "request", "JSON", "redirects"],
+      "suggestedAccuracyScoringRubric": "Score 5 if both possible outcomes, JSON and redirect, are preserved; score lower if it only mentions one outcome or loses the network-tab context."
+    },
+    {
+      "id": "LFS-05",
+      "category": "longer_or_faster_sentence",
+      "englishSource": "The goal is not to memorize the framework, but to notice the pattern: read the data, validate it, save it, and refresh the view.",
+      "expectedSimplifiedChineseMeaning": "目标不是背下这个 framework，而是注意这个模式：读取数据、验证数据、保存数据，然后刷新视图。",
+      "importantDetailsToPreserve": ["not memorizing framework", "notice pattern", "read validate save refresh"],
+      "technicalTermsToPreserve": ["framework", "data", "validate", "refresh the view"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the contrast and four-step pattern remain intact; score lower if any step is omitted or framework is mistranslated as a physical structure."
+    },
+    {
+      "id": "NNA-01",
+      "category": "names_numbers_acronyms_mixed_terms",
+      "englishSource": "Yuchi will review pull request number 117 after the 2:30 breakout.",
+      "expectedSimplifiedChineseMeaning": "Yuchi 会在 2:30 的分组讨论后审查第 117 号 pull request。",
+      "importantDetailsToPreserve": ["Yuchi", "pull request number 117", "after 2:30 breakout"],
+      "technicalTermsToPreserve": ["Yuchi", "pull request", "117", "2:30", "breakout"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the name, number, time, and pull request are exact; score lower if the PR number or timing changes."
+    },
+    {
+      "id": "NNA-02",
+      "category": "names_numbers_acronyms_mixed_terms",
+      "englishSource": "Maria, please paste the JWT into the .env file, not into Slack.",
+      "expectedSimplifiedChineseMeaning": "Maria，请把 JWT 粘贴到 .env 文件里，不要粘贴到 Slack。",
+      "importantDetailsToPreserve": ["Maria", "paste JWT", ".env file", "not Slack"],
+      "technicalTermsToPreserve": ["Maria", "JWT", ".env", "Slack"],
+      "suggestedAccuracyScoringRubric": "Score 5 if the destination and prohibition are both correct; score lower if it suggests posting the token in Slack."
+    },
+    {
+      "id": "NNA-03",
+      "category": "names_numbers_acronyms_mixed_terms",
+      "englishSource": "The bug appears only on Safari 18 when the API response takes more than 800 milliseconds.",
+      "expectedSimplifiedChineseMeaning": "这个 bug 只会在 Safari 18，并且 API 响应超过 800 毫秒时出现。",
+      "importantDetailsToPreserve": ["only Safari 18", "API response", "more than 800 milliseconds"],
+      "technicalTermsToPreserve": ["bug", "Safari 18", "API", "800 milliseconds"],
+      "suggestedAccuracyScoringRubric": "Score 5 if browser version and latency threshold are exact; score lower if it says all browsers or changes 800 milliseconds."
+    },
+    {
+      "id": "NNA-04",
+      "category": "names_numbers_acronyms_mixed_terms",
+      "englishSource": "Ask Team Beta to rename the function from getUser to getSessionParticipant.",
+      "expectedSimplifiedChineseMeaning": "请 Team Beta 将函数名称从 getUser 改成 getSessionParticipant。",
+      "importantDetailsToPreserve": ["Team Beta", "rename function", "from getUser", "to getSessionParticipant"],
+      "technicalTermsToPreserve": ["Team Beta", "function", "getUser", "getSessionParticipant"],
+      "suggestedAccuracyScoringRubric": "Score 5 if both function names are exact and direction is correct; score lower if the old and new names are reversed."
+    },
+    {
+      "id": "NNA-05",
+      "category": "names_numbers_acronyms_mixed_terms",
+      "englishSource": "The Redis cache key should include sessionId, learnerId, and zh-TW.",
+      "expectedSimplifiedChineseMeaning": "Redis 缓存 key 应该包含 sessionId、learnerId 和 zh-TW。",
+      "importantDetailsToPreserve": ["Redis cache key", "include sessionId", "include learnerId", "include zh-TW"],
+      "technicalTermsToPreserve": ["Redis", "cache key", "sessionId", "learnerId", "zh-TW"],
+      "suggestedAccuracyScoringRubric": "Score 5 if all key parts and zh-TW are preserved exactly; score lower if any identifier is translated, dropped, or normalized incorrectly."
+    }
+  ]
+}

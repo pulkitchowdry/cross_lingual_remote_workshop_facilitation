@@ -59,6 +59,7 @@ export async function publishLearnerCaption(
       startedAt: now,
       endedAt: now,
       isTyped: true,
+      instrumentation: { source: "typed-learner" },
     });
   } catch (error) {
     // Mirrors facilitator/actions.ts's publishCaption: publishTranslatedCaption's own
