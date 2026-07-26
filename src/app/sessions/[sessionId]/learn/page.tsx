@@ -5,6 +5,7 @@ import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionChatPanel } from "@/components/SessionChatPanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { CaptionComprehensionButton } from "@/components/CaptionComprehensionButton";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -51,6 +52,7 @@ export default async function LearnerSessionPage({
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
   const learnerDict = dict.learner;
+  const isLive = participant.session.status === SessionStatus.LIVE;
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,7 +63,7 @@ export default async function LearnerSessionPage({
         refetch — without polling here, the transition to LIVE (and the
         video room it unlocks below) is invisible until a manual reload.
       */}
-      {(participant.session.status === SessionStatus.DRAFT || participant.session.status === SessionStatus.LIVE) && (
+      {(participant.session.status === SessionStatus.DRAFT || isLive) && (
         <SessionAutoRefresh />
       )}
       <div>
@@ -76,7 +78,7 @@ export default async function LearnerSessionPage({
           {learnerDict.preferredLanguageLabel} <strong>{dict.languageNames[lang]}</strong>
         </p>
       </Card>
-      {participant.session.status === SessionStatus.LIVE && (
+      {isLive && (
         <section className="flex flex-col gap-3">
           <div>
             <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -100,7 +102,7 @@ export default async function LearnerSessionPage({
         <div>
           <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{learnerDict.liveCaptions}</p>
           <h2 className="font-heading text-lg font-semibold">
-            {participant.session.status === SessionStatus.LIVE
+            {isLive
               ? learnerDict.followExplanation
               : participant.session.status === SessionStatus.ENDED
                 ? learnerDict.sessionEnded
@@ -144,6 +146,28 @@ export default async function LearnerSessionPage({
                     <p className="mt-2 text-xs italic text-muted-foreground" lang={segment.language}>
                       {segment.originalText}
                     </p>
+                  )}
+                  {isLive && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <form action={sendChatAction}>
+                        <input type="hidden" name="kind" value="QUESTION" />
+                        <input
+                          type="hidden"
+                          name="message"
+                          value={learnerDict.explainSimplyQuestion(segment.originalText)}
+                        />
+                        <CaptionComprehensionButton label={learnerDict.explainSimply} pendingLabel={dict.chat.sending} />
+                      </form>
+                      <form action={sendChatAction}>
+                        <input type="hidden" name="kind" value="QUESTION" />
+                        <input
+                          type="hidden"
+                          name="message"
+                          value={learnerDict.giveExampleQuestion(segment.originalText)}
+                        />
+                        <CaptionComprehensionButton label={learnerDict.giveExample} pendingLabel={dict.chat.sending} />
+                      </form>
+                    </div>
                   )}
                 </Card>
               );
