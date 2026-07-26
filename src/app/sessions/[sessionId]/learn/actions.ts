@@ -54,5 +54,6 @@ export async function publishLearnerCaption(sessionId: string, formData: FormDat
     startedAt: now,
     endedAt: now,
     isTyped: true,
+    instrumentation: { source: "typed-learner" },
   });
 }

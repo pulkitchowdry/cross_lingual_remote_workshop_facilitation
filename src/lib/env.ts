@@ -55,6 +55,11 @@ const ENV_SPEC: EnvSpec[] = [
     description:
       "Public base URL used to build the learner invite link/QR code (facilitator page). Silently falls back to http://localhost:3000 if unset — must be set to the real deployed URL in any non-local deployment, or the invite link/QR handed to learners points at localhost.",
   },
+  {
+    key: "CAPTION_LATENCY_LOGS",
+    required: false,
+    description: "Development-only opt-in server log for manual audio transcription/translation latency testing",
+  },
 ];
 
 export interface EnvValidationResult {

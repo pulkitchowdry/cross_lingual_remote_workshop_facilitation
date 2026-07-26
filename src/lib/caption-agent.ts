@@ -15,6 +15,7 @@ import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 const WORKSHOP_ROOM_PREFIX = "workshop-";
 const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
@@ -70,6 +71,7 @@ async function streamFacilitatorAudio(
   await markCaptionAgentCapturing(sessionId);
 
   let segmentStartedAt = new Date();
+  let firstAudioSubmittedAtMs: number | undefined;
   // Set by onError below and checked by the audio loop so a dead STT stream actually
   // stops the pipeline instead of running forever — see the loop's own comment.
   let stopped = false;
@@ -86,7 +88,10 @@ async function streamFacilitatorAudio(
         // post-publish `.finally()` races on back-to-back final segments.
         const startedAt = segmentStartedAt;
         const endedAt = new Date();
+        const originalCaptionReadyAtMs = captionLatencyNowMs();
+        const audioSubmittedAtMs = firstAudioSubmittedAtMs;
         segmentStartedAt = endedAt;
+        firstAudioSubmittedAtMs = undefined;
         void (async () => {
           const session = await prisma.session.findUnique({ where: { id: sessionId } });
           if (!session || session.status !== SessionStatus.LIVE) return;
@@ -102,6 +107,11 @@ async function streamFacilitatorAudio(
             language: session.sourceLanguage as SupportedLanguage,
             startedAt,
             endedAt,
+            instrumentation: {
+              source: "caption-agent",
+              audioSubmittedAtMs,
+              originalCaptionReadyAtMs,
+            },
           });
         })().catch((error) => console.error(`[caption-agent] failed to publish a segment for ${sessionId}:`, error));
       },
@@ -122,6 +132,7 @@ async function streamFacilitatorAudio(
     const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
     for await (const frame of audioStream) {
       if (stopped) break;
+      firstAudioSubmittedAtMs ??= captionLatencyNowMs();
       sttStream.sendAudio(new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength));
     }
   } catch (error) {
