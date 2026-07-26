@@ -96,11 +96,6 @@ export function AnalyticsDrawer({
               )}
             </>
           )}
-          {isFrozen && (
-            <p className="font-data text-[10px] uppercase tracking-wider text-muted-foreground">
-              {/* Frozen (post-session) analytics — reuses the same drawer, no separate report artifact, per design doc. */}
-            </p>
-          )}
         </div>
       )}
     </aside>
