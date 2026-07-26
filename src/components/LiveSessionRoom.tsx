@@ -167,17 +167,43 @@ export function LiveSessionRoom({
   // Set when a per-device capture failure (denied permission, no such device, device
   // held by another app) is recovered from by turning that one device off instead of
   // treating the whole room as unrecoverable — see handleMediaDeviceFailure below.
-  // Cleared once the participant successfully turns the same device back on (a retry
-  // that works, e.g. after granting permission in the browser's own UI).
+  // Cleared either once the participant successfully turns the same device back on (a
+  // retry that works, e.g. after granting permission in the browser's own UI) or after
+  // a fixed delay (see showDeviceWarning below) — a permanently-unavailable device
+  // (no camera on this machine at all, permission denied for good) has no "turns it
+  // back on" event to ever fire, and without the timeout this banner sat on screen for
+  // the rest of the call.
   const [deviceWarning, setDeviceWarning] = useState<string | null>(null);
-  const handlePublishStateChange = useCallback((patch: Partial<PublishState>) => {
-    setPublishState((prev) => ({ ...prev, ...patch }));
-    // The facilitator manually restarting their share is the one signal that clears
-    // the interruption notice below — not a timeout, since there's no way to know in
-    // advance how long they'll take to notice and click the button again.
-    if (patch.screen) setScreenShareInterrupted(false);
-    if (patch.video || patch.audio) setDeviceWarning(null);
+  const deviceWarningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearDeviceWarningTimeout = useCallback(() => {
+    if (deviceWarningTimeoutRef.current !== null) {
+      clearTimeout(deviceWarningTimeoutRef.current);
+      deviceWarningTimeoutRef.current = null;
+    }
   }, []);
+  const showDeviceWarning = useCallback(
+    (message: string) => {
+      setDeviceWarning(message);
+      clearDeviceWarningTimeout();
+      deviceWarningTimeoutRef.current = setTimeout(() => setDeviceWarning(null), 6_000);
+    },
+    [clearDeviceWarningTimeout],
+  );
+  useEffect(() => clearDeviceWarningTimeout, [clearDeviceWarningTimeout]);
+  const handlePublishStateChange = useCallback(
+    (patch: Partial<PublishState>) => {
+      setPublishState((prev) => ({ ...prev, ...patch }));
+      // The facilitator manually restarting their share is the one signal that clears
+      // the interruption notice below — not a timeout, since there's no way to know in
+      // advance how long they'll take to notice and click the button again.
+      if (patch.screen) setScreenShareInterrupted(false);
+      if (patch.video || patch.audio) {
+        setDeviceWarning(null);
+        clearDeviceWarningTimeout();
+      }
+    },
+    [clearDeviceWarningTimeout],
+  );
   // Set the instant the user clicks Leave (MeetingToolbar's handleLeave), before
   // `room.disconnect()` itself runs — distinct from a network-triggered disconnect,
   // which must still reconnect normally. Read by the refresh effect below so a
@@ -215,8 +241,10 @@ export function LiveSessionRoom({
   // classification) tell us exactly which device the capture attempt was for; for a
   // camera or microphone specifically, turn just that device off (so the next
   // render/reconnect stops re-requesting it) and show a dismissible warning instead —
-  // cleared automatically once the participant successfully turns that same device
-  // back on (see handlePublishStateChange's own `setDeviceWarning(null)` above). The
+  // cleared either once the participant successfully turns that same device back on
+  // (handlePublishStateChange's own `setDeviceWarning(null)` above) or after a fixed
+  // delay regardless (showDeviceWarning's own timeout), since a permanently-unavailable
+  // device (no camera at all, permission denied for good) never fires the former. The
   // participant can still join audio/video-off, and the fatalError branch's "Rejoin"
   // button wouldn't have fixed this anyway, since it doesn't reset the browser's
   // already-made permission decision either. Any other failure kind (or none
@@ -226,17 +254,17 @@ export function LiveSessionRoom({
     (_failure?: MediaDeviceFailure, kind?: MediaDeviceKind) => {
       if (kind === "videoinput") {
         setPublishState((prev) => ({ ...prev, video: false }));
-        setDeviceWarning(dict.cameraUnavailable);
+        showDeviceWarning(dict.cameraUnavailable);
         return;
       }
       if (kind === "audioinput") {
         setPublishState((prev) => ({ ...prev, audio: false }));
-        setDeviceWarning(dict.microphoneUnavailable);
+        showDeviceWarning(dict.microphoneUnavailable);
         return;
       }
       setFatalError(dict.mediaDeviceError);
     },
-    [dict.cameraUnavailable, dict.microphoneUnavailable, dict.mediaDeviceError],
+    [dict.cameraUnavailable, dict.microphoneUnavailable, dict.mediaDeviceError, showDeviceWarning],
   );
 
   const fetchCredentials = useCallback(

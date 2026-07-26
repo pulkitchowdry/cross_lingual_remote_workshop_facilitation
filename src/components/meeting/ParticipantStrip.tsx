@@ -23,7 +23,14 @@ export function ParticipantStrip({
   cameraTracks: TrackReferenceOrPlaceholder[];
   micTracks: TrackReferenceOrPlaceholder[];
 }) {
-  const participants = useParticipants();
+  // `useParticipants()` returns every participant in the room, including the
+  // server-side caption-agent worker (see the matching filter/comment in
+  // MeetingRoom.tsx's `useTracks` call) — without this filter, that bot reappears
+  // here as a bogus thumbnail whenever this strip renders (screen-share or
+  // whiteboard focus mode), even though the main grid already excludes it.
+  const participants = useParticipants().filter(
+    (participant) => participant.identity.startsWith("facilitator:") || participant.identity.startsWith("learner:"),
+  );
 
   return (
     <div

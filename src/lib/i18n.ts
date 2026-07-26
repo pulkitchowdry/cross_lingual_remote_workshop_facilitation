@@ -427,7 +427,7 @@ const en: Dictionary = {
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
+    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found).",
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
   },
