@@ -166,6 +166,18 @@ export interface Dictionary {
     sessionSummaryMessages: string;
     sessionSummaryQuestions: string;
     sessionSummaryMisunderstoodTopics: string;
+    analyticsDrawerLabel: string;
+    analyticsDrawerOpen: string;
+    analyticsDrawerClose: string;
+    analyticsConfusionTrendHeading: string;
+    analyticsParticipationHeading: string;
+    analyticsParticipationRow: (displayName: string, messages: number, questions: number, isAnonymous: boolean) => string;
+    analyticsBlockersHeading: string;
+    analyticsBlockersSummary: (raised: number, resolved: number, open: number) => string;
+    analyticsLanguagesHeading: string;
+    analyticsLanguagesRow: (language: string, count: number) => string;
+    analyticsEmptyState: string;
+    analyticsFrozenNotice: string;
   };
   learner: {
     welcome: (name: string) => string;
@@ -444,6 +456,20 @@ const en: Dictionary = {
     sessionSummaryMessages: "Messages",
     sessionSummaryQuestions: "Questions",
     sessionSummaryMisunderstoodTopics: "Misunderstood topics",
+    analyticsDrawerLabel: "Analytics",
+    analyticsDrawerOpen: "Show analytics",
+    analyticsDrawerClose: "Hide analytics",
+    analyticsConfusionTrendHeading: "Confusion trend",
+    analyticsParticipationHeading: "Participation",
+    analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
+      `${displayName} · ${messages} messages · ${questions} questions${isAnonymous ? " · anonymous" : ""}`,
+    analyticsBlockersHeading: "Blockers",
+    analyticsBlockersSummary: (raised, resolved, open) =>
+      `${raised} raised · ${resolved} resolved · ${open} open`,
+    analyticsLanguagesHeading: "Languages",
+    analyticsLanguagesRow: (language, count) => `${language} · ${count} translations`,
+    analyticsEmptyState: "No analytics yet — data will appear as the session progresses.",
+    analyticsFrozenNotice: "Final snapshot — this session has ended",
   },
   learner: {
     welcome: (name) => `Welcome, ${name}`,
@@ -707,6 +733,20 @@ const zh: Dictionary = {
     sessionSummaryMessages: "消息数",
     sessionSummaryQuestions: "提问数",
     sessionSummaryMisunderstoodTopics: "未理解的主题",
+    analyticsDrawerLabel: "数据分析",
+    analyticsDrawerOpen: "显示分析",
+    analyticsDrawerClose: "隐藏分析",
+    analyticsConfusionTrendHeading: "困惑趋势",
+    analyticsParticipationHeading: "参与情况",
+    analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
+      `${displayName} · ${messages} 条消息 · ${questions} 个问题${isAnonymous ? " · 匿名" : ""}`,
+    analyticsBlockersHeading: "障碍",
+    analyticsBlockersSummary: (raised, resolved, open) =>
+      `提出 ${raised} · 已解决 ${resolved} · 未解决 ${open}`,
+    analyticsLanguagesHeading: "语言",
+    analyticsLanguagesRow: (language, count) => `${language} · ${count} 次翻译`,
+    analyticsEmptyState: "暂无分析数据——数据将随会话进行而出现。",
+    analyticsFrozenNotice: "最终快照——本次会话已结束",
   },
   learner: {
     welcome: (name) => `欢迎，${name}`,
@@ -970,6 +1010,20 @@ const es: Dictionary = {
     sessionSummaryMessages: "Mensajes",
     sessionSummaryQuestions: "Preguntas",
     sessionSummaryMisunderstoodTopics: "Temas no comprendidos",
+    analyticsDrawerLabel: "Analítica",
+    analyticsDrawerOpen: "Mostrar analítica",
+    analyticsDrawerClose: "Ocultar analítica",
+    analyticsConfusionTrendHeading: "Tendencia de confusión",
+    analyticsParticipationHeading: "Participación",
+    analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
+      `${displayName} · ${messages} mensajes · ${questions} preguntas${isAnonymous ? " · anónimo" : ""}`,
+    analyticsBlockersHeading: "Bloqueos",
+    analyticsBlockersSummary: (raised, resolved, open) =>
+      `${raised} planteados · ${resolved} resueltos · ${open} abiertos`,
+    analyticsLanguagesHeading: "Idiomas",
+    analyticsLanguagesRow: (language, count) => `${language} · ${count} traducciones`,
+    analyticsEmptyState: "Aún no hay analítica — los datos aparecerán a medida que avance la sesión.",
+    analyticsFrozenNotice: "Instantánea final — esta sesión ha terminado",
   },
   learner: {
     welcome: (name) => `Bienvenido/a, ${name}`,
