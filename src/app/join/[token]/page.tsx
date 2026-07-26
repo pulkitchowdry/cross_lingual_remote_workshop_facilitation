@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
@@ -11,6 +10,7 @@ import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { JoinSubmitButton } from "@/components/JoinSubmitButton";
+import { RequiredFieldMessages } from "@/components/RequiredFieldMessages";
 
 export const metadata: Metadata = { title: "Join session" };
 
@@ -46,7 +46,23 @@ export default async function JoinPage({
     // learner submits (see the matching check in actions.ts's `joinSession`).
     isSessionRetentionExpired(invite.session)
   ) {
-    notFound();
+    // Rendered inline instead of calling notFound() — that shared boundary
+    // (not-found.tsx) pairs the same "ask the facilitator for a fresh link" copy with a
+    // "Start a new session" CTA pointing at /setup, a facilitator-only action. The
+    // learner hitting a dead invite link (the overwhelmingly common trigger for that
+    // shared page, per its own doc comment) can't use that CTA at all — there's nothing
+    // productive to click here; the real recovery ("ask them for a fresh link") already
+    // requires stepping outside the app.
+    const fallbackLang = detectBrowserLanguage((await headers()).get("accept-language"));
+    const fallbackDict = getDictionary(fallbackLang);
+    return (
+      <div className="mx-auto flex max-w-xl flex-col gap-4">
+        <SyncUiLanguage lang={fallbackLang} />
+        <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">404</p>
+        <h1 className="font-heading text-2xl font-semibold">{fallbackDict.notFound.title}</h1>
+        <p className="max-w-md text-sm text-muted-foreground">{fallbackDict.notFound.message}</p>
+      </div>
+    );
   }
 
   const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
@@ -71,7 +87,21 @@ export default async function JoinPage({
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      <LanguageSwitcher current={lang} basePath={`/join/${token}`} languages={learnerLanguageOptions} />
+      <div className="flex flex-col gap-1.5">
+        {/* Visible label, not just the group's aria-label below — a sighted user scanning
+            the page shouldn't have to infer from the subtitle paragraph further down that
+            these pills are also the caption/translation language, not just cosmetic UI
+            chrome (every other page's identical-looking pill row really is cosmetic-only). */}
+        <p className="font-data text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          {dict.join.languagePickerLabel}
+        </p>
+        <LanguageSwitcher
+          current={lang}
+          basePath={`/join/${token}`}
+          languages={learnerLanguageOptions}
+          ariaLabel={dict.join.languagePickerLabel}
+        />
+      </div>
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {dict.join.invitedTo}
@@ -80,6 +110,7 @@ export default async function JoinPage({
         <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
+        <RequiredFieldMessages message={dict.common.requiredFieldMessage} />
         <input type="hidden" name="token" value={token} />
         {/* The learner's preferred language is whatever they've already
             toggled the UI to (see the LanguageSwitcher above this form) — no

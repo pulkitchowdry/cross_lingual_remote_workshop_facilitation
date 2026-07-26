@@ -270,3 +270,24 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* @livekit/components-styles sets `.lk-button-group { height: 100% }` (meant for its own
+   single-line, non-wrapping control bar layout) — inside LiveSessionRoom's control-bar row
+   (`flex flex-wrap`, needed so mic/camera/screenshare/CC/leave wrap onto a second line on
+   narrow viewports instead of overflowing), that percentage height resolves to roughly 2x a
+   plain button's height instead of the ~36-40px every other button in the row uses. That
+   inflates the row's first-line height enough that the row's own computed box falls short of
+   the space its wrapped second line (just the Leave-call button) actually needs — confirmed
+   live via getBoundingClientRect: at ~390px width, "Leave call" rendered past the row's own
+   bottom edge, overlapping the "Start live captions from mic" button below it, with real
+   click-area overlap (a misplaced tap there could end the call instead of starting captions).
+   Forcing `auto` here is what LiveKit's own single-line control bar effectively gets anyway
+   (a button-group's natural height already matches its tallest child) — this only matters
+   once flex-wrap is in play. `!important` — Tailwind v4's own rules live inside CSS
+   cascade layers (`@layer theme/base/components/utilities`), and any *unlayered* rule
+   (which is what @livekit/components-styles' plain, non-Tailwind stylesheet produces)
+   automatically wins over a layered one regardless of source order or specificity —
+   confirmed live: this exact rule without `!important` had zero effect. */
+.lk-button-group {
+  height: auto !important;
+}

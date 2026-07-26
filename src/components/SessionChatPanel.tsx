@@ -97,7 +97,11 @@ export function SessionChatPanel({
                 </p>
                 <div className="flex items-center gap-1.5">
                   {message.recipientId && (
-                    <span className="font-data rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    // Distinct accent color from the Anonymous badge below (previously
+                    // byte-for-byte identical styling) — "who can see this" and "is the
+                    // name hidden" are different facts about a message, and looked alike
+                    // enough in a fast-scrolling chat to be easy to mix up at a glance.
+                    <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
                       {dict.privateBadge}
                     </span>
                   )}
@@ -180,14 +184,22 @@ export function SessionChatPanel({
             <div className="flex flex-col gap-1">
               {allowQuestions && (
                 <>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input type="checkbox" name="kind" value="QUESTION" className="h-3.5 w-3.5 accent-[var(--accent)]" />
-                    {dict.flagQuestion}
-                  </label>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input type="checkbox" name="isAnonymous" value="true" className="h-3.5 w-3.5 accent-[var(--accent)]" />
-                    {dict.askAnonymously}
-                  </label>
+                  <div>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input type="checkbox" name="kind" value="QUESTION" className="h-3.5 w-3.5 accent-[var(--accent)]" />
+                      {dict.flagQuestion}
+                    </label>
+                    {/* Sits right above "message facilitator privately" below — without this,
+                        checking only this one reads as if it might also narrow the audience. */}
+                    <p className="ml-[22px] text-[11px] text-muted-foreground/80">{dict.flagQuestionHint}</p>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input type="checkbox" name="isAnonymous" value="true" className="h-3.5 w-3.5 accent-[var(--accent)]" />
+                      {dict.askAnonymously}
+                    </label>
+                    <p className="ml-[22px] text-[11px] text-muted-foreground/80">{dict.askAnonymouslyHint}</p>
+                  </div>
                 </>
               )}
               {canMessageFacilitatorPrivately && (

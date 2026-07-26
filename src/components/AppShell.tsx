@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { NewSessionLink } from "@/components/NewSessionLink";
 import "@/lib/dev-console-filter";
 import { getDictionary } from "@/lib/i18n";
 import { useUiLanguage } from "@/lib/use-ui-language";
@@ -53,6 +54,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ul className="flex items-center gap-6">
             {navLinks.map((link) => {
               const active = pathname?.startsWith(link.href);
+              // Clicking straight through to /setup from an existing facilitator
+              // dashboard risks orphaning a still-LIVE session (see NewSessionLink's own
+              // doc comment) — confirm first there; everywhere else this link appears
+              // (e.g. the setup page's own header), there's no existing session to lose.
+              if (facilitatorSessionId) {
+                return (
+                  <li key={link.href}>
+                    <NewSessionLink
+                      label={link.label}
+                      title={dict.shell.confirmNewSessionTitle}
+                      body={dict.shell.confirmNewSessionBody}
+                      confirmLabel={dict.common.confirm}
+                      cancelLabel={dict.common.cancel}
+                    />
+                  </li>
+                );
+              }
               return (
                 <li key={link.href}>
                   <Link

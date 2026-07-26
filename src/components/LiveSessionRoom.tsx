@@ -257,7 +257,12 @@ function WorkshopVideoStage({
           </div>
         )}
       </div>
-      <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
+      {/* `shrink-0` — defense in depth alongside globals.css's `.lk-button-group` height
+          override (see that rule's own comment for the actual root cause of the mobile
+          overlap it fixes): keeps this row's box from ever being shrunk below its wrapped
+          content's real height by its `flex-1` video-stage sibling above, the same way
+          that sibling is the one meant to absorb any space pressure in this flex column. */}
+      <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-border-subtle p-2">
         <div className="lk-button-group">
           <TrackToggle source={Track.Source.Microphone} aria-label={dict.toggleMicrophone} onChange={handleMicrophoneChange} />
           <div className="lk-button-group-menu">
