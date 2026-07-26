@@ -49,6 +49,8 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   private fallbackStream: SpeechToTextStream | null = null;
   private closed = false;
   private flushing = false;
+  /** The most recently started `flush()` call's promise — lets `close()` find and wait out an in-flight flush before issuing its own final one; see `close()`'s comment for why. */
+  private flushPromise: Promise<void> | null = null;
   /**
    * Browser `MediaRecorder` writes the WebM/Matroska container header (EBML +
    * Segment info + Tracks) only into the very first emitted chunk of a
@@ -62,7 +64,14 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
-      void this.flush();
+      // Skip reassigning while a previous flush is still in-flight: calling flush()
+      // again here would just hit its own single-flight guard and resolve almost
+      // immediately, and pointing flushPromise at that trivial resolution would make
+      // close() believe the real in-flight flush is done when it isn't (see close()'s
+      // comment) — silently dropping whatever's buffered once that real flush finally
+      // settles.
+      if (this.flushing) return;
+      this.flushPromise = this.flush();
     }, WINDOW_MS);
   }
 
@@ -81,7 +90,14 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-    void this.flush(); // best-effort final window; failures are ignored since the connection is closing anyway
+    // Best-effort final window; failures are ignored since the connection is closing
+    // anyway. If a previous window's flush is still in-flight, calling `flush()`
+    // directly would no-op on its own single-flight guard (`this.flushing`) and
+    // silently drop everything buffered since that in-flight call started — wait for
+    // it via `flushPromise` first, then flush what's left, so the last stretch of
+    // audio isn't lost just because it arrived while the previous window was still
+    // transcribing.
+    void (this.flushPromise ?? Promise.resolve()).then(() => this.flush());
     this.fallbackStream?.close();
   }
 
@@ -99,7 +115,19 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       const { text } = await localTranscribe(bytes, mimeType, this.options.expectedLanguage);
       if (text.trim()) this.options.onSegment({ text: text.trim(), isFinal: true });
     } catch (error) {
-      this.switchToFallback(error, chunks);
+      // The cloud fallback needs different framing depending on how this stream was
+      // opened. With an explicit `encoding` (the LiveKit agent's raw PCM path),
+      // Deepgram is told the exact raw format via URL params (see openDeepgramStream),
+      // so headerless `chunks` — the original, unwrapped audio — is exactly what it
+      // expects; encodeWindow's WAV-wrapping above is only for the *local*
+      // transcription call in that path. Without an `encoding` (the browser-mic WebM
+      // path), Deepgram must auto-detect the container from the byte stream itself,
+      // so it needs `bytes` — the header-prepended version — not the raw, headerless
+      // Cluster-only `chunks` a second-or-later window is. Forwarding the wrong one
+      // for either path sends the newly-opened Deepgram stream audio it can't decode,
+      // so the "seamless" fallback the class doc promises instead goes silently,
+      // permanently dead for the rest of this connection.
+      this.switchToFallback(error, this.options.encoding ? chunks : [bytes]);
     } finally {
       this.flushing = false;
     }

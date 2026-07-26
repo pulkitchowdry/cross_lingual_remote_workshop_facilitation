@@ -39,6 +39,7 @@ test("learner can ask comprehension questions from live captions", async ({ brow
     await facilitator.locator('textarea[name="captionText"]').fill("Normalize the request payload before validating fields.");
     await facilitator.getByRole("button", { name: "Publish" }).click();
 
+    await learner.getByRole("tab", { name: "Captions" }).click();
     await expect(learner.getByText("Normalize the request payload before validating fields.")).toBeVisible();
     await learner.getByRole("button", { name: "Explain simply" }).click();
 
