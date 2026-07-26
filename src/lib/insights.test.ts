@@ -64,4 +64,26 @@ describe("selectNewDrafts", () => {
     const result = selectNewDrafts(drafts, knownSegmentIds, []);
     expect(result).toHaveLength(2);
   });
+
+  // The bug this regression-tests: a genuine decision reversal (JWT -> OAuth) shares
+  // enough bare function/scaffolding words ("group", "decided", "to", "use", "for")
+  // with the original decision that plain, stopword-unaware Jaccard overlap crossed
+  // the duplicate threshold, silently dropping the reversal with no error or trace.
+  it("keeps a decision reversal that shares a formulaic template but differs in its actual content word", () => {
+    const result = selectNewDrafts(
+      [draft({ type: "DECISION", summary: "Group decided to use OAuth for auth", sourceSegmentIds: ["seg-1"] })],
+      knownSegmentIds,
+      ["Group decided to use JWT for auth"],
+    );
+    expect(result).toHaveLength(1);
+  });
+
+  it("still drops a genuine near-paraphrase of an already-noted summary", () => {
+    const result = selectNewDrafts(
+      [draft({ summary: "The group is still hitting a 500 error on signup" })],
+      knownSegmentIds,
+      ["Group still sees a 500 error on signup"],
+    );
+    expect(result).toHaveLength(0);
+  });
 });

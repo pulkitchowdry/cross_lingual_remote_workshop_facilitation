@@ -99,6 +99,29 @@ export async function joinSession(formData: FormData) {
     if (!current || current.status === SessionStatus.ENDED || isSessionRetentionExpired(current)) {
       throw new Error("This session is no longer available.");
     }
+    // Same race as the session check above, applied to the JoinLink itself: the
+    // revocation/expiry/maxUses check at line ~56 ran on a read from *before* this
+    // transaction started, so a facilitator clicking "Revoke invite" (or the link's
+    // own maxUses cap being hit by a concurrent join) in the gap between that read
+    // and this transaction committing would otherwise still let this join complete —
+    // silently admitting a learner through a link the facilitator believed "stops
+    // working right away" (revokeLearnerInvite's own doc comment). An atomic
+    // conditional update, not a second plain read: `updateMany`'s `where` clause is
+    // evaluated by Postgres against the current committed row at increment time, so
+    // a concurrent revoke that commits first is guaranteed to make this `count: 0`
+    // instead of both transactions racing on a read-then-write.
+    const claimed = await transaction.joinLink.updateMany({
+      where: {
+        id: joinLink.id,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+        ...(joinLink.maxUses !== null ? { useCount: { lt: joinLink.maxUses } } : {}),
+      },
+      data: { useCount: { increment: 1 } },
+    });
+    if (claimed.count === 0) {
+      throw new Error("This learner invitation is no longer available.");
+    }
     const user = await transaction.user.create({
       data: {
         displayName: displayName.trim(),
@@ -114,10 +137,6 @@ export async function joinSession(formData: FormData) {
         consentedAt: new Date(),
         accessTokenHash: hashToken(accessToken),
       },
-    });
-    await transaction.joinLink.update({
-      where: { id: joinLink.id },
-      data: { useCount: { increment: 1 } },
     });
     return createdParticipant;
   });

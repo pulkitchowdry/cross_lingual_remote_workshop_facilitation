@@ -95,11 +95,26 @@ export function LanguageMenu({
       // focus wherever the user actually clicked, not wherever the menu used to be.
       triggerRef.current?.focus();
     }
+    // Tabbing away is a keyboard-only exit that neither `handlePointerDown` (no mouse
+    // event fires) nor `handleKeyDown` (Tab isn't Escape) catches, so without this the
+    // listbox would stay open — and `aria-expanded` stuck `true` — after focus moves on.
+    // `focusout` bubbles (unlike `blur`), so listening on the container catches focus
+    // leaving any descendant. Check `relatedTarget` (the element gaining focus) against
+    // the container so Tabbing *within* the menu (e.g. into the listbox itself) doesn't
+    // prematurely close it — mirrors `handlePointerDown`'s outside-target check above.
+    function handleFocusOut(event: FocusEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.relatedTarget as Node)) {
+        setOpen(false);
+      }
+    }
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
+    containerRef.current?.addEventListener("focusout", handleFocusOut);
+    const container = containerRef.current;
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
+      container?.removeEventListener("focusout", handleFocusOut);
     };
   }, [open, current, languages]);
 

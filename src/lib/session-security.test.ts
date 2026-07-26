@@ -60,4 +60,18 @@ describe("secureCompare", () => {
   it("returns false against an empty string", () => {
     expect(secureCompare("", "shared-secret")).toBe(false);
   });
+
+  it("returns true for identical strings even when compared against differently-sized buffers of unequal original length", () => {
+    // Regression test: secureCompare must hash both inputs to fixed-length digests before
+    // calling timingSafeEqual, rather than short-circuiting on raw byte-length mismatch —
+    // that early return skipped the constant-time comparison entirely and could leak the
+    // secret's length via response timing. Exercise it with multi-byte (non-ASCII)
+    // characters too, since those differ in string .length vs. byte length.
+    const short = "a";
+    const long = "a-much-longer-string-with-more-bytes-日本語";
+    expect(secureCompare(short, short)).toBe(true);
+    expect(secureCompare(long, long)).toBe(true);
+    expect(secureCompare(short, long)).toBe(false);
+    expect(secureCompare(long, short)).toBe(false);
+  });
 });

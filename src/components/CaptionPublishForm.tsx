@@ -10,8 +10,13 @@ import type { FormActionResult } from "@/lib/session-contracts";
  * here instead of throwing — a thrown Error with no boundary in the tree crashed the
  * whole facilitator page, video call included, for what's often just a mistimed
  * click right as a session ends. Must be a client component — `useActionState` is a
- * hook, and the facilitator page that renders this is a Server Component. Mirrors the
- * learner's own caption composer (learn/page.tsx) layout/styling so the two match.
+ * hook, and both the facilitator and learner pages that render this are Server
+ * Components. Shared by both roles' caption composers (not just the facilitator's,
+ * despite the component name) so publishLearnerCaption's own `(prevState, formData)`
+ * signature — needed for the same inline-error-instead-of-crash reason as
+ * publishCaption — actually gets called with the right arguments: a Server Action
+ * bound only to a plain `<form action={...}>` (no `useActionState`) receives just
+ * `formData` as its sole argument, silently shifting every parameter over by one.
  */
 export function CaptionPublishForm({
   action,
@@ -24,9 +29,9 @@ export function CaptionPublishForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
-      <label className="sr-only" htmlFor="facilitator-caption">{dict.captionLabel}</label>
+      <label className="sr-only" htmlFor="caption-composer">{dict.captionLabel}</label>
       <textarea
-        id="facilitator-caption"
+        id="caption-composer"
         className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
         name="captionText"
         rows={2}

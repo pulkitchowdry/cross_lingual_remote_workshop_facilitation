@@ -39,6 +39,8 @@ export interface Dictionary {
     workshopGoal: string;
     workshopGoalPlaceholder: string;
     retention: string;
+    retentionMinutes: string;
+    retentionHour: string;
     retentionDay: string;
     retentionWeek: string;
     retentionMonth: string;
@@ -102,6 +104,22 @@ export interface Dictionary {
     confirmRevokeInviteBody: string;
     linkMissingMsg: string;
     qrAlt: string;
+    sessionEndedHeading: string;
+    sessionEndedSummary: string;
+    /** The one-shot, end-of-session AI narrative (Session.summary — see insights.ts's
+     * generateAndPersistSessionSummary) is plain text, not structured data — these three
+     * cover its only three render states: not yet generated (still LIVE-adjacent),
+     * generated, or never available (no INSIGHT_MODEL_API_KEY / generation failed). */
+    sessionSummaryHeading: string;
+    sessionSummaryPending: string;
+    sessionSummaryUnavailable: string;
+    /** Deterministic participation stats shown above the AI narrative — computed
+     * synchronously from already-fetched data, so they render immediately even while
+     * session.summary is still pending or unconfigured. */
+    sessionSummaryDuration: (minutes: number) => string;
+    sessionSummaryMessages: string;
+    sessionSummaryQuestions: string;
+    sessionSummaryMisunderstoodTopics: string;
   };
   learner: {
     welcome: (name: string) => string;
@@ -122,6 +140,8 @@ export interface Dictionary {
     giveExample: string;
     explainSimplyQuestion: (caption: string) => string;
     giveExampleQuestion: (caption: string) => string;
+    sessionEndedHeading: string;
+    sessionEndedSummary: string;
   };
   chat: {
     noMessages: string;
@@ -208,6 +228,8 @@ const en: Dictionary = {
     workshopGoal: "Workshop goal",
     workshopGoalPlaceholder: "e.g. Implement a working REST endpoint for user signup, including input validation.",
     retention: "Transcript retention",
+    retentionMinutes: "Delete after 5 minutes (testing)",
+    retentionHour: "Delete after 1 hour",
     retentionDay: "Delete after 1 day",
     retentionWeek: "Delete after 7 days",
     retentionMonth: "Delete after 30 days",
@@ -273,6 +295,15 @@ const en: Dictionary = {
     confirmRevokeInviteBody: "Anyone who hasn't joined yet will no longer be able to use this link.",
     linkMissingMsg: "This browser no longer has the original learner link. Create a replacement invitation before sharing the session.",
     qrAlt: "QR code for the learner invitation link",
+    sessionEndedHeading: "Session transcript",
+    sessionEndedSummary: "This session has ended. The video room is closed, but the full transcript and chat history below remain available until the session's retention period expires.",
+    sessionSummaryHeading: "AI session summary",
+    sessionSummaryPending: "Generating a summary of this session…",
+    sessionSummaryUnavailable: "No AI summary is available for this session.",
+    sessionSummaryDuration: (minutes) => `${minutes} min`,
+    sessionSummaryMessages: "Messages",
+    sessionSummaryQuestions: "Questions",
+    sessionSummaryMisunderstoodTopics: "Misunderstood topics",
   },
   learner: {
     welcome: (name) => `Welcome, ${name}`,
@@ -293,6 +324,8 @@ const en: Dictionary = {
     giveExample: "Give an example",
     explainSimplyQuestion: (caption) => `Please explain this simply: "${caption}"`,
     giveExampleQuestion: (caption) => `Please give an example for this: "${caption}"`,
+    sessionEndedHeading: "This session has ended",
+    sessionEndedSummary: "The facilitator ended this session. You can still review the transcript and chat history below until it's automatically deleted per this session's retention setting.",
   },
   chat: {
     noMessages: "No messages yet. Say hello or ask for help.",
@@ -380,6 +413,8 @@ const zh: Dictionary = {
     workshopGoal: "工作坊目标",
     workshopGoalPlaceholder: "例如：实现一个可用的用户注册 REST 接口，并包含输入校验。",
     retention: "转录保留时长",
+    retentionMinutes: "5 分钟后删除（测试用）",
+    retentionHour: "1 小时后删除",
     retentionDay: "1 天后删除",
     retentionWeek: "7 天后删除",
     retentionMonth: "30 天后删除",
@@ -445,6 +480,15 @@ const zh: Dictionary = {
     confirmRevokeInviteBody: "尚未加入的人将无法再使用此链接。",
     linkMissingMsg: "此浏览器中已没有原始学员链接。请先创建新的邀请后再分享此场次。",
     qrAlt: "学员邀请链接二维码",
+    sessionEndedHeading: "场次转录记录",
+    sessionEndedSummary: "此场次已结束。视频会议室已关闭，但以下完整转录和聊天记录会保留，直到该场次的保留期限到期为止。",
+    sessionSummaryHeading: "AI 场次摘要",
+    sessionSummaryPending: "正在生成此场次的摘要……",
+    sessionSummaryUnavailable: "此场次暂无 AI 摘要。",
+    sessionSummaryDuration: (minutes) => `${minutes} 分钟`,
+    sessionSummaryMessages: "消息数",
+    sessionSummaryQuestions: "提问数",
+    sessionSummaryMisunderstoodTopics: "未理解的主题",
   },
   learner: {
     welcome: (name) => `欢迎，${name}`,
@@ -465,6 +509,8 @@ const zh: Dictionary = {
     giveExample: "举个例子",
     explainSimplyQuestion: (caption) => `请用简单的话解释这段字幕：“${caption}”`,
     giveExampleQuestion: (caption) => `请针对这段字幕举一个例子：“${caption}”`,
+    sessionEndedHeading: "此场次已结束",
+    sessionEndedSummary: "主持人已结束此场次。你仍可在下方查看转录记录和聊天记录，直到根据此场次的保留设置被自动删除为止。",
   },
   chat: {
     noMessages: "暂无消息。打个招呼或提出问题吧。",
@@ -553,6 +599,8 @@ const es: Dictionary = {
     workshopGoal: "Objetivo del taller",
     workshopGoalPlaceholder: "p. ej. Implementar un endpoint REST funcional para el registro de usuarios, con validación de datos.",
     retention: "Retención de la transcripción",
+    retentionMinutes: "Eliminar después de 5 minutos (prueba)",
+    retentionHour: "Eliminar después de 1 hora",
     retentionDay: "Eliminar después de 1 día",
     retentionWeek: "Eliminar después de 7 días",
     retentionMonth: "Eliminar después de 30 días",
@@ -618,6 +666,15 @@ const es: Dictionary = {
     confirmRevokeInviteBody: "Quienes aún no se hayan unido ya no podrán usar este enlace.",
     linkMissingMsg: "Este navegador ya no tiene el enlace original para alumnos. Crea una invitación de reemplazo antes de compartir la sesión.",
     qrAlt: "Código QR del enlace de invitación para alumnos",
+    sessionEndedHeading: "Transcripción de la sesión",
+    sessionEndedSummary: "Esta sesión ha finalizado. La sala de video está cerrada, pero la transcripción completa y el historial de chat siguen disponibles a continuación hasta que expire el período de retención de la sesión.",
+    sessionSummaryHeading: "Resumen de la sesión (IA)",
+    sessionSummaryPending: "Generando un resumen de esta sesión…",
+    sessionSummaryUnavailable: "No hay ningún resumen de IA disponible para esta sesión.",
+    sessionSummaryDuration: (minutes) => `${minutes} min`,
+    sessionSummaryMessages: "Mensajes",
+    sessionSummaryQuestions: "Preguntas",
+    sessionSummaryMisunderstoodTopics: "Temas no comprendidos",
   },
   learner: {
     welcome: (name) => `Bienvenido/a, ${name}`,
@@ -638,6 +695,8 @@ const es: Dictionary = {
     giveExample: "Dar un ejemplo",
     explainSimplyQuestion: (caption) => `Explica esto de forma sencilla: "${caption}"`,
     giveExampleQuestion: (caption) => `Da un ejemplo para esto: "${caption}"`,
+    sessionEndedHeading: "Esta sesión ha finalizado",
+    sessionEndedSummary: "El facilitador finalizó esta sesión. Aún puedes revisar la transcripción y el historial de chat a continuación hasta que se eliminen automáticamente según la configuración de retención de esta sesión.",
   },
   chat: {
     noMessages: "Aún no hay mensajes. Saluda o pide ayuda.",
@@ -751,7 +810,11 @@ export function resolveLanguageFromAcceptLanguage(
   const ranges = header
     .split(",")
     .map((part) => {
-      const [tag, qPart] = part.trim().split(";q=");
+      // RFC 7231 allows optional whitespace (OWS) around the ";q=" delimiter — a literal
+      // ";q=" split misses entries like "en; q=0.9" (space after the semicolon), which
+      // some non-browser HTTP clients/proxies emit, leaving that preference's tag
+      // unsplit and rejected by isSupportedLanguage below instead of parsed and ranked.
+      const [tag, qPart] = part.trim().split(/;\s*q=/i);
       const q = qPart ? Number.parseFloat(qPart) : 1;
       return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 1 };
     })

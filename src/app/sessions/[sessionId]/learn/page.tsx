@@ -5,8 +5,8 @@ import type { TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
-import { ChatSendButton } from "@/components/ChatSendButton";
 import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
@@ -14,13 +14,49 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import { CHAT_MESSAGE_MAX_LENGTH, MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
+
+/**
+ * "Explain simply"/"Give an example" (CaptionComprehensionActions) wrap a caption
+ * verbatim in a fixed phrase (see i18n.ts's explainSimplyQuestion/giveExampleQuestion)
+ * and submit it through the same sendChatMessage that caps every message at
+ * CHAT_MESSAGE_MAX_LENGTH — but captions themselves are allowed up to 3,000 characters
+ * (facilitator/learn actions' own publish caps). Left untruncated, any caption long
+ * enough makes the generated question exceed the chat cap, and sendChatMessage rejects
+ * it every single time with no way for the learner to shorten a caption they didn't
+ * write themselves — the button becomes permanently, silently broken for that caption.
+ * The margin below is comfortably larger than the longest wrapper phrase + quote marks
+ * across en/zh/es.
+ */
+const QUOTED_QUESTION_WRAPPER_MARGIN = 150;
+function truncateForQuotedQuestion(text: string): string {
+  const maxLength = CHAT_MESSAGE_MAX_LENGTH - QUOTED_QUESTION_WRAPPER_MARGIN;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+/**
+ * `SessionChatPanel` (a Client Component) only decides whether to *display*
+ * `dict.anonymousLearner` vs `message.sender.displayName` — it never controls what data
+ * actually reaches the browser. A Server Component -> Client Component prop crosses the
+ * RSC boundary by serializing the whole object into the page's flight payload, so passing
+ * `message.sender` (the full `User` row, including the real `displayName`) straight through
+ * for an anonymous message ships the "hidden" identity to every co-learner's browser anyway
+ * — visible via View Source, the Network tab, or React DevTools, completely defeating the
+ * anonymity guarantee. Facilitators are meant to still see the real name (their own
+ * `viewerIsFacilitator: true` branch in facilitator/page.tsx is correct as-is and does NOT
+ * go through this redaction); ordinary learners must never receive it in the first place.
+ */
+function redactAnonymousSenders<T extends { isAnonymous?: boolean; sender: { displayName: string } }>(
+  messages: T[],
+): T[] {
+  return messages.map((message) => (message.isAnonymous ? { ...message, sender: { displayName: "" } } : message));
+}
 
 export default async function LearnerSessionPage({
   params,
@@ -69,7 +105,15 @@ export default async function LearnerSessionPage({
   const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
   const publishCaptionAction = publishLearnerCaption.bind(null, sessionId);
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
-  const transcriptEntries: TranscriptFeedEntry[] = participant.session.transcript.map((segment) => {
+  // participant.session.transcript is fetched newest-first (`orderBy: startedAt desc`,
+  // see the query above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N most recent
+  // segments — reversed here to chronological order before mapping so LiveTranscriptFeed
+  // (which renders top-to-bottom, newest at the bottom, per its own doc comment) and
+  // `latestCaptionText` below (`.at(-1)`, expecting the newest segment last) both read the
+  // array the right way round. See the matching fix/comment in facilitator/page.tsx —
+  // left un-reversed, the on-video caption overlay stays frozen on the very first caption
+  // of the session instead of ever showing the latest one.
+  const transcriptEntries: TranscriptFeedEntry[] = [...participant.session.transcript].reverse().map((segment) => {
     const isOwnLanguage = segment.language === participant.preferredLanguage;
     const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
     const primaryText = isOwnLanguage ? segment.originalText : (translation?.text ?? dict.common.translationUnavailable);
@@ -97,8 +141,8 @@ export default async function LearnerSessionPage({
           explainSimplyLabel={learnerDict.explainSimply}
           giveExampleLabel={learnerDict.giveExample}
           sendingLabel={dict.chat.sending}
-          explainSimplyMessage={learnerDict.explainSimplyQuestion(originalText)}
-          giveExampleMessage={learnerDict.giveExampleQuestion(originalText)}
+          explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
+          giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
         />
       ),
     };
@@ -149,7 +193,7 @@ export default async function LearnerSessionPage({
             sidebar={
               <SessionSidePanel
                 chat={{
-                  messages: [...participant.session.messages].reverse(),
+                  messages: redactAnonymousSenders([...participant.session.messages].reverse()),
                   targetLanguage: participant.preferredLanguage,
                   sendAction: sendChatAction,
                   allowQuestions: true,
@@ -174,27 +218,78 @@ export default async function LearnerSessionPage({
                   )
                 }
                 captionComposer={
-                  <form action={publishCaptionAction} className="flex flex-col gap-2 border-t border-border-subtle p-4">
-                    <label className="sr-only" htmlFor="learner-caption">{learnerDict.captionComposerLabel}</label>
-                    <textarea
-                      id="learner-caption"
-                      className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-                      name="captionText"
-                      rows={2}
-                      required
-                      maxLength={3000}
-                      placeholder={learnerDict.captionComposerPlaceholder}
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs text-muted-foreground">{learnerDict.captionAudioHint}</p>
-                      <ChatSendButton label={learnerDict.publish} sendingLabel={learnerDict.publishing} />
-                    </div>
-                  </form>
+                  <CaptionPublishForm
+                    action={publishCaptionAction}
+                    dict={{
+                      captionLabel: learnerDict.captionComposerLabel,
+                      captionPlaceholder: learnerDict.captionComposerPlaceholder,
+                      captionAudioHint: learnerDict.captionAudioHint,
+                      publish: learnerDict.publish,
+                      publishing: learnerDict.publishing,
+                    }}
+                  />
                 }
                 chatTabLabel={dict.common.chatTab}
                 captionsTabLabel={dict.common.captionsTab}
               />
             }
+          />
+        </section>
+      )}
+      {/* Before this, a learner had no on-page signal at all that the session had ended —
+          the page just silently reverted to looking identical to the pre-start "waiting"
+          view, and the transcript/chat data queried above (participant.session.transcript/
+          messages, unconditionally) had no UI to render into once WorkshopRoomLayout above
+          stopped rendering. Confirmed live: ending a session as the facilitator leaves the
+          learner's tab with no indication anything changed and no way to retrieve what was
+          said. */}
+      {participant.session.status === SessionStatus.ENDED && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {learnerDict.sessionEndedHeading}
+          </h2>
+          <p className="text-sm text-muted-foreground">{learnerDict.sessionEndedSummary}</p>
+          {/* Optional per FEATURE_LIST.md's "After Session" learner deliverables — reuses the
+              facilitator dict's copy (dict.facilitator.sessionSummary*) rather than duplicating
+              near-identical strings under `learner` too; the summary itself (Session.summary,
+              generated once by generateAndPersistSessionSummary) isn't per-viewer translated,
+              so it always renders in the session's source language regardless of who's reading
+              it, same as the transcript's own secondary-language quotes elsewhere on this page. */}
+          {participant.session.summary && (
+            <Card eyebrow={dict.facilitator.sessionSummaryHeading}>
+              <p className="whitespace-pre-wrap" lang={participant.session.sourceLanguage}>
+                {participant.session.summary}
+              </p>
+            </Card>
+          )}
+          <SessionSidePanel
+            chat={{
+              messages: redactAnonymousSenders([...participant.session.messages].reverse()),
+              targetLanguage: participant.preferredLanguage,
+              sendAction: sendChatAction,
+              readOnly: true,
+            }}
+            captions={{
+              entries: transcriptEntries,
+              emptyLabel: learnerDict.captionsWillAppear,
+              jumpToLatestLabel: dict.common.jumpToLatest,
+            }}
+            captionsHeader={
+              textToSpeechProvider.isConfigured && (
+                <TranslatedAudioPlayer
+                  segments={participant.session.transcript.map((segment) => ({
+                    id: segment.id,
+                    hasTranslation:
+                      segment.language === participant.preferredLanguage ||
+                      segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+                    isTyped: segment.isTyped,
+                  }))}
+                  preferredLanguage={participant.preferredLanguage}
+                />
+              )
+            }
+            chatTabLabel={dict.common.chatTab}
+            captionsTabLabel={dict.common.captionsTab}
           />
         </section>
       )}

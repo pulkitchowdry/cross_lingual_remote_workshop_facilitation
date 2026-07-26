@@ -269,6 +269,11 @@ class DeepgramStreamingSession implements SpeechToTextStream {
       smart_format: "true",
       punctuate: "true",
       interim_results: "true",
+      // Deepgram's default silence-based endpointing is short enough to finalize mid-sentence
+      // on ordinary speech micro-pauses, publishing choppy, low-context caption/translation
+      // fragments instead of full clauses. 400ms is tuned for facilitated-instruction cadence —
+      // long enough to survive a normal pause, short enough not to feel laggy.
+      endpointing: "400",
     });
     if (encoding) {
       params.set("encoding", encoding.format);

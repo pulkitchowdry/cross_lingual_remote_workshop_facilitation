@@ -21,7 +21,7 @@ import { insightProvider } from "@/lib/providers/insight";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
-import { computeConfusionLevel } from "@/lib/confusion-level";
+import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS } from "@/lib/confusion-level";
 import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
@@ -56,7 +56,14 @@ export default async function FacilitatorSessionPage({
   const cookieStore = await cookies();
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const [session, activeActionItems] = await Promise.all([
+  // Both queries below are time-bounded (not count-bounded like `session.insights`/
+  // `session.messages`) and scoped to exactly the type each confusion signal needs —
+  // see the comments at their point of use for why deriving these from the
+  // INSIGHT_HISTORY_LIMIT/MESSAGE_HISTORY_LIMIT-capped, type-agnostic lists instead
+  // (the previous approach) could silently undercount or hide real confusion.
+  const confusionWindowStart = new Date(new Date().getTime() - DEFAULT_CONFUSION_WINDOW_MS);
+  const [session, activeActionItems, recentConfusionInsights, recentLearnerQuestions, messageCount, questionCount] =
+    await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
@@ -100,6 +107,29 @@ export default async function FacilitatorSessionPage({
       include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
       orderBy: { createdAt: "desc" },
     }),
+    // Group confusion badge: scoped to exactly CONFUSION and time-bounded to the same
+    // window computeConfusionLevel itself uses, instead of deriving it from
+    // session.insights (INSIGHT_HISTORY_LIMIT-capped across EVERY insight type) — a
+    // burst of ACTIVITY/DECISION insights could otherwise push a genuinely recent
+    // CONFUSION insight out of that type-agnostic, count-bounded window.
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION", createdAt: { gte: confusionWindowStart } },
+      select: { createdAt: true },
+    }),
+    // Per-learner confusion badges: scoped to exactly QUESTION messages and
+    // time-bounded, instead of deriving from session.messages (MESSAGE_HISTORY_LIMIT-
+    // capped across every sender and every message kind) — ordinary CHAT traffic from
+    // other participants could otherwise push a learner's genuinely recent QUESTION
+    // messages out of that window, silently hiding or downgrading their badge.
+    prisma.message.findMany({
+      where: { sessionId, kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
+      select: { senderId: true, sentAt: true },
+    }),
+    // Plain totals (not the MESSAGE_HISTORY_LIMIT-capped `session.messages` array above) so
+    // the post-session participation stats reflect the session's real counts, not just
+    // whatever fits in the chat panel's most-recent page.
+    prisma.message.count({ where: { sessionId } }),
+    prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
   ]);
   if (!session) notFound();
   // The hourly cleanup cron (retention/cleanup/route.ts) physically deletes an
@@ -109,22 +139,19 @@ export default async function FacilitatorSessionPage({
   // as soon as it's due, not just once the delete has actually happened.
   if (isSessionRetentionExpired(session)) notFound();
 
-  // session.insights is capped at INSIGHT_HISTORY_LIMIT (see the query above); that cap
-  // can only truncate the CONFUSION count when insight volume is already high enough to be
-  // well past the HIGH threshold regardless, so the computed level stays correct.
-  const confusionTimestamps = session.insights
-    .filter((item) => item.type === "CONFUSION")
-    .map((item) => item.createdAt);
+  // Derived from the dedicated, time-bounded queries above — not from session.insights,
+  // which is capped at INSIGHT_HISTORY_LIMIT across every insight type (ACTIVITY/
+  // DECISION/BLOCKER/CONFUSION combined) and could silently drop a genuinely recent
+  // CONFUSION insight once enough other-typed insights accumulated.
+  const confusionTimestamps = recentConfusionInsights.map((item) => item.createdAt);
   const confusionLevel = computeConfusionLevel(confusionTimestamps, new Date());
 
-  // session.messages is capped at MESSAGE_HISTORY_LIMIT (see the query above); same
-  // truncation tradeoff as confusionTimestamps above — only under-counts once message
-  // volume is already high enough to be well past HIGH regardless.
+  // Derived from the dedicated, time-bounded query above — not from session.messages,
+  // which is capped at MESSAGE_HISTORY_LIMIT across every sender and message kind and
+  // could silently drop a learner's genuinely recent QUESTION messages once enough
+  // ordinary CHAT traffic (from any participant) accumulated in between.
   const learnerUserIds = new Set(session.participants.map((participant) => participant.userId));
-  const questionMessages = session.messages
-    .filter((message) => message.kind === "QUESTION")
-    .map((message) => ({ senderId: message.senderId, sentAt: message.sentAt }));
-  const learnerConfusionLevels = computeLearnerConfusionLevels(questionMessages, learnerUserIds, new Date());
+  const learnerConfusionLevels = computeLearnerConfusionLevels(recentLearnerQuestions, learnerUserIds, new Date());
   const learnerDisplayNames = new Map(
     session.participants.map((participant) => [participant.userId, participant.user.displayName]),
   );
@@ -133,7 +160,18 @@ export default async function FacilitatorSessionPage({
   const dict = getDictionary(lang).facilitator;
   const commonDict = getDictionary(lang).common;
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
-  const transcriptEntries: TranscriptFeedEntry[] = session.transcript.map((segment) => {
+  // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
+  // above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N *most recent* segments — but
+  // that leaves the JS array itself newest-first too. Reversed here to chronological
+  // (oldest-first) order before mapping: LiveTranscriptFeed renders `entries` top-to-bottom
+  // and auto-scrolls to the *bottom* on growth (its own doc comment: "newest at the
+  // bottom", matching a live chat), and `latestCaptionText` below reads `.at(-1)` expecting
+  // the last array element to be the newest segment. Left un-reversed, both read backwards:
+  // confirmed live (three sequential captions) that the feed showed the newest at the top
+  // and the video's caption overlay stayed frozen on the very first caption of the
+  // session — which reads to a user as "captions have stopped updating" for the entire
+  // rest of a live conversation, not just a cosmetic ordering glitch.
+  const transcriptEntries: TranscriptFeedEntry[] = [...session.transcript].reverse().map((segment) => {
     // Segments used to always be facilitator-authored (always in sourceLanguage), but
     // learners can now type captions too, in their own preferredLanguage — so this can no
     // longer just show originalText and assume it's already the facilitator's language.
@@ -175,12 +213,27 @@ export default async function FacilitatorSessionPage({
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
   const chatMessages = [...session.messages].reverse();
-  const transcript = [...session.transcript].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
     session.endedAt !== null &&
     new Date().getTime() - session.endedAt.getTime() < POST_SESSION_INSIGHT_GRACE_MS;
+  // Deterministic participation stats, computed from data already fetched/queried above —
+  // shown immediately in the ended-session summary card, unlike `session.summary` (the
+  // async Claude narrative below it), which only exists once
+  // generateAndPersistSessionSummary finishes and a poll picks it up.
+  const sessionSummary = {
+    durationMinutes:
+      session.startedAt && session.endedAt
+        ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000)
+        : null,
+    messageCount,
+    questionCount,
+    misunderstoodTopics: session.insights
+      .filter((item) => item.type === "CONFUSION")
+      .slice(0, 5)
+      .map((item) => item.summary),
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -303,6 +356,82 @@ export default async function FacilitatorSessionPage({
           />
         </section>
       )}
+      {/* Once a session ends, WorkshopRoomLayout above stops rendering entirely (its
+          LiveKit room has nothing left to connect to) — without a replacement here, the
+          transcript/chat this section's own data was already fetched for (session.transcript,
+          session.messages, both queried unconditionally above) had no UI left anywhere on
+          this page, making the whole session's record unretrievable the moment it ended. */}
+      {session.status === SessionStatus.ENDED && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.sessionEndedHeading}</h2>
+          <p className="text-sm text-muted-foreground">{dict.sessionEndedSummary}</p>
+          <Card eyebrow={dict.sessionSummaryHeading}>
+            {/* Deterministic — renders immediately from data already fetched above, unlike
+                the async narrative below it (session.summary), which only exists once
+                generateAndPersistSessionSummary finishes and a poll picks it up. */}
+            <p className="font-data text-xs text-muted-foreground">
+              {sessionSummary.durationMinutes !== null && `${dict.sessionSummaryDuration(sessionSummary.durationMinutes)} · `}
+              {sessionSummary.messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {sessionSummary.questionCount}{" "}
+              {dict.sessionSummaryQuestions.toLowerCase()}
+            </p>
+            {sessionSummary.misunderstoodTopics.length > 0 && (
+              <div className="mt-2">
+                <p className="font-data text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {dict.sessionSummaryMisunderstoodTopics}
+                </p>
+                <ul className="mt-1 list-inside list-disc text-sm">
+                  {sessionSummary.misunderstoodTopics.map((topic) => (
+                    <li key={topic}>{topic}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-2 border-t border-border-subtle pt-2">
+              {session.summary ? (
+                <p className="whitespace-pre-wrap">{session.summary}</p>
+              ) : (
+                <p className="text-muted-foreground">
+                  {!insightProvider.isConfigured
+                    ? dict.insightsNotConfigured
+                    : recentlyEnded
+                      ? dict.sessionSummaryPending
+                      : dict.sessionSummaryUnavailable}
+                </p>
+              )}
+            </div>
+          </Card>
+          <SessionSidePanel
+            chat={{
+              messages: chatMessages,
+              targetLanguage: session.sourceLanguage,
+              sendAction: sendChatAction,
+              viewerIsFacilitator: true,
+              readOnly: true,
+            }}
+            captions={{
+              entries: transcriptEntries,
+              emptyLabel: dict.transcriptEmpty,
+              jumpToLatestLabel: commonDict.jumpToLatest,
+            }}
+            captionsHeader={
+              textToSpeechProvider.isConfigured && (
+                <TranslatedAudioPlayer
+                  segments={session.transcript.map((segment) => ({
+                    id: segment.id,
+                    hasTranslation:
+                      segment.language === session.sourceLanguage ||
+                      segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+                    isTyped: segment.isTyped,
+                  }))}
+                  preferredLanguage={session.sourceLanguage}
+                />
+              )
+            }
+            chatTabLabel={commonDict.chatTab}
+            captionsTabLabel={commonDict.captionsTab}
+          />
+        </section>
+      )}
       <section className="flex flex-col gap-3" aria-live="polite">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -385,7 +514,7 @@ export default async function FacilitatorSessionPage({
               );
             })}
           </div>
-        ) : transcript.length === 0 ? (
+        ) : transcriptEntries.length === 0 ? (
           <Card eyebrow={dict.waitingToStart}>
             <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
           </Card>

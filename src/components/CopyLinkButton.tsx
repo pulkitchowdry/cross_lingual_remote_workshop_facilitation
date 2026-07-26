@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function CopyLinkButton({
   value,
@@ -14,6 +14,13 @@ export function CopyLinkButton({
   failedLabel: string;
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+    };
+  }, []);
 
   async function copy() {
     try {
@@ -27,7 +34,10 @@ export function CopyLinkButton({
       // to know they needed to fall back to selecting the link input manually.
       setStatus("failed");
     }
-    setTimeout(() => setStatus("idle"), 2000);
+    // Clear any timeout from a previous click so overlapping clicks can't race
+    // and reset the visible feedback up to ~2s early.
+    if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+    resetTimeoutRef.current = setTimeout(() => setStatus("idle"), 2000);
   }
 
   return (
