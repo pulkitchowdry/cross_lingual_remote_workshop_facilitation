@@ -58,7 +58,7 @@ export function MeetingHeader({
               <Tooltip.Content
                 side="bottom"
                 sideOffset={6}
-                className="font-data z-20 max-w-[16rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
+                className="font-data z-50 max-w-[16rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
               >
                 {copied ? dict.linkCopied : dict.copyInviteLink}
                 <Tooltip.Arrow style={{ fill: "var(--surface-raised)" }} />

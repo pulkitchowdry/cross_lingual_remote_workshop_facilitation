@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
@@ -13,15 +14,37 @@ const CHUNK_INTERVAL_MS = 250;
  * enough for near-real-time transcription; the server persists and
  * DataChannel-pushes each final transcript as it arrives.
  */
-export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang: SupportedLanguage }) {
+export function LiveCaptionStream({
+  sessionId,
+  lang,
+  agentCapturing = false,
+}: {
+  sessionId: string;
+  lang: SupportedLanguage;
+  /**
+   * True when the server-side caption agent (`caption-agent.ts`) is already
+   * streaming this facilitator's mic track — it auto-subscribes as soon as
+   * the ControlBar mic is unmuted. Starting this WebSocket path on top of
+   * that would open a second, independent STT pipeline for the same audio,
+   * duplicating every caption line (issue #95). When true, replace the
+   * "Start" button with a status notice instead of letting it be clicked.
+   */
+  agentCapturing?: boolean;
+}) {
   const dict = getDictionary(lang).captions;
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const stoppedByUserRef = useRef(false);
+  /** Whether the current socket ever reached `OPEN` — see caption-socket-client.ts's "opaque" case. */
+  const hasOpenedRef = useRef(false);
 
   const stop = useCallback(() => {
+    stoppedByUserRef.current = true;
+    hasOpenedRef.current = false;
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -33,13 +56,31 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
 
   useEffect(() => stop, [stop]);
 
+  // The agent can start capturing (mic unmuted in ControlBar) after this WS path was
+  // already streaming — e.g. the facilitator clicked "Start" before turning their mic
+  // on. Without this, both pipelines would keep running and duplicating captions.
+  useEffect(() => {
+    // `stop()` tears down the socket/recorder/mic stream (external systems), not just
+    // local state — a legitimate effect, not state that could be computed during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (agentCapturing && isStreaming) stop();
+  }, [agentCapturing, isStreaming, stop]);
+
   const start = useCallback(async () => {
     setError(null);
+    stoppedByUserRef.current = false;
+    hasOpenedRef.current = false;
+    setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
       socketRef.current = socket;
-      socket.onerror = () => setError(dict.connectionFailed);
+      socket.onopen = () => {
+        hasOpenedRef.current = true;
+      };
+      // `onclose` always fires right after and carries the actual signal (a
+      // server-provided reason, or an abnormal closure) — nothing to add here.
+      socket.onerror = () => {};
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
@@ -52,9 +93,39 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       // (e.g. on a failed handshake) while the recorder/mic stream are still open, which
       // would otherwise leave the microphone silently capturing with no way to release it
       // from the UI (the button reads "Start…" again, but a stale stream is still live).
-      socket.onclose = () => stop();
+      // A close the user didn't ask for (any code other than a normal 1000 closure) must
+      // also be surfaced here, or the button just silently flips back to idle with no
+      // indication of why. `classifyCaptionSocketClose` distinguishes three cases: a
+      // trustworthy server-provided reason (server.ts's `ws.close(1011, reason)` — not
+      // authorized, session not live, STT not configured, etc.), an "opaque" closure that
+      // never reached `OPEN` and carries no reason (a VPN/proxy/firewall breaking the WS
+      // Upgrade before it reaches the server — the same generic message for every one of
+      // those cases used to be indistinguishable from a real server rejection), and a
+      // "dropped" connection that opened and streamed before failing.
+      socket.onclose = (event) => {
+        if (!stoppedByUserRef.current && event.code !== CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
+          const failure = classifyCaptionSocketClose(event, hasOpenedRef.current);
+          setError(failure.kind === "server-reason" ? failure.reason : failure.kind === "opaque" ? dict.connectionBlocked : dict.connectionFailed);
+        }
+        stop();
+      };
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The WebSocket can already have failed and closed (running `stop()` via `onclose`
+      // above) while `getUserMedia`'s permission prompt was still pending — resolving
+      // after that must not resurrect a "streaming" state or leave the mic hot with
+      // nothing consuming it.
+      const socketFailed =
+        socketRef.current !== socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
+      if (socketFailed) {
+        stream.getTracks().forEach((track) => track.stop());
+        // socketRef.current has already moved on (e.g. a re-entrant start()) —
+        // this exact `socket` reference is otherwise unreachable from here on,
+        // so it must close itself or it (and its server-side STT session)
+        // leaks for the rest of the page's lifetime.
+        if (socketRef.current !== socket) socket.close();
+        return;
+      }
       streamRef.current = stream;
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
@@ -72,15 +143,33 @@ export function LiveCaptionStream({ sessionId, lang }: { sessionId: string; lang
       setIsStreaming(true);
     } catch {
       setError(dict.micDenied);
+      stop();
+    } finally {
+      setIsConnecting(false);
     }
-  }, [sessionId, stop, dict.connectionFailed, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+  }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+
+  if (agentCapturing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
+          role="status"
+        >
+          {dict.agentCapturing}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => (isStreaming ? stop() : void start())}
-        className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
+        disabled={isConnecting}
+        className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
         style={isStreaming ? { color: "var(--tick-high)", borderColor: "var(--tick-high)" } : undefined}
         aria-pressed={isStreaming}
       >

@@ -4,12 +4,16 @@ import { Card } from "@/components/ui/Card";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
+import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
+import { SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
 
@@ -27,21 +31,46 @@ export default async function LearnerSessionPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+          // A secondary `id` tiebreaker: see the matching comment in facilitator/page.tsx —
+          // without one, two rows created within the same millisecond can silently swap
+          // relative order between successive SessionAutoRefresh polls.
+          transcript: {
+            include: { translations: true },
+            orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+            take: TRANSCRIPT_HISTORY_LIMIT,
+          },
         },
       },
       user: true,
     },
   });
   if (!participant) notFound();
+  // See the matching check in facilitator/page.tsx: the hourly cleanup cron
+  // physically deletes an expired session, but nothing else stops it being
+  // served here in the meantime.
+  if (isSessionRetentionExpired(participant.session)) notFound();
   const lang = resolveLanguage(participant.preferredLanguage);
   const dict = getDictionary(lang);
   const learnerDict = dict.learner;
+  const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
+    participant.session.learnerLanguages.includes(language.value),
+  );
+  const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
+  const transcript = [...participant.session.transcript].reverse();
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      {participant.session.status === SessionStatus.LIVE && <SessionAutoRefresh />}
+      {/*
+        Poll during DRAFT too, not just LIVE: while the learner is on
+        "waiting for facilitator", nothing else on this page triggers a
+        refetch — without polling here, the transition to LIVE (and the
+        video room it unlocks below) is invisible until a manual reload.
+      */}
+      {(participant.session.status === SessionStatus.DRAFT || participant.session.status === SessionStatus.LIVE) && (
+        <SessionAutoRefresh />
+      )}
+      <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
       <div>
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {learnerDict.welcome(participant.user.displayName)}
@@ -78,7 +107,7 @@ export default async function LearnerSessionPage({
         </div>
         {textToSpeechProvider.isConfigured && (
           <TranslatedAudioPlayer
-            segments={participant.session.transcript.map((segment) => ({
+            segments={transcript.map((segment) => ({
               id: segment.id,
               hasTranslation:
                 segment.language === participant.preferredLanguage ||
@@ -87,9 +116,9 @@ export default async function LearnerSessionPage({
             preferredLanguage={participant.preferredLanguage}
           />
         )}
-        {participant.session.transcript.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {participant.session.transcript.map((segment) => {
+        {transcript.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {transcript.map((segment) => {
               const isOwnLanguage = segment.language === participant.preferredLanguage;
               const translation = segment.translations.find(
                 (item) => item.targetLanguage === participant.preferredLanguage,
@@ -97,20 +126,22 @@ export default async function LearnerSessionPage({
               const primaryText = isOwnLanguage
                 ? segment.originalText
                 : (translation?.text ?? dict.common.translationUnavailable);
-              // The fallback "Translation unavailable." string is fixed English UI copy, not a
-              // translation — tag it "en" rather than the learner's preferred language.
-              const primaryLang = isOwnLanguage ? segment.language : translation ? participant.preferredLanguage : "en";
+              // Both non-own-language branches resolve to the learner's preferred
+              // language: `translation.text` is translated *into* it, and the
+              // dict.common.translationUnavailable fallback is itself localized to it
+              // (see i18n.ts's `common` dictionary) — neither is fixed English copy.
+              const primaryLang = isOwnLanguage ? segment.language : participant.preferredLanguage;
               return (
                 <Card key={segment.id} title={segment.speakerId ?? dict.common.speaker} meta={segment.language.toUpperCase()}>
                   <p
-                    className="text-base leading-relaxed"
+                    className="whitespace-pre-wrap text-base leading-relaxed"
                     lang={primaryLang}
                     style={!isOwnLanguage && !translation ? { color: "var(--tick-low)" } : undefined}
                   >
                     {primaryText}
                   </p>
                   {!isOwnLanguage && (
-                    <p className="mt-2 text-xs italic text-muted-foreground" lang={segment.language}>
+                    <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={segment.language}>
                       {segment.originalText}
                     </p>
                   )}

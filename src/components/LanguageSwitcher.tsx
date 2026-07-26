@@ -2,8 +2,6 @@ import Link from "next/link";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
 
-const NATIVE_NAME: Record<SupportedLanguage, string> = { en: "English", zh: "中文", es: "Español" };
-
 /**
  * Plain `<Link>`s with a `?lang=` query param, not client state — setup/join are Server
  * Components with no session yet to derive a language from, so the interface language here
@@ -12,11 +10,19 @@ const NATIVE_NAME: Record<SupportedLanguage, string> = { en: "English", zh: "中
  * language pickers, since a reader who doesn't yet know the current UI language still needs
  * to recognize their own.
  */
-export function LanguageSwitcher({ current, basePath }: { current: SupportedLanguage; basePath: string }) {
+export function LanguageSwitcher({
+  current,
+  basePath,
+  languages = SUPPORTED_LANGUAGES,
+}: {
+  current: SupportedLanguage;
+  basePath: string;
+  languages?: readonly { value: SupportedLanguage; nativeLabel: string }[];
+}) {
   const label = getDictionary(current).shell.interfaceLanguage;
   return (
     <div className="flex items-center gap-2" role="group" aria-label={label}>
-      {SUPPORTED_LANGUAGES.map((language) => (
+      {languages.map((language) => (
         <Link
           key={language.value}
           href={`${basePath}?lang=${language.value}`}
@@ -27,7 +33,7 @@ export function LanguageSwitcher({ current, basePath }: { current: SupportedLang
               : "border-border-strong text-muted-foreground hover:border-accent hover:text-foreground"
           }`}
         >
-          {NATIVE_NAME[language.value]}
+          {language.nativeLabel}
         </Link>
       ))}
     </div>

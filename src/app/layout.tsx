@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono, Inter } from "next/font/google";
 import Script from "next/script";
+import { headers } from "next/headers";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { resolveLanguageFromAcceptLanguage } from "@/lib/i18n";
 
 const heading = Hanken_Grotesk({
   variable: "--font-heading",
@@ -32,12 +34,13 @@ export const metadata: Metadata = {
 };
 
 // Runs before paint so a returning visitor's stored theme and accessibility
-// preferences apply with no flash. Dark / normal text / standard contrast are
-// the defaults whenever nothing is stored yet.
+// preferences apply with no flash. Slate Night / normal text / standard
+// contrast are the defaults whenever nothing is stored yet.
 const THEME_INIT_SCRIPT = `
 try {
   var stored = localStorage.getItem("theme");
-  var theme = stored === "light" ? "light" : "dark";
+  var validThemes = ["beige", "ink-copper", "slate-night", "warm-dusk"];
+  var theme = validThemes.indexOf(stored) !== -1 ? stored : "slate-night";
   document.documentElement.setAttribute("data-theme", theme);
 
   var fontSize = localStorage.getItem("accessibility-font-size");
@@ -52,14 +55,21 @@ try {
 } catch (e) {}
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Only a heuristic (see resolveLanguageFromAcceptLanguage) — the root layout
+  // is shared by every route and has no access to a nested page's actual
+  // resolved language (searchParams / session / participant data), which
+  // `SyncUiLanguage` corrects client-side once that page's own language is known.
+  const acceptLanguage = (await headers()).get("accept-language");
+  const lang = resolveLanguageFromAcceptLanguage(acceptLanguage);
+
   return (
     <html
-      lang="en"
+      lang={lang}
       suppressHydrationWarning
       className={`${heading.variable} ${bodyFont.variable} ${dataFont.variable} h-full antialiased`}
     >

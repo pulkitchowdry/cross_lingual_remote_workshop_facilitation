@@ -7,7 +7,7 @@ import { ChatIcon, CloseIcon } from "@/components/meeting/icons";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { getDictionary } from "@/lib/i18n";
 import type { MeetingChatMessage } from "@/components/meeting/types";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 
 export function MeetingSidebar({
   uiLang,
@@ -19,7 +19,7 @@ export function MeetingSidebar({
   uiLang: SupportedLanguage;
   targetLanguage: string;
   messages: MeetingChatMessage[];
-  sendChatAction: (formData: FormData) => void | Promise<void>;
+  sendChatAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
 }) {
   const { sidebarOpen, setSidebarOpen, sidebarWidth, setSidebarWidth } = useMeetingShell();

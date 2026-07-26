@@ -13,6 +13,7 @@ import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { publishCaption } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
+import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 
 export const metadata: Metadata = { title: "Live session" };
 
@@ -68,26 +69,19 @@ export default async function FacilitatorRoomPage({
           inviteLink={inviteLink}
         />
       </div>
-      <div className="flex shrink-0 flex-col gap-2 border-t border-border-subtle bg-surface p-3">
-        <form action={publishCaptionAction} className="flex gap-2">
-          <label className="sr-only" htmlFor="facilitator-caption">
-            {dict.captionLabel}
-          </label>
-          <textarea
-            id="facilitator-caption"
-            className="flex-1 resize-none rounded-md border border-border-strong bg-surface-raised p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            name="captionText"
-            rows={1}
-            required
-            maxLength={3000}
-            placeholder={dict.captionPlaceholder}
-          />
-          <button className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground">
-            {dict.publish}
-          </button>
-        </form>
+      {/* Removing this part as its not necessary and might be removed in the long run */}
+      {/* <div className="flex shrink-0 flex-col gap-2 border-t border-border-subtle bg-surface p-3">
+        <CaptionPublishForm
+          action={publishCaptionAction}
+          dict={{
+            captionLabel: dict.captionLabel,
+            captionPlaceholder: dict.captionPlaceholder,
+            publish: dict.publish,
+            publishing: dict.publishing,
+          }}
+        />
         {speechToTextProvider.isConfigured && <LiveCaptionStream sessionId={session.id} lang={lang} />}
-      </div>
+      </div> */}
     </div>
   );
 }

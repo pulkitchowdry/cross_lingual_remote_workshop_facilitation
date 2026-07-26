@@ -50,7 +50,7 @@ describe("local-inference-client", () => {
   it("throws when the local-inference translate response is non-OK", async () => {
     process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
     process.env.LOCAL_INFERENCE_SECRET = "s3cret";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502, text: async () => "bad gateway" }));
 
     const { localTranslate } = await import("./local-inference-client");
     await expect(localTranslate("hello", "en", "es")).rejects.toThrow(/local-inference translate failed/);

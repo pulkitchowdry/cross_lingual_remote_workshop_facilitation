@@ -13,15 +13,17 @@ that fallback entirely).
 
 This is the first Python component in the repo. It needs a long-lived process
 holding three CPU models (NLLB-600M-int8, faster-whisper-small, three Piper
-voices — roughly 1-1.5GB combined) in memory, which doesn't fit Vercel
-Functions (the main app's deployment target) any better than the `agent/`
-worker's persistent LiveKit connection does. It lives in its own directory
-with its own dependency tree (`ctranslate2`, `faster-whisper`, `piper-tts`,
-`transformers` — none of which belong in the Next.js app's install) and talks
-to the Next.js app over plain authenticated HTTP, the same shared-secret
-pattern `agent/` uses for `/api/captions/agent`, just in the opposite call
-direction (the Next.js app calls out to this service, rather than a worker
-calling into the app).
+voices — roughly 1-1.5GB combined) in memory and a different runtime (Python,
+not Node), so it deploys as its own Railway service rather than as part of
+the main app's service. Unlike the LiveKit caption worker
+(`src/lib/caption-agent.ts`, which was merged into the main Next.js
+app/process since both are Node and the split wasn't worth the ops overhead
+for a hackathon project), this service genuinely can't merge: different
+language runtime, different dependency tree (`ctranslate2`, `faster-whisper`,
+`piper-tts`, `transformers` — none of which belong in the Next.js app's
+install). It lives in its own directory and talks to the Next.js app over
+plain authenticated HTTP (shared-secret, `LOCAL_INFERENCE_SECRET`), in the
+opposite call direction (the Next.js app calls out to this service).
 
 ## Endpoints
 
@@ -84,14 +86,34 @@ download, no dependency on Hugging Face being reachable at startup.
 
 1. Create a new Railway service pointed at this directory (`local-inference/`
    as the root), builder `DOCKERFILE` — already configured in `railway.json`.
-2. Set `LOCAL_INFERENCE_SECRET` in the Railway dashboard (generate any random
-   string) and, in the Next.js app's own Railway service (or `.env.local` for
-   local dev), set matching `LOCAL_INFERENCE_URL` (this service's public
-   Railway URL) and `LOCAL_INFERENCE_SECRET`.
-3. Railway injects `PORT` automatically; the Dockerfile's `CMD` already reads it.
-4. Confirm the healthcheck (`GET /health`, `railway.json`'s `healthcheckPath`)
+2. **Give the service at least 2GB of memory before the first deploy** — see
+   "Known limitations" below; the default allocation on most Railway plans is
+   not enough and the service will boot, pass startup, then get OOM-killed
+   the moment Railway's healthcheck hits `/health`. In the Railway dashboard:
+   this service → Settings → look for a Resources/Memory limit control (exact
+   location depends on your Railway plan; a Hobby-tier project may need
+   upgrading to a plan that allows custom resource limits) and raise it.
+3. Set `LOCAL_INFERENCE_SECRET` on this service (generate any random string).
+4. On the Next.js app's (`web`) Railway service, set two variables so it can
+   reach this one over Railway's private network — **not** this service's
+   public URL, and there's no separate "Connect" step needed for this to
+   work; any service in the same Railway project can already reach any
+   other's `RAILWAY_PRIVATE_DOMAIN` (see this service's Settings → Networking
+   for the exact value, normally derived from its service name):
+   - `LOCAL_INFERENCE_URL=http://${{local-inference.RAILWAY_PRIVATE_DOMAIN}}:8080`
+     (replace `local-inference` with whatever you actually named this
+     service in Railway if different)
+   - `LOCAL_INFERENCE_SECRET=${{local-inference.LOCAL_INFERENCE_SECRET}}`
+     (a reference to the value you set in step 3, so it's always in sync —
+     or just paste the same literal string on both services)
+   This service does **not** need a connection to Postgres or anything else
+   — it has no database access at all.
+5. Railway injects `PORT` automatically; the Dockerfile's `CMD` already reads it.
+6. Confirm the healthcheck (`GET /health`, `railway.json`'s `healthcheckPath`)
    passes after the first deploy — it can take longer than the default
-   timeout on a cold `docker build`, hence `healthcheckTimeout: 300`.
+   timeout on a cold `docker build`, hence `healthcheckTimeout: 300`. If it
+   instead loops "Application startup complete" → `Killed` → restart, that's
+   the memory issue in step 2, not a code problem — see below.
 
 ## Known limitations
 
@@ -103,13 +125,22 @@ download, no dependency on Hugging Face being reachable at startup.
 - **Latency budgets** in `docs/TRANSLATION_ARCHITECTURE.md`'s performance
   table (<1s STT/MT) were written against managed cloud APIs; CPU inference
   for all three models sharing one Railway instance may not hit those numbers.
-  No specific Railway CPU/plan sizing is prescribed here — a cost/ops decision
-  left to whoever deploys this.
-- **Not verified end-to-end in this environment** — no Railway project or
-  Hugging Face network access was available while building this, mirroring
-  `agent/README.md`'s own "not verified end-to-end" disclaimer. Before relying
-  on this in production: build the image, run it, and confirm all three
-  routes and `/health` behave as documented above with real model weights.
+- **Needs at least ~2GB of memory on Railway, confirmed by an actual failed
+  deploy** (not just the "~1-1.5GB combined" model-file-size estimate above —
+  real memory use during loading/inference runs higher than the on-disk
+  weights). `GET /health` calls `is_loaded()` for all three models
+  (`app/main.py`), and each one lazily constructs its model on first call —
+  so the *first* healthcheck hit after boot forces NLLB (ctranslate2 +
+  tokenizer), faster-whisper, and all three Piper voices to load
+  simultaneously. Undersized memory shows up as: `Application startup
+  complete` / `Uvicorn running` in the logs, immediately followed by `Killed`
+  (the OOM killer, not an application crash) and a restart loop. The
+  `None of PyTorch, TensorFlow >= 2.0, or Flax have been found` line
+  right before that is unrelated noise from `transformers` and expected —
+  this service uses `ctranslate2` for the actual translation model, not
+  PyTorch, and only uses `transformers` for tokenization. Fix: raise the
+  Railway service's memory limit (see "Deploying to Railway" step 2), not a
+  code change.
 
 ## Running tests
 

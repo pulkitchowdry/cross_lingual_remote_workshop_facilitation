@@ -1,8 +1,11 @@
 /**
  * Server-only environment contract. Fails fast with a readable error instead of
  * letting a missing variable surface as an obscure runtime crash later.
- * Optional provider keys are validated for shape only when present, since
- * features stay in fixture/mock mode until their key is configured.
+ * Optional provider keys only have their *presence* checked (a non-empty
+ * string) — not their shape/format — since features stay in fixture/mock mode
+ * until their key is configured; a malformed-but-present value (e.g. a
+ * truncated key or an invalid URL) still passes here and only surfaces once
+ * the real provider SDK/fetch call using it fails.
  */
 
 type EnvSpec = {
@@ -36,14 +39,21 @@ const ENV_SPEC: EnvSpec[] = [
     description: "Shared secret authorizing this app's calls to the local-inference service",
   },
   {
-    key: "CAPTION_AGENT_SECRET",
+    key: "LIVEKIT_AGENT_URL",
     required: false,
-    description: "Shared secret authorizing the standalone agent/ worker's /api/captions/agent calls",
+    description:
+      "Overrides LIVEKIT_URL just for the in-process caption agent worker's connection (server.ts) — for setups (e.g. Docker Compose) where the browser-facing LIVEKIT_URL isn't reachable from inside the app's own container",
   },
   {
     key: "CRON_SECRET",
     required: false,
-    description: "Shared secret authorizing Vercel Cron's /api/retention/cleanup calls",
+    description: "Shared secret authorizing scheduled /api/retention/cleanup calls",
+  },
+  {
+    key: "NEXT_PUBLIC_APP_URL",
+    required: false,
+    description:
+      "Public base URL used to build the learner invite link/QR code (facilitator page). Silently falls back to http://localhost:3000 if unset — must be set to the real deployed URL in any non-local deployment, or the invite link/QR handed to learners points at localhost.",
   },
 ];
 

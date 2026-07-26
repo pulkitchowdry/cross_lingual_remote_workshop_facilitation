@@ -9,15 +9,36 @@ import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { roomProvider } from "@/lib/providers/room";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
+import { isSupportedLanguage } from "@/lib/i18n";
+
+export async function updateFacilitatorLanguage(sessionId: string, lang: SupportedLanguage) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+  if (!isSupportedLanguage(lang)) return;
+
+  await prisma.session.update({ where: { id: sessionId }, data: { sourceLanguage: lang } });
+  revalidatePath(`/sessions/${sessionId}/facilitator`);
+}
 
 export async function startSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { status: SessionStatus.LIVE, startedAt: new Date() },
+  // Guarded to only leave DRAFT — without this, a stale tab's "Start Session"
+  // button (still bound from before the session was ended) or a resubmitted form
+  // could flip an already-LIVE or already-ENDED session back to LIVE. Clearing
+  // `endedAt` matters even more than the status guard alone: isSessionRetentionExpired
+  // anchors its deadline on `endedAt` when present, so a session restarted without
+  // clearing a stale `endedAt` could immediately compute as retention-expired and
+  // 404 for everyone — including the facilitator who just "restarted" it — while the
+  // retention cleanup cron itself skips it outright (it excludes status=LIVE), an
+  // inconsistent, self-locking state.
+  const { count } = await prisma.session.updateMany({
+    where: { id: sessionId, status: SessionStatus.DRAFT },
+    data: { status: SessionStatus.LIVE, startedAt: new Date(), endedAt: null },
   });
+  if (count === 0) {
+    throw new Error("This session has already started or ended.");
+  }
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
   // The facilitator is the one who just went live — send them straight into the
@@ -37,128 +58,53 @@ export async function endSession(sessionId: string) {
   revalidatePath(`/sessions/${sessionId}/learn`);
 }
 
-export async function loadDemoScenario(sessionId: string) {
-  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
-
-  const existingSegments = await prisma.transcriptSegment.count({ where: { sessionId } });
-  if (existingSegments > 0) {
-    revalidatePath(`/sessions/${sessionId}/facilitator`);
-    return;
-  }
-
-  const startedAt = new Date();
-  await prisma.$transaction(async (transaction) => {
-    const first = await transaction.transcriptSegment.create({
-      data: {
-        sessionId,
-        speakerId: "Facilitator",
-        originalText: "First, return a 400 response before calling validateEmail when the email field is missing.",
-        language: "en",
-        startedAt,
-        endedAt: new Date(startedAt.getTime() + 8_000),
-        translations: {
-          create: {
-            targetLanguage: "zh",
-            text: "首先，当 email 字段缺失时，请在调用 validateEmail 之前返回 400 响应。",
-            provider: "demo-scenario",
-            qualitySignal: "high",
-          },
-        },
-      },
-    });
-    const second = await transaction.transcriptSegment.create({
-      data: {
-        sessionId,
-        speakerId: "Learner A",
-        originalText: "如果 email 是空的，会报 500 错误。",
-        language: "zh",
-        startedAt: new Date(startedAt.getTime() + 9_000),
-        endedAt: new Date(startedAt.getTime() + 13_000),
-        translations: {
-          create: {
-            targetLanguage: "en",
-            text: "If the email is empty, it throws a 500 error.",
-            provider: "demo-scenario",
-            qualitySignal: "high",
-          },
-        },
-      },
-    });
-    const third = await transaction.transcriptSegment.create({
-      data: {
-        sessionId,
-        speakerId: "Learner B",
-        originalText: "我们试着加了 if (!req.body.email) return res.status(400)，但还是报错。",
-        language: "zh",
-        startedAt: new Date(startedAt.getTime() + 14_000),
-        endedAt: new Date(startedAt.getTime() + 21_000),
-        translations: {
-          create: {
-            targetLanguage: "en",
-            text: "We tried adding if (!req.body.email) return res.status(400), but it still errors.",
-            provider: "demo-scenario",
-            qualitySignal: "medium",
-            preservedSpans: ["if (!req.body.email) return res.status(400)"],
-          },
-        },
-      },
-    });
-
-    const activity = await transaction.insight.create({
-      data: {
-        sessionId,
-        type: "ACTIVITY",
-        summary: "Debugging validation for an empty email field.",
-      },
-    });
-    const decision = await transaction.insight.create({
-      data: {
-        sessionId,
-        type: "DECISION",
-        summary: "Add an early 400 response before email validation.",
-      },
-    });
-    const blocker = await transaction.insight.create({
-      data: {
-        sessionId,
-        type: "BLOCKER",
-        summary: "The group still sees a 500 error after adding the early return.",
-      },
-    });
-    await transaction.insightEvidence.createMany({
-      data: [
-        { insightId: activity.id, transcriptSegmentId: second.id },
-        { insightId: decision.id, transcriptSegmentId: first.id },
-        { insightId: blocker.id, transcriptSegmentId: third.id },
-      ],
-    });
-  });
-
-  revalidatePath(`/sessions/${sessionId}/facilitator`);
-  revalidatePath(`/sessions/${sessionId}/learn`);
-}
-
-export async function publishCaption(sessionId: string, formData: FormData) {
+export async function publishCaption(
+  sessionId: string,
+  _prevState: FormActionResult,
+  formData: FormData,
+): Promise<FormActionResult> {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
   const captionText = formData.get("captionText");
   if (typeof captionText !== "string" || !captionText.trim() || captionText.trim().length > 3_000) {
-    throw new Error("Enter a caption of up to 3,000 characters.");
+    return { error: "Enter a caption of up to 3,000 characters." };
   }
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session || session.status !== SessionStatus.LIVE) {
-    throw new Error("Start the session before publishing captions.");
+    return { error: "Start the session before publishing captions." };
   }
 
   const now = new Date();
   await publishTranslatedCaption(session, {
-    speakerId: "Facilitator",
+    speakerId: null,
     originalText: captionText.trim(),
     language: session.sourceLanguage as SupportedLanguage,
     startedAt: now,
     endedAt: now,
   });
+  return { error: null };
+}
+
+/**
+ * Marks a BLOCKER (or any) insight resolved so it stops showing under "Act now" —
+ * the `Insight.status` column and the `DashboardUpdateEvent.status` union
+ * ("ACTIVE"|"RESOLVED"|"SUPERSEDED", session-contracts.ts) already anticipated this;
+ * nothing ever actually set it to anything but its "ACTIVE" default, so a resolved
+ * blocker had no way to stop being shown, indistinguishable from one raised seconds
+ * ago for the rest of the session.
+ */
+export async function resolveInsight(sessionId: string, insightId: string) {
+  if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
+
+  // Scoped by both ids together — an insight id alone isn't enough to prove it
+  // belongs to *this* session, and `updateMany` silently no-ops (rather than
+  // throwing) if the pair doesn't match, so a mismatched id just does nothing.
+  await prisma.insight.updateMany({
+    where: { id: insightId, sessionId },
+    data: { status: "RESOLVED" },
+  });
+  revalidatePath(`/sessions/${sessionId}/facilitator`);
 }
 
 /**

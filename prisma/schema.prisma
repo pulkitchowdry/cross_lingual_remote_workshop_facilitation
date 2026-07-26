@@ -30,43 +30,52 @@ enum InsightType {
   CONFUSION
 }
 
-/** AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5. */
+/**
+ * AUTO: try local-inference first, fall back to cloud providers on failure. LOCAL_ONLY: never call cloud providers, even on local failure — see docs/TRANSLATION_ARCHITECTURE.md Part 5.
+ */
 enum TranslationMode {
   AUTO
   LOCAL_ONLY
 }
 
 model User {
-  id             String               @id @default(cuid())
-  displayName    String
+  id                String               @id @default(cuid())
+  displayName       String
   preferredLanguage String?
-  createdAt      DateTime             @default(now())
-  sessions       Session[]            @relation("SessionFacilitator")
-  participations SessionParticipant[]
-  messages       Message[]
+  createdAt         DateTime             @default(now())
+  sessions          Session[]            @relation("SessionFacilitator")
+  participations    SessionParticipant[]
+  messages          Message[]
 }
 
 model Session {
-  id              String               @id @default(cuid())
-  title           String
-  goal            String
-  sourceLanguage  String
-  learnerLanguages String[]
-  retentionDays   Int                  @default(7)
-  translationMode TranslationMode      @default(AUTO)
-  status          SessionStatus        @default(DRAFT)
-  facilitatorId   String
-  facilitator     User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
-  createdAt       DateTime             @default(now())
-  startedAt       DateTime?
-  endedAt         DateTime?
-  participants    SessionParticipant[]
-  joinLinks       JoinLink[]
-  transcript      TranscriptSegment[]
-  messages        Message[]
-  insights        Insight[]
-  glossaryTerms   GlossaryTerm[]
-  whiteboard      WhiteboardSnapshot?
+  id                 String               @id @default(cuid())
+  title              String
+  goal               String
+  sourceLanguage     String
+  learnerLanguages   String[]
+  retentionDays      Int                  @default(7)
+  translationMode    TranslationMode      @default(AUTO)
+  status             SessionStatus        @default(DRAFT)
+  // Whether the server-side caption agent (caption-agent.ts) is currently streaming this
+  // session's facilitator audio. Must live in the database, not in-process memory: the
+  // LiveKit Agents worker that sets this runs in a forked OS process (see server.ts /
+  // @livekit/agents' per-job JobProcExecutor), a different process from the one serving
+  // the facilitator dashboard that reads it — an in-memory flag set in one and read from
+  // the other is silently always false.
+  captionAgentActive Boolean              @default(false)
+  facilitatorId      String
+  facilitator        User                 @relation("SessionFacilitator", fields: [facilitatorId], references: [id])
+  createdAt          DateTime             @default(now())
+  startedAt          DateTime?
+  endedAt            DateTime?
+  participants       SessionParticipant[]
+  joinLinks          JoinLink[]
+  transcript         TranscriptSegment[]
+  messages           Message[]
+  insights           Insight[]
+  glossaryTerms      GlossaryTerm[]
+  whiteboard         WhiteboardSnapshot?
 }
 
 model SessionParticipant {
@@ -78,6 +87,17 @@ model SessionParticipant {
   consentedAt       DateTime?
   joinedAt          DateTime        @default(now())
   lastActiveAt      DateTime        @default(now())
+  /**
+   * SHA-256 hash of the random opaque secret issued to a learner at join time
+   * and stored in their session cookie (see session-security.ts hashToken /
+   * createOpaqueToken). The learner's ongoing session credential must be this
+   * secret, never `id` itself — `id` is also this participant's LiveKit room
+   * identity (see room.ts), which every other participant in the room can
+   * read, so using it as the session credential too would let any co-learner
+   * impersonate any other by copying that publicly-visible id into their own
+   * cookie.
+   */
+  accessTokenHash   String?         @unique
   session           Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -85,29 +105,29 @@ model SessionParticipant {
 }
 
 model JoinLink {
-  id         String          @id @default(cuid())
-  sessionId  String
-  role       ParticipantRole @default(LEARNER)
-  tokenHash  String          @unique
-  expiresAt  DateTime?
-  revokedAt  DateTime?
-  maxUses    Int?
-  useCount   Int             @default(0)
-  createdAt  DateTime        @default(now())
-  session    Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  sessionId String
+  role      ParticipantRole @default(LEARNER)
+  tokenHash String          @unique
+  expiresAt DateTime?
+  revokedAt DateTime?
+  maxUses   Int?
+  useCount  Int             @default(0)
+  createdAt DateTime        @default(now())
+  session   Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model TranscriptSegment {
-  id           String    @id @default(cuid())
+  id           String            @id @default(cuid())
   sessionId    String
   speakerId    String?
   originalText String
   language     String
   startedAt    DateTime
   endedAt      DateTime
-  isFinal      Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  isFinal      Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  session      Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   translations Translation[]
   evidence     InsightEvidence[]
 }
@@ -152,38 +172,38 @@ model WhiteboardSnapshot {
 }
 
 model Message {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   sessionId    String
   senderId     String
   originalText String
   language     String
   kind         String
-  sentAt       DateTime @default(now())
-  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  sender       User     @relation(fields: [senderId], references: [id])
+  sentAt       DateTime             @default(now())
+  session      Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender       User                 @relation(fields: [senderId], references: [id])
   translations MessageTranslation[]
 }
 
 model MessageTranslation {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   messageId      String
   targetLanguage String
   text           String
   provider       String
   qualitySignal  String?
-  message        Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message        Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, targetLanguage])
 }
 
 model Insight {
-  id        String       @id @default(cuid())
+  id        String            @id @default(cuid())
   sessionId String
   type      InsightType
   summary   String
-  status    String       @default("ACTIVE")
-  createdAt DateTime     @default(now())
-  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  status    String            @default("ACTIVE")
+  createdAt DateTime          @default(now())
+  session   Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   evidence  InsightEvidence[]
 }
 

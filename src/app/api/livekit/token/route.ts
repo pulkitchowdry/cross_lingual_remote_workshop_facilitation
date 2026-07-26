@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "LiveKit is not configured." }, { status: 503 });
   }
 
-  const body = (await request.json()) as { sessionId?: unknown; role?: unknown };
+  let body: { sessionId?: unknown; role?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid room request." }, { status: 400 });
+  }
   if (typeof body.sessionId !== "string" || !isRequestedRole(body.role)) {
     return Response.json({ error: "Invalid room request." }, { status: 400 });
   }

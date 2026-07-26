@@ -14,7 +14,7 @@ import { AutoPictureInPicture } from "@/components/meeting/AutoPictureInPicture"
 import { MeetingHeader } from "@/components/meeting/MeetingHeader";
 import { parseRoomMetadata } from "@/components/meeting/room-metadata";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
-import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 
 type Role = "facilitator" | "learner";
 
@@ -37,7 +37,7 @@ function MeetingRoomInner({
   targetLanguage: string;
   transcript: MeetingTranscriptSegment[];
   messages: MeetingChatMessage[];
-  sendChatAction: (formData: FormData) => void | Promise<void>;
+  sendChatAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
   dashboardHref: string;
   title: string;
@@ -105,7 +105,7 @@ export function MeetingRoom(props: {
   targetLanguage: string;
   transcript: MeetingTranscriptSegment[];
   messages: MeetingChatMessage[];
-  sendChatAction: (formData: FormData) => void | Promise<void>;
+  sendChatAction: (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
   allowQuestions?: boolean;
   dashboardHref: string;
   title: string;

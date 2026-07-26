@@ -1,6 +1,7 @@
 import io
 
 from app.models import whisper
+from app.routers.stt import MAX_AUDIO_BYTES
 
 
 def test_transcribe_requires_auth(client):
@@ -35,4 +36,18 @@ def test_transcribe_empty_audio_short_circuits(client, auth_headers, monkeypatch
     )
     assert response.status_code == 200
     assert response.json() == {"text": ""}
+    assert called == []
+
+
+def test_transcribe_rejects_oversized_audio(client, auth_headers, monkeypatch):
+    called = []
+    monkeypatch.setattr(whisper, "transcribe", lambda *args: called.append(args))
+    oversized = b"a" * (MAX_AUDIO_BYTES + 1)
+    response = client.post(
+        "/stt/transcribe",
+        files={"audio": ("clip.wav", io.BytesIO(oversized), "audio/wav")},
+        data={"expectedLanguage": "en"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 413
     assert called == []

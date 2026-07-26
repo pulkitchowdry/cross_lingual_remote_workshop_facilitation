@@ -1,11 +1,10 @@
 import { revalidatePath } from "next/cache";
-import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/db";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
 import { generateSessionInsights } from "@/lib/insights";
 import { insightProvider } from "@/lib/providers/insight";
-import type { Session } from "@/generated/prisma/client";
+import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -34,6 +33,19 @@ export async function publishTranslatedCaption(
     }),
   );
 
+  // Every caller checks LIVE status before starting this function, but the
+  // translation batch above can take up to ~16s worst case (each language tries
+  // local-inference then retries Claude on a transient failure) — long enough for
+  // the facilitator to click "End session" while it's in flight. The WebSocket and
+  // caption-agent callers already re-fetch and re-check per segment before calling
+  // this function (redundant with this check, which is fine); the facilitator's
+  // typed-caption action did not, and could otherwise silently append a caption to
+  // an already-ENDED session's transcript.
+  const stillLive = await prisma.session.findUnique({ where: { id: session.id }, select: { status: true } });
+  if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
+    throw new Error("This session is not live — captions can only be published while it is in progress.");
+  }
+
   await prisma.transcriptSegment.create({
     data: {
       sessionId: session.id,
@@ -50,11 +62,38 @@ export async function publishTranslatedCaption(
     },
   });
 
-  revalidatePath(`/sessions/${session.id}/facilitator`);
-  revalidatePath(`/sessions/${session.id}/learn`);
+  safeRevalidatePath(`/sessions/${session.id}/facilitator`);
+  safeRevalidatePath(`/sessions/${session.id}/learn`);
   await roomProvider.notifyCaptionsChanged(session.id);
 
   if (insightProvider.isConfigured) {
-    waitUntil(generateSessionInsights(session));
+    // Fire-and-forget: unlike a Vercel Function, this process stays alive
+    // after the response is sent, so there's no need for a `waitUntil`-style
+    // hook to keep it running — a plain unawaited call is enough.
+    void generateSessionInsights(session).catch((error) => {
+      console.error("generateSessionInsights failed", error);
+    });
+  }
+}
+
+/**
+ * `revalidatePath` requires an active Next.js request/Server Action async
+ * context, which two of this function's three callers don't have: the
+ * caption-streaming WebSocket upgrade handler and the LiveKit Agents job
+ * process (see server.ts) both run outside `handle(req, res)` entirely, so
+ * `revalidatePath` throws "Invariant: static generation store missing" —
+ * aborting notifyCaptionsChanged and insight generation below it, every
+ * single time a caption is published from either path.
+ * `roomProvider.notifyCaptionsChanged` (which `CaptionChannelRefresher`
+ * listens for) is the load-bearing live-update signal; `SessionAutoRefresh`
+ * also re-polls independently. This cache invalidation is a nice-to-have
+ * for the Server Action call site, not something the other two paths can
+ * afford to crash on.
+ */
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path);
+  } catch {
+    // See doc comment above: not every caller has a request context to revalidate against.
   }
 }

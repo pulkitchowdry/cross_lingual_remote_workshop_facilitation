@@ -5,15 +5,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Repo layout
 
-This is a monorepo of four independently-deployable pieces — see
+This is a monorepo of three independently-deployable pieces — see
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for how they're built/deployed
 together (Docker Compose locally, Railway in production) and [`SKILLS.md`](SKILLS.md)
 for common cross-cutting tasks:
 
 | Directory | What | Its own AGENTS.md / SKILLS.md |
 | --- | --- | --- |
-| `src/` | The Next.js app itself | [`src/AGENTS.md`](src/AGENTS.md) / [`src/SKILLS.md`](src/SKILLS.md) |
-| `agent/` | Standalone LiveKit Agents worker (captions) | [`agent/AGENTS.md`](agent/AGENTS.md) / [`agent/SKILLS.md`](agent/SKILLS.md) |
+| `src/` | The Next.js app itself, including the in-process LiveKit caption agent worker (`src/lib/caption-agent.ts`, registered from `server.ts`) | [`src/AGENTS.md`](src/AGENTS.md) / [`src/SKILLS.md`](src/SKILLS.md) |
 | `local-inference/` | Self-hosted FastAPI translation/STT/TTS service | [`local-inference/AGENTS.md`](local-inference/AGENTS.md) / [`local-inference/SKILLS.md`](local-inference/SKILLS.md) |
 | `prisma/` | Schema + migrations for the shared Postgres database | — |
 

@@ -34,15 +34,16 @@ flowchart LR
 - **Real-time transport:** LiveKit + WebSockets
 - **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
 - **Facilitator authentication:** opaque cookie/token flow (`session-security.ts`) for both facilitator and learner today; migrating the facilitator side to Clerk is a decided-but-not-yet-implemented follow-up (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
-- **Hosting:** Vercel (app) — also deployable to Railway alongside `agent/` and `local-inference/`, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- **Hosting:** Railway
 
 ## Getting Started
 
 ### Option A: Docker Compose (fastest)
 
 Runs the whole stack — Postgres, a local LiveKit dev server, `local-inference`,
-this app, and the captions `agent/` worker — with one command, no local
-Postgres/LiveKit install required:
+and this app (which also runs the captions worker in-process, see
+`src/lib/caption-agent.ts`) — with one command, no local Postgres/LiveKit
+install required:
 
 ```bash
 cp .env.example .env   # optional — fill in real keys, everything else falls back gracefully
@@ -127,7 +128,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - `npm test` — unit tests (Vitest): session-security tokens, environment validation, the insight citation guardrail + response parsing, accessibility preference validation, retention-deadline math, and the speech-to-text/text-to-speech provider mock/error paths.
 - `npm run test:e2e` — Playwright smoke test covering the facilitator create-session flow and the opaque learner join link (starts its own dev server against `DATABASE_URL`; requires a reachable PostgreSQL instance).
-- **The mic-streaming live caption path (`/api/captions/stream`, "Start live captions from mic") cannot be exercised under plain `npm run dev`.** It uses `experimental_upgradeWebSocket` from `@vercel/functions`, which throws unless the request context exposes `upgradeWebSocket` — only real Vercel Fluid Compute (a deployment, or `vercel dev`) populates that. Under `next dev` the route now fails fast with a clean 503 instead of hanging the handshake; the facilitator dashboard's typed-caption box is the local-dev equivalent for that pipeline. The LiveKit room itself (audio/video, DataChannel captions) and the typed-caption/chat/translation paths all work under plain `next dev` — this limitation is specific to the raw WebSocket upgrade.
+- **The mic-streaming live caption path (`/api/captions/stream`, "Start live captions from mic") runs on a custom Node server (`server.ts`, started by `npm run dev`/`npm start`), not plain `next dev`/`next start`.** It handles the WebSocket upgrade itself with `ws`, since Next route handlers can't do a raw upgrade on their own. If you run the app any other way (e.g. `npx next dev` directly), that route will 400 instead of upgrading — the facilitator dashboard's typed-caption box is the fallback for that pipeline. The LiveKit room itself (audio/video, DataChannel captions) and the typed-caption/chat/translation paths don't depend on the custom server.
 
 ## Server-only provider interfaces
 
@@ -135,11 +136,11 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - `RoomProvider` (`room.ts`) — LiveKit-backed today; issues short-lived room credentials and pushes DataChannel signals (`notifyCaptionsChanged`).
 - `TranslationProvider` (`translation.ts`) — Claude-backed today.
-- `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream` and the `agent/` worker) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
+- `SpeechToTextProvider` (`speech-to-text.ts`) — Deepgram Nova-3 adapter once `STT_API_KEY` is set; mock otherwise. Supports one-shot chunk transcription (`transcribeChunk`) and live streaming (`openStream`, used by `/api/captions/stream` and the caption agent worker) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 - `InsightProvider` (`insight.ts`) — Claude-backed once `INSIGHT_MODEL_API_KEY` is set (analyzes the recent transcript for ACTIVITY/DECISION/BLOCKER/CONFUSION after each caption, via `waitUntil` so it never blocks the live caption path); returns no insights otherwise. `validateInsightDraft` rejects any insight that cites a transcript segment outside the batch it was derived from, per `docs/PLAN.md`'s evidence-grounding requirement.
 - `TextToSpeechProvider` (`text-to-speech.ts`) — ElevenLabs adapter once `TTS_API_KEY` is set; mock (returns no audio) otherwise. Opt-in only — see `docs/TRANSLATION_ARCHITECTURE.md` Part 3.
 
-`agent/` is a standalone LiveKit Agents worker (its own `package.json`, not a dependency of this app) that subscribes to the facilitator's audio track server-side, so captions work without the browser mic control. See `agent/README.md`.
+`src/lib/caption-agent.ts` is the LiveKit Agents worker that subscribes to the facilitator's audio track server-side, so captions work without the browser mic control. It's registered by `server.ts` and runs in the same process/deploy as the rest of the app (no separate `package.json` or service) — see `docs/TRANSLATION_ARCHITECTURE.md` Part 2.
 
 ## Screenshots
 

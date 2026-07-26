@@ -24,13 +24,14 @@ describe("validateEnv", () => {
     expect(result.configuredOptional).toContain("CLAUDE_API_KEY");
   });
 
-  it("lists CAPTION_AGENT_SECRET as optional, configured only when set", () => {
+  it("lists LIVEKIT_AGENT_URL as optional, configured only when set", () => {
     expect(validateEnv({ DATABASE_URL: "postgresql://localhost/db" }).configuredOptional).not.toContain(
-      "CAPTION_AGENT_SECRET",
+      "LIVEKIT_AGENT_URL",
     );
     expect(
-      validateEnv({ DATABASE_URL: "postgresql://localhost/db", CAPTION_AGENT_SECRET: "s" }).configuredOptional,
-    ).toContain("CAPTION_AGENT_SECRET");
+      validateEnv({ DATABASE_URL: "postgresql://localhost/db", LIVEKIT_AGENT_URL: "http://livekit:7880" })
+        .configuredOptional,
+    ).toContain("LIVEKIT_AGENT_URL");
   });
 });
 

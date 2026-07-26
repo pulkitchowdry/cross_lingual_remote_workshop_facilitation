@@ -2,12 +2,14 @@
 
 import * as Tooltip from "@radix-ui/react-tooltip";
 import * as Popover from "@radix-ui/react-popover";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useDisconnectButton, useLocalParticipant, useParticipantAttributes, useTrackToggle } from "@livekit/components-react";
+import { useDataChannel, useDisconnectButton, useLocalParticipant, useParticipantAttributes, useTrackToggle } from "@livekit/components-react";
+import type { ReceivedDataMessage } from "@livekit/components-core";
 import { Track } from "livekit-client";
 import { setPresenterAccess } from "@/app/sessions/[sessionId]/facilitator/actions";
-import { useMeetingShell, type CaptionMode, type CaptionPosition } from "@/components/meeting/MeetingShellContext";
+import { useMeetingShell, type CaptionMode, type CaptionPosition, type WorkspaceMode } from "@/components/meeting/MeetingShellContext";
+import { parseSenderRole } from "@/components/meeting/room-metadata";
 import {
   CameraIcon,
   CameraOffIcon,
@@ -62,7 +64,7 @@ function ToolbarButton({
         <Tooltip.Content
           side="top"
           sideOffset={6}
-          className="font-data z-20 max-w-[14rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
+          className="font-data z-50 max-w-[14rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
         >
           {label}
           {shortcut && <span className="ml-1.5 text-muted-foreground">({shortcut})</span>}
@@ -100,6 +102,36 @@ export function MeetingToolbar({
   const { workspaceMode, setWorkspaceMode, captionsVisible, setCaptionsVisible, captionMode, setCaptionMode, captionPosition, setCaptionPosition, pipController } =
     useMeetingShell();
   const pipSupported = typeof window !== "undefined" && Boolean(window.documentPictureInPicture);
+
+  // Keeps every participant's workspace (video vs. whiteboard) in sync with whoever is
+  // presenting — same DataChannel-broadcast pattern as Whiteboard.tsx's own element sync.
+  // Only applies an incoming switch from a sender who actually had presenting rights at
+  // the time (mirrors Whiteboard.tsx's identical check), so a plain learner can't force
+  // everyone else's view to switch out from under them.
+  const { send: sendWorkspaceMode } = useDataChannel(
+    "workspace-mode",
+    useCallback(
+      (message: ReceivedDataMessage<"workspace-mode">) => {
+        const senderRole = parseSenderRole(message.from?.identity);
+        const senderCanPresent = senderRole === "facilitator" || (senderRole === "learner" && allowLearnerPresenting);
+        if (!senderCanPresent) return;
+        try {
+          const parsed = JSON.parse(new TextDecoder().decode(message.payload)) as { mode?: string };
+          if (parsed.mode === "video" || parsed.mode === "whiteboard") setWorkspaceMode(parsed.mode);
+        } catch (error) {
+          console.error("[meeting] failed to apply remote workspace-mode change:", error);
+        }
+      },
+      [allowLearnerPresenting, setWorkspaceMode],
+    ),
+  );
+  // Only a presenter's switch is pushed to everyone else — a non-presenting learner can
+  // still flip their own local view (existing behavior), it just stays local to them.
+  function switchWorkspaceMode(mode: WorkspaceMode) {
+    setWorkspaceMode(mode);
+    if (!canPresent) return;
+    void sendWorkspaceMode(new TextEncoder().encode(JSON.stringify({ mode })), { reliable: true });
+  }
 
   function handleLeave() {
     leaveButtonProps.onClick();
@@ -144,8 +176,11 @@ export function MeetingToolbar({
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
       const { mic, camera, toggleRaiseHand, setCaptionsVisible } = latest.current;
-      if (event.key === "m") void mic.toggle();
-      else if (event.key === "v") void camera.toggle();
+      // Errors here already reach the user via the room's own onMediaDeviceFailure
+      // banner (see LiveSessionRoom) — caught here only to avoid an unhandled
+      // rejection, not to show anything a second time.
+      if (event.key === "m") mic.toggle().catch(() => {});
+      else if (event.key === "v") camera.toggle().catch(() => {});
       else if (event.key === "c") setCaptionsVisible((prev) => !prev);
       else if (event.key === "h") toggleRaiseHand();
     }
@@ -160,10 +195,20 @@ export function MeetingToolbar({
         role="toolbar"
         aria-label={dict.toolbarLabel}
       >
-        <ToolbarButton label={mic.enabled ? dict.muteMic : dict.unmuteMic} active={mic.enabled} onClick={() => void mic.toggle()} shortcut="M">
+        <ToolbarButton
+          label={mic.enabled ? dict.muteMic : dict.unmuteMic}
+          active={mic.enabled}
+          onClick={() => mic.toggle().catch(() => {})}
+          shortcut="M"
+        >
           {mic.enabled ? <MicIcon /> : <MicOffIcon />}
         </ToolbarButton>
-        <ToolbarButton label={camera.enabled ? dict.stopCamera : dict.startCamera} active={camera.enabled} onClick={() => void camera.toggle()} shortcut="V">
+        <ToolbarButton
+          label={camera.enabled ? dict.stopCamera : dict.startCamera}
+          active={camera.enabled}
+          onClick={() => camera.toggle().catch(() => {})}
+          shortcut="V"
+        >
           {camera.enabled ? <CameraIcon /> : <CameraOffIcon />}
         </ToolbarButton>
         <ToolbarButton
@@ -178,14 +223,14 @@ export function MeetingToolbar({
           label={!canPresent ? dict.presentingLocked : screenShare.enabled ? dict.stopShareScreen : dict.shareScreen}
           active={screenShare.enabled}
           disabled={!canPresent}
-          onClick={() => void screenShare.toggle()}
+          onClick={() => screenShare.toggle().catch(() => {})}
         >
           <ScreenShareIcon />
         </ToolbarButton>
         <ToolbarButton
           label={workspaceMode === "whiteboard" ? dict.switchToVideo : dict.switchToWhiteboard}
           active={workspaceMode === "whiteboard"}
-          onClick={() => setWorkspaceMode(workspaceMode === "whiteboard" ? "video" : "whiteboard")}
+          onClick={() => switchWorkspaceMode(workspaceMode === "whiteboard" ? "video" : "whiteboard")}
         >
           <WhiteboardIcon />
         </ToolbarButton>
@@ -201,10 +246,15 @@ export function MeetingToolbar({
             </button>
           </Popover.Trigger>
           <Popover.Portal>
+            {/* z-50, not z-20: this portals to document.body, a sibling of the room
+                page's own `fixed inset-0 z-40` wrapper (facilitator|learn/room/page.tsx)
+                — at z-20 it opened but rendered fully behind that opaque wrapper,
+                invisible despite being in the DOM (this is why the button looked
+                completely dead). Same reasoning for every other z-20 in this file. */}
             <Popover.Content
               side="top"
               sideOffset={8}
-              className="z-20 flex w-72 flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
+              className="z-50 flex w-72 flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
             >
               <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.settings}</p>
 
@@ -276,7 +326,7 @@ export function MeetingToolbar({
             <Tooltip.Content
               side="top"
               sideOffset={6}
-              className="font-data z-20 rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
+              className="font-data z-50 rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
             >
               {dict.leave}
               <Tooltip.Arrow style={{ fill: "var(--surface-raised)" }} />

@@ -1,9 +1,7 @@
 # local-inference builds its own image from its own directory (see
-# local-inference/Dockerfile) and is never needed by web's or agent's build —
-# excluded so neither image's build context (nor Docker layer cache) is
-# affected by changes under it. agent/ is NOT excluded: agent/Dockerfile uses
-# this same repo-root context (agent/src/worker.ts imports shared code
-# straight from the main app's src/ — see that Dockerfile's top comment).
+# local-inference/Dockerfile) and is never needed by web's build — excluded
+# so web's image build (nor its Docker layer cache) is affected by changes
+# under it.
 local-inference
 
 node_modules

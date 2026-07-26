@@ -59,7 +59,7 @@ export interface RoomProvider {
  * LIVEKIT_URL for native `npm run dev`, where both addresses are the same host.
  */
 function internalLiveKitUrl(): string {
-  return process.env.LIVEKIT_INTERNAL_URL || process.env.LIVEKIT_URL!;
+  return process.env.LIVEKIT_AGENT_URL || process.env.LIVEKIT_URL!;
 }
 
 class LiveKitRoomProvider implements RoomProvider {
@@ -85,12 +85,16 @@ class LiveKitRoomProvider implements RoomProvider {
       identity: `${role}:${identity}`,
       name: displayName,
       metadata: JSON.stringify({ sessionId, role }),
-      // Seeds room state every client can read via Participant.attributes
-      // (e.g. the meeting shell's participant strip) without an extra Prisma
-      // round-trip. raisedHand starts false; only the owning participant can
+      // LiveSessionRoom fetches this token exactly once per mount and never
+      // refreshes it — a token that expires mid-workshop leaves a reconnect
+      // (network blip, laptop sleep/wake) permanently rejected until the
+      // participant manually reloads the page. 6h comfortably covers a live
+      // workshop session; a real refresh flow (livekit-client's TokenSource)
+      // would be the more thorough fix but is a larger, untested change for
+      // this prototype's scope. raisedHand starts false; only the owning participant can
       // change it later, via canUpdateOwnMetadata below.
       attributes: { preferredLanguage, raisedHand: "false" },
-      ttl: "15m",
+      ttl: "6h",
     });
     token.addGrant({
       roomJoin: true,
@@ -130,11 +134,15 @@ class LiveKitRoomProvider implements RoomProvider {
     const payload = new TextEncoder().encode(JSON.stringify({ type: "captions-changed" }));
     try {
       await client.sendData(`workshop-${sessionId}`, payload, DataPacket_Kind.RELIABLE, { topic: "captions" });
-    } catch {
+    } catch (error) {
       // Best-effort: DataChannel push is a latency optimization, not a
       // correctness requirement — polling (SessionAutoRefresh) still delivers
       // captions if the room has no active LiveKit participants yet or the
-      // push itself fails.
+      // push itself fails. Still log it, though (matching translateWithClaude's
+      // pattern) — a *persistently* failing push (bad credentials, LiveKit
+      // outage) would otherwise be invisible, silently degrading every caption
+      // to polling-speed delivery with nothing in the logs to explain why.
+      console.error(`notifyCaptionsChanged: LiveKit sendData failed for session ${sessionId}, falling back to polling:`, error);
     }
   }
 
