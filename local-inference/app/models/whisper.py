@@ -19,6 +19,14 @@ from app.languages import WHISPER_CODE
 _model_lock = threading.Lock()
 _model_instance: WhisperModel | None = None
 
+# Whisper hallucinates stock phrases ("Thank you for watching", "Subtitles by ...")
+# when fed silence or background noise — a well-known failure mode of the model
+# itself, not a bug in how it's called. `vad_filter=True` (Silero VAD) below stops
+# most of it by only ever handing Whisper audio it thinks contains speech;
+# `NO_SPEECH_THRESHOLD` is a second, defense-in-depth check against faster-whisper's
+# own per-segment `no_speech_prob` for whatever borderline audio still gets through.
+NO_SPEECH_THRESHOLD = 0.6
+
 
 def _model() -> WhisperModel:
     global _model_instance
@@ -43,5 +51,8 @@ def transcribe(audio_bytes: bytes, expected_language: str) -> str:
         io.BytesIO(audio_bytes),
         language=WHISPER_CODE[expected_language],
         beam_size=5,
+        vad_filter=True,
     )
-    return " ".join(segment.text.strip() for segment in segments).strip()
+    return " ".join(
+        segment.text.strip() for segment in segments if segment.no_speech_prob < NO_SPEECH_THRESHOLD
+    ).strip()

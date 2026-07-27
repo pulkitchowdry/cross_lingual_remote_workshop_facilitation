@@ -41,11 +41,11 @@ function sessionIdFromRoomName(roomName: string | undefined): string | null {
  * isn't a recognized facilitator one.
  */
 async function resolveSpeakerContext(
-  session: { id: string; sourceLanguage: string },
+  session: { id: string; sourceLanguage: string; facilitator: { displayName: string } },
   identity: string,
 ): Promise<{ language: SupportedLanguage; speakerId: string | null } | null> {
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
-    return { language: session.sourceLanguage as SupportedLanguage, speakerId: null };
+    return { language: session.sourceLanguage as SupportedLanguage, speakerId: `${session.facilitator.displayName} (Facilitator)` };
   }
   return null;
 }
@@ -60,7 +60,7 @@ async function resolveSpeakerContext(
 async function streamParticipantAudio(
   track: RemoteAudioTrack,
   sessionId: string,
-  session: { id: string; sourceLanguage: string },
+  session: { id: string; sourceLanguage: string; facilitator: { displayName: string } },
   translationMode: "AUTO" | "LOCAL_ONLY",
   activeTracks: Map<string, RemoteAudioTrack>,
   identity: string,
@@ -129,7 +129,10 @@ async function streamParticipantAudio(
         segmentStartedAt = endedAt;
         firstAudioSubmittedAtMs = undefined;
         void (async () => {
-          const session = await prisma.session.findUnique({ where: { id: sessionId } });
+          const session = await prisma.session.findUnique({
+            where: { id: sessionId },
+            include: { facilitator: { select: { displayName: true } } },
+          });
           if (!session || session.status !== SessionStatus.LIVE) return;
           // Freshly re-resolved, not the `initialSpeaker` this stream was opened
           // with — a facilitator can change their session's source language, and a
@@ -255,7 +258,10 @@ export default defineAgent({
       return;
     }
 
-    const session = await prisma.session.findUnique({ where: { id: sessionId } });
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { facilitator: { select: { displayName: true } } },
+    });
     if (!session || session.status !== SessionStatus.LIVE) {
       console.warn(`[caption-agent] Session ${sessionId} is not live; skipping.`);
       return;

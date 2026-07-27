@@ -115,13 +115,16 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
           // the *fresh* session for exactly this reason) meant every segment kept
           // getting stamped and translated with whatever language was active when this
           // WebSocket first opened, for the rest of its lifetime.
-          const current = await prisma.session.findUnique({ where: { id: session.id } });
+          const current = await prisma.session.findUnique({
+            where: { id: session.id },
+            include: { facilitator: { select: { displayName: true } } },
+          });
           if (!current || current.status !== SessionStatus.LIVE) return;
           let language: SupportedLanguage;
           let speakerId: string | null;
           if (speaker.role === "facilitator") {
             language = current.sourceLanguage as SupportedLanguage;
-            speakerId = null;
+            speakerId = `${current.facilitator.displayName} (Facilitator)`;
           } else {
             const resolved = await resolveLearnerSpeaker(current.id, speaker.participantId);
             if (!resolved) return;

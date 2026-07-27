@@ -97,7 +97,10 @@ export async function publishCaption(
     return { error: "Enter a caption of up to 3,000 characters." };
   }
 
-  const session = await prisma.session.findUnique({ where: { id: sessionId } });
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: { facilitator: { select: { displayName: true } } },
+  });
   if (!session || session.status !== SessionStatus.LIVE) {
     return { error: "Start the session before publishing captions." };
   }
@@ -105,7 +108,7 @@ export async function publishCaption(
   const now = new Date();
   try {
     await publishTranslatedCaption(session, {
-      speakerId: null,
+      speakerId: `${session.facilitator.displayName} (Facilitator)`,
       originalText: captionText.trim(),
       language: session.sourceLanguage as SupportedLanguage,
       startedAt: now,

@@ -20,6 +20,16 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * them here would silently break screen-share audio for everyone now that
  * nothing else renders those tracks.
  */
+// NOT literal `0` — `livekit-client`'s `RemoteAudioTrack.attach()` only re-applies a
+// previously-set volume to a freshly (re-)attached element via `if (this.elementVolume)`
+// (node_modules/livekit-client/src/room/track/RemoteAudioTrack.ts), which treats `0` as
+// falsy and skips the reapply. Any re-attach after that (e.g. `useTracks()` handing this
+// track a new-but-equivalent `TrackReference` object on an unrelated room event, which
+// re-runs the underlying attach effect) silently resets the element to the DOM's default
+// volume of 1 — full, unducked volume — with no further render to correct it. A value this
+// close to zero is inaudible but stays truthy, so the reapply-on-reattach path still fires.
+const DUCKED_VOLUME = 0.0001;
+
 export function DuckedRoomAudio({ myLanguage, facilitatorSourceLanguage }: { myLanguage: SupportedLanguage; facilitatorSourceLanguage: SupportedLanguage }) {
   const speakerLanguages = useSpeakerLanguages(facilitatorSourceLanguage);
   const tracks = useTracks([
@@ -49,7 +59,7 @@ export function DuckedRoomAudio({ myLanguage, facilitatorSourceLanguage }: { myL
         // unexpected language for a moment is a far smaller problem than a
         // speaker going randomly inaudible.
         const shouldDuck = isMic && speakerLanguage !== undefined && speakerLanguage !== myLanguage;
-        return <AudioTrack key={`${track.participant.identity}-${track.source}`} trackRef={track} volume={shouldDuck ? 0 : 1} />;
+        return <AudioTrack key={`${track.participant.identity}-${track.source}`} trackRef={track} volume={shouldDuck ? DUCKED_VOLUME : 1} />;
       })}
     </>
   );
