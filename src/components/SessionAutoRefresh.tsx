@@ -1,32 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useTransition } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { scheduleCoordinatedRefresh } from "@/lib/coordinated-refresh";
 
 export function SessionAutoRefresh({ intervalMs = 2_000, durationMs }: { intervalMs?: number; durationMs?: number }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  // Read via a ref inside the interval callback (below), not `isPending` directly, so
-  // toggling it doesn't need to be in the effect's own dependency array — that would
-  // tear down and recreate the interval (and its 2s countdown) on every refresh
-  // start/settle instead of just skipping a tick when needed.
-  const isPendingRef = useRef(isPending);
-  useEffect(() => {
-    isPendingRef.current = isPending;
-  }, [isPending]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      // Next's router action queue serializes a new REFRESH action behind whatever's
-      // already pending rather than coalescing or dropping stale ones — an in-flight
-      // chat/caption Server Action (translation alone can take up to ~16s worst case)
-      // would otherwise let 6-8 ticks' worth of refreshes pile up and all fire
-      // back-to-back the instant it resolves, each one a full transcript/chat re-fetch
-      // and re-render. Skipping a tick while our own last-dispatched refresh is still
-      // pending (which stays true for as long as it's queued, not just while it's
-      // actually running) caps that burst to at most one queued refresh instead.
-      if (isPendingRef.current) return;
-      startTransition(() => router.refresh());
+      // Routed through the shared coordinator (see its doc comment) rather than
+      // calling `router.refresh()` directly, so this poll can't overlap with
+      // CaptionChannelRefresher's independent DataChannel-triggered refresh —
+      // confirmed by direct reproduction to otherwise be able to make
+      // LiveTranscriptFeed warn about a missing list key under a burst of rapid
+      // caption publishes. `scheduleCoordinatedRefresh` already coalesces
+      // near-simultaneous calls from either trigger into one; an in-flight
+      // chat/caption Server Action (translation alone can take up to ~16s worst
+      // case) can still mean a few queued ticks each schedule their own refresh
+      // at the tail once it resolves, but Next's own router action queue already
+      // serializes the underlying fetches, so that's wasted requests, not broken
+      // behavior.
+      scheduleCoordinatedRefresh(() => router.refresh());
     }, intervalMs);
     // `durationMs` bounds how long this component keeps polling after mount —
     // used to give a short grace period of extra refreshes right after a
@@ -38,7 +33,7 @@ export function SessionAutoRefresh({ intervalMs = 2_000, durationMs }: { interva
       window.clearInterval(interval);
       if (timeout !== null) window.clearTimeout(timeout);
     };
-  }, [intervalMs, durationMs, router, startTransition]);
+  }, [intervalMs, durationMs, router]);
 
   return null;
 }
