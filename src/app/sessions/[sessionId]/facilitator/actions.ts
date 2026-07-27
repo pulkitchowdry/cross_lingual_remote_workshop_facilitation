@@ -154,6 +154,10 @@ export async function resolveInsight(sessionId: string, insightId: string) {
     data: { status: "RESOLVED" },
   });
   revalidatePath(`/sessions/${sessionId}/facilitator`);
+  // Now also invokable from the live meeting room's Analytics tab (see
+  // buildFacilitatorAnalyticsView/MeetingSidebar) — without this, resolving a
+  // blocker there wouldn't clear it from that route's cached RSC payload.
+  revalidatePath(`/sessions/${sessionId}/facilitator/room`);
 }
 
 /**

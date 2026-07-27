@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interlinga.ai respects privacy</title>
+<style>
+  :root{
+    --paper: #eef1f5; --grid: rgba(16,28,44,0.08);
+    --ink: #101c2c; --ink-soft: #45566b;
+    --panel: #ffffff; --panel-line: #d7dee6;
+    --acc: #35577e; --acc-soft: #dee7f0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper: #0b1420; --grid: rgba(170,196,216,0.10);
+      --ink: #e9eef3; --ink-soft: #9cb0c2;
+      --panel: #101c2c; --panel-line: #24384c;
+      --acc: #7fabde; --acc-soft: rgba(127,171,222,0.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper: #0b1420; --grid: rgba(170,196,216,0.10); --ink: #e9eef3; --ink-soft: #9cb0c2;
+    --panel: #101c2c; --panel-line: #24384c; --acc: #7fabde; --acc-soft: rgba(127,171,222,0.14);
+  }
+  :root[data-theme="light"]{
+    --paper: #eef1f5; --grid: rgba(16,28,44,0.08); --ink: #101c2c; --ink-soft: #45566b;
+    --panel: #ffffff; --panel-line: #d7dee6; --acc: #35577e; --acc-soft: #dee7f0;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body{
+    background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .mono{ font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; }
+
+  section.slide{
+    width: 1280px; height: 720px; max-width: 100%;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 36px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 36px 100%,
+      var(--paper);
+    border: 1px solid var(--panel-line); border-radius: 4px;
+    padding: 44px 60px 30px;
+    display: flex; flex-direction: column; position: relative; overflow: hidden;
+  }
+
+  .kicker{ font-size: 13px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--acc); font-weight: 700; margin-bottom: 12px; }
+  h1{ font-size: 38px; line-height: 1.15; margin: 0 0 12px 0; font-weight: 800; letter-spacing: -0.5px; text-wrap: balance; }
+  p.caption{ font-size: 17px; line-height: 1.5; color: var(--ink-soft); max-width: 940px; margin: 0 0 26px 0; font-weight: 500; }
+
+  .grid{ display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 14px; flex: 1; min-height: 0; }
+  .card{
+    background: var(--panel); border: 1px solid var(--panel-line); border-radius: 8px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; justify-content: center;
+    border-top: 3px solid var(--acc);
+  }
+  .card .label{ font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: var(--acc); }
+  .card .body{ font-size: 12.5px; line-height: 1.42; color: var(--ink); }
+  .card .ref{ font-size: 10px; color: var(--ink-soft); margin-top: 1px; }
+
+  .card.standout{
+    background: var(--acc-soft); border: 1.5px solid var(--acc);
+  }
+  .card.standout .body{ font-weight: 600; }
+
+  .strip{
+    margin-top: 16px; background: var(--panel); border: 1px dashed var(--acc); border-radius: 8px;
+    padding: 14px 20px; font-size: 13.5px; line-height: 1.5; color: var(--ink); font-style: italic;
+  }
+  .strip b{ font-style: normal; color: var(--acc); }
+
+  .footer-bar{ position: absolute; bottom: 18px; left: 60px; right: 60px; display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<section class="slide">
+  <div class="kicker mono">Privacy is decided at session creation &mdash; before a single word is spoken</div>
+  <h1>Interlinga.ai respects privacy</h1>
+  <p class="caption">Every commitment below is enforced in code, not promised in a policy &mdash; including a feature turning itself off rather than quietly reaching the cloud anyway.</p>
+
+  <div class="grid">
+    <div class="card">
+      <span class="label">Audio isn&rsquo;t recorded by default</span>
+      <span class="body">Live audio is never stored unless a facilitator explicitly opts in for the session.</span>
+      <span class="ref mono">i18n.ts &mdash; privacyNote</span>
+    </div>
+    <div class="card">
+      <span class="label">Retention set up front</span>
+      <span class="body">1 / 7 / 30 days, chosen at session creation &mdash; an hourly job deletes every cascading row (transcript, chat, insights) past deadline, then sweeps any now-orphaned user record.</span>
+      <span class="ref mono">retention/cleanup/route.ts</span>
+    </div>
+    <div class="card">
+      <span class="label">LOCAL_ONLY mode</span>
+      <span class="body">A session can be locked to self-hosted local-inference only &mdash; speech-to-text and translation never leave the building.</span>
+      <span class="ref mono">session-contracts.ts &middot; caption-agent.ts</span>
+    </div>
+    <div class="card standout">
+      <span class="label">The understanding layer honors it too</span>
+      <span class="body">In a LOCAL_ONLY session, the Claude-based insight layer simply doesn&rsquo;t run &mdash; disabled, not silently rerouted to the cloud.</span>
+      <span class="ref mono">insights.ts:53</span>
+    </div>
+    <div class="card">
+      <span class="label">Anonymous means anonymous</span>
+      <span class="body">An anonymous learner's real name is redacted on the server before the message ever reaches the page &mdash; not just hidden by the UI, where View Source or DevTools would still expose it.</span>
+      <span class="ref mono">message-visibility.ts</span>
+    </div>
+    <div class="card">
+      <span class="label">Sensitive signals stay scoped</span>
+      <span class="body">Per-learner confusion levels and analytics are gated behind facilitator access; private messages are filtered out of the query itself for anyone but sender/recipient.</span>
+      <span class="ref mono">learner-confusion.ts &middot; message-visibility.ts</span>
+    </div>
+  </div>
+
+  <div class="strip">
+    <b>The difference that matters:</b> most privacy settings are a promise about what a feature won&rsquo;t do. This one is enforced by turning the feature off when the setting says to &mdash; the code has no other path.
+  </div>
+
+  <div class="footer-bar">
+    <span class="mono">Interlinga.ai</span>
+    <span class="mono">Privacy by design &middot; main@37115b77</span>
+  </div>
+</section>
+
+</body>
+</html>

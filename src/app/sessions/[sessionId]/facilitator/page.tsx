@@ -32,7 +32,6 @@ import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { StartSessionButton } from "@/components/StartSessionButton";
 import {
   endSession,
-  resolveInsight,
   revokeLearnerInvite,
   startSession,
   updateFacilitatorLanguage,
@@ -77,7 +76,6 @@ export default async function FacilitatorSessionPage({
   const confusionWindowMinutes = DEFAULT_CONFUSION_WINDOW_MS / 60_000;
   const [
     session,
-    activeActionItems,
     recentConfusionInsights,
     recentLearnerQuestions,
     messageCount,
@@ -114,21 +112,6 @@ export default async function FacilitatorSessionPage({
         joinLinks: { where: { role: ParticipantRole.LEARNER } },
       },
     }),
-    // Queried directly, not sliced from the `insights` include above — that include is
-    // capped at INSIGHT_HISTORY_LIMIT (50) most-recent insights of ANY type, so an
-    // older unresolved BLOCKER/CONFUSION silently fell out of "Act now" as soon as 50
-    // newer insights of any kind (activity/decision included) accumulated, even though
-    // it was never resolved. Active action items are rare enough by nature (the
-    // facilitator is expected to resolve them) that fetching every one, unbounded, is
-    // the correct read here. BLOCKER and CONFUSION both belong in "Act now" — an
-    // unresolved problem and a sign of misunderstanding are both things the
-    // facilitator should notice and respond to live, unlike ACTIVITY/DECISION (see
-    // "Current lesson" below), which are informational context, not action items.
-    prisma.insight.findMany({
-      where: { sessionId, type: { in: ["BLOCKER", "CONFUSION"] }, status: "ACTIVE" },
-      include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
-      orderBy: { createdAt: "desc" },
-    }),
     // Group confusion badge: scoped to exactly CONFUSION and time-bounded to the same
     // window computeConfusionLevel itself uses, instead of deriving it from
     // session.insights (INSIGHT_HISTORY_LIMIT-capped across EVERY insight type) — a
@@ -162,8 +145,8 @@ export default async function FacilitatorSessionPage({
     // take-limit — deriving this from `session.insights` (INSIGHT_HISTORY_LIMIT-capped
     // across every insight type) reintroduced exactly the "silently drops genuinely
     // recent CONFUSION insights" bug the group confusion badge (recentConfusionInsights
-    // above) and "Act now" (activeActionItems above) were already given their own
-    // dedicated queries to avoid. Unlike those two, this one is intentionally not
+    // above) and "Act now" (buildFacilitatorAnalyticsView's own activeActionItems query)
+    // were already given their own dedicated queries to avoid. Unlike those two, this one is intentionally not
     // time-windowed and not limited to status: ACTIVE — it's a historical recap of the
     // whole session, not a live signal or an actionable queue, so a topic the
     // facilitator already resolved mid-session still belongs in the record of what was
@@ -398,6 +381,7 @@ export default async function FacilitatorSessionPage({
             blockersSummary={analyticsView.blockersSummary}
             languageRows={analyticsView.languageRows}
             confidenceSummary={analyticsView.confidenceSummary}
+            activeActionItems={analyticsView.activeActionItems}
           />
         </section>
       )}
@@ -493,6 +477,7 @@ export default async function FacilitatorSessionPage({
             blockersSummary={analyticsView.blockersSummary}
             languageRows={analyticsView.languageRows}
             confidenceSummary={analyticsView.confidenceSummary}
+            activeActionItems={analyticsView.activeActionItems}
           />
           <SessionSidePanel
             chat={{
@@ -570,20 +555,9 @@ export default async function FacilitatorSessionPage({
             })}
           </div>
         )}
-        {activeActionItems.length > 0 ? (
+        {analyticsView.activeActionItems.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {activeActionItems.map((item) => {
-              const evidence = item.evidence[0]?.transcriptSegment;
-              const evidenceIsSourceLanguage = evidence?.language === session.sourceLanguage;
-              const translation = evidence?.translations.find((t) => t.targetLanguage === session.sourceLanguage);
-              const evidenceText = evidenceIsSourceLanguage
-                ? evidence?.originalText
-                : (translation?.text ?? getDictionary(lang).common.translationUnavailable);
-              // The fallback text (getDictionary(lang).common.translationUnavailable above)
-              // is itself localized to `lang`, not fixed English copy — tag it `lang`,
-              // not "en".
-              const evidenceLang = evidenceIsSourceLanguage ? evidence?.language : translation ? session.sourceLanguage : lang;
-              const resolveAction = resolveInsight.bind(null, sessionId, item.id);
+            {analyticsView.activeActionItems.map((item) => {
               // CONFUSION reads as a signal to check comprehension, not a hard blocker to
               // fix — same card shape and resolve action (a facilitator "handling" either
               // means the same thing here: they noticed and responded), different label/
@@ -596,15 +570,15 @@ export default async function FacilitatorSessionPage({
                   accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
                 >
                   <p>{item.summary}</p>
-                  {evidence && (
+                  {item.evidenceText && (
                     <p
                       className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
-                      lang={evidenceLang}
+                      lang={item.evidenceLang ?? undefined}
                     >
-                      “{evidenceText}”
+                      “{item.evidenceText}”
                     </p>
                   )}
-                  <form action={resolveAction} className="mt-2">
+                  <form action={item.resolveAction} className="mt-2">
                     <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
                       {dict.resolveBlocker}
                     </button>
