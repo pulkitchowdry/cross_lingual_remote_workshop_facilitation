@@ -184,6 +184,7 @@ async function streamParticipantAudio(
         sttStream?.close();
       },
     });
+    console.log(`[caption-agent] STT stream opened for ${identity} in session ${sessionId} (expectedLanguage: ${initialSpeaker.language}).`);
 
     const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
     for await (const frame of audioStream) {
@@ -287,7 +288,7 @@ export default defineAgent({
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
-    ctx.room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+    const handleTrackSubscribed = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       // NOT `track instanceof RemoteAudioTrack` — confirmed live (2026-07-26) that it's
       // always `false` here despite `track` genuinely being one (`track.constructor.name
       // === "RemoteAudioTrack"`, but `track.constructor !== RemoteAudioTrack`, the class
@@ -301,7 +302,10 @@ export default defineAgent({
       // class), so it doesn't have this problem — check that instead, and trust the SDK's
       // own pairing of "kind audio" with "constructs a RemoteAudioTrack" (room.js's
       // `TrackSubscribed` handler is what makes that pairing in the first place).
-      if (publication.kind !== TrackKind.KIND_AUDIO) return;
+      if (publication.kind !== TrackKind.KIND_AUDIO) {
+        console.log(`[caption-agent] skipping non-audio track for ${participant.identity} in session ${sessionId} (kind: ${publication.kind}).`);
+        return;
+      }
       // Facilitators are also granted SCREEN_SHARE_AUDIO publish rights (room.ts) and the
       // screen-share toggle explicitly requests tab/system audio (LiveSessionRoom.tsx's
       // captureOptions) — that track is kind AUDIO under the same facilitator identity as
@@ -309,8 +313,16 @@ export default defineAgent({
       // (e.g. facilitator shares a video clip before unmuting), captioning the shared
       // audio instead of their speech while their real mic gets silently dropped by the
       // dedup guard below.
-      if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX) && !participant.identity.startsWith(LEARNER_IDENTITY_PREFIX)) return;
+      if (publication.source !== TrackSource.SOURCE_MICROPHONE) {
+        console.log(
+          `[caption-agent] skipping non-microphone audio track for ${participant.identity} in session ${sessionId} (source: ${publication.source}).`,
+        );
+        return;
+      }
+      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX) && !participant.identity.startsWith(LEARNER_IDENTITY_PREFIX)) {
+        console.log(`[caption-agent] skipping unrecognized identity "${participant.identity}" in session ${sessionId}.`);
+        return;
+      }
       const audioTrack = track as RemoteAudioTrack;
       console.log(`[caption-agent] capturing audio for session ${sessionId} (${participant.identity})`);
       // streamParticipantAudio wraps its own body in try/finally once inside the
@@ -324,7 +336,31 @@ export default defineAgent({
         activeTracks,
         participant.identity,
       ).catch((error) => console.error(`[caption-agent] streamParticipantAudio failed for ${sessionId}:`, error));
-    });
+    };
+    ctx.room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+    // `TrackSubscribed` only fires for a subscription that happens *after* this
+    // listener is attached. `AutoSubscribe.AUDIO_ONLY` (passed to `ctx.connect()`
+    // above) can auto-subscribe to tracks published *before* this worker even
+    // joined (e.g. the facilitator unmuted while the agent's job dispatch was
+    // still in flight) — those subscriptions may already be complete by the time
+    // this line runs, and their `TrackSubscribed` event (if the SDK even re-emits
+    // one for an already-subscribed track — it may not) would otherwise be missed
+    // entirely, permanently. Walking every remote participant's existing track
+    // publications here and handling any that are already subscribed (`.track`
+    // populated) the same way closes that gap.
+    console.log(
+      `[caption-agent] connected to session ${sessionId}; ${ctx.room.remoteParticipants.size} remote participant(s) already present.`,
+    );
+    for (const participant of ctx.room.remoteParticipants.values()) {
+      for (const publication of participant.trackPublications.values()) {
+        if (publication.track) {
+          console.log(
+            `[caption-agent] found pre-existing subscribed track for ${participant.identity} in session ${sessionId} (kind: ${publication.kind}, source: ${publication.source}); handling retroactively.`,
+          );
+          handleTrackSubscribed(publication.track as RemoteTrack, publication as RemoteTrackPublication, participant);
+        }
+      }
+    }
     // Proactively frees the per-identity guard as soon as LiveKit signals the old
     // track is gone, rather than waiting for that track's own audio-frame loop to
     // notice (which can lag behind this room-level event) — without this, a fast

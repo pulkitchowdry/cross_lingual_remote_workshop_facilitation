@@ -18,21 +18,35 @@
 # app's driver-adapter setup never loads that engine — without it, `prisma
 # generate`/`migrate deploy` still work but print a misleading warning on
 # every run. `ca-certificates` is NOT one of `node:*-bookworm-slim`'s default
-# packages, and Node's own `fetch`/`https` don't need it (they verify against
-# a root-CA store compiled into the Node binary itself) — but the LiveKit
-# Agents worker's native RTC client (`@livekit/rtc-node`, a compiled Rust
-# addon using the OS's OpenSSL trust store, not Node's) does. Without it,
-# `/etc/ssl/certs/ca-certificates.crt` doesn't exist at all, so every TLS
-# connection that native client makes fails outright — surfaced as
-# `ctx.connect()` throwing "failed to retrieve region info: error sending
-# request" for every session, everywhere, with no other symptom (Node's own
-# HTTPS calls, e.g. `fetch()` to LiveKit's REST API, keep working fine,
-# which is what made this so easy to misdiagnose as a network/DNS issue
-# rather than a missing package). Installed once here and reused by every
-# stage below.
+# packages; Node's own `fetch`/`https` don't need it (they verify against a
+# root-CA store compiled into the Node binary itself), but the LiveKit Agents
+# worker's native RTC client (`@livekit/rtc-node`, a compiled Rust addon using
+# the OS's OpenSSL trust store, not Node's) does — worth keeping even though
+# it wasn't the cause of the specific failure below (see the `gai.conf` fix),
+# since a genuinely missing system trust store is its own latent problem.
+# Installed once here and reused by every stage below.
 FROM node:24-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Some hosts (confirmed on Railway) advertise a AAAA/IPv6 record with no
+# actual working IPv6 route out of the container (`connect()` fails
+# `ENETUNREACH`, not a firewall-style refusal) — LiveKit Cloud's regional
+# room-redirect endpoints are one such host. Node's own `fetch()` isn't
+# affected (undici does Happy-Eyeballs dual-stack fallback and silently
+# succeeds via IPv4), but `@livekit/rtc-node`'s native Rust client resolves
+# through the OS's `getaddrinfo()` and doesn't fall back the same way: it
+# exhausts the IPv6 candidates glibc hands it first, gets `ENETUNREACH` on
+# both, and gives up — surfacing as `ctx.connect()` throwing "failed to
+# retrieve region info: error sending request" for every session, everywhere.
+# This is the classic, standard fix (RFC 3484/6724 address-sort precedence):
+# raising IPv4-mapped addresses' precedence above native IPv6's default (40)
+# makes `getaddrinfo()` return IPv4 candidates first, so a client that tries
+# addresses in order succeeds on the first attempt and never reaches the
+# broken IPv6 ones. System-wide and Debian's default `/etc/gai.conf` ships
+# every precedence rule commented out, so this only adds the one line that
+# actually changes behavior.
+RUN echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
 
 FROM base AS deps
 WORKDIR /app
