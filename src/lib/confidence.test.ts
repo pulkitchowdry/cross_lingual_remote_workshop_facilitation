@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeOverallConfidence,
   estimateCentralGlossaryConfidence,
+  estimateNetworkConfidence,
   estimateTerminologyConfidence,
   estimateTranslationConfidence,
 } from "@/lib/confidence";
@@ -53,6 +54,21 @@ describe("estimateTranslationConfidence", () => {
 
   it("scores a truncated translation below the root-cause threshold", () => {
     expect(estimateTranslationConfidence("claude", true)).toBeLessThan(60);
+  });
+});
+
+describe("estimateNetworkConfidence", () => {
+  it("scores each LiveKit connection-quality label in descending order", () => {
+    expect(estimateNetworkConfidence("excellent")).toBeGreaterThan(estimateNetworkConfidence("good")!);
+    expect(estimateNetworkConfidence("good")).toBeGreaterThan(estimateNetworkConfidence("poor")!);
+    expect(estimateNetworkConfidence("poor")).toBeGreaterThan(estimateNetworkConfidence("lost")!);
+    expect(estimateNetworkConfidence("lost")).toBe(0);
+  });
+
+  it("treats a missing or unrecognized report as no evidence of a problem, not a measured value", () => {
+    expect(estimateNetworkConfidence(undefined)).toBeUndefined();
+    expect(estimateNetworkConfidence(null)).toBeUndefined();
+    expect(estimateNetworkConfidence("unknown")).toBeUndefined();
   });
 });
 

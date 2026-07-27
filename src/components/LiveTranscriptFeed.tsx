@@ -122,45 +122,53 @@ export function LiveTranscriptFeed({
               const revealed = isExpandable && revealedIds.has(entry.id);
               return (
                 <div key={entry.id}>
-                  <button
-                    type="button"
-                    disabled={!isExpandable}
-                    aria-expanded={isExpandable ? revealed : undefined}
-                    onClick={isExpandable ? () => toggleRevealed(entry.id) : undefined}
-                    className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left ${
-                      isExpandable ? "cursor-pointer hover:bg-surface-raised" : ""
+                  {/* Time/speaker/text all flow as one wrapping paragraph (not a fixed-width
+                      time column) so a short line reads as one tidy sentence and a long one
+                      wraps naturally instead of leaving a ragged gap under a lonely time
+                      stamp. The confidence badge is a flex sibling, not nested inside the
+                      paragraph's own toggle `<button>` — a disabled `<button>` (a row with
+                      nothing else to expand) suppresses pointer events for its entire subtree
+                      in Chromium, which made the badge's own `<details>` disclosure completely
+                      unclickable when nested inside one — `items-start` pins it to the row's
+                      top-right corner regardless of how many lines the text wraps to. */}
+                  <div
+                    className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 ${
+                      isExpandable ? "hover:bg-surface-raised" : ""
                     }`}
                   >
-                    <span className="font-data shrink-0 pt-0.5 text-[10px] tabular-nums text-muted-foreground">
-                      {entry.time}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span
-                        className="font-data break-words text-xs font-semibold"
-                        style={{ color: getSpeakerColor(entry.speaker) }}
-                      >
-                        {entry.speaker}
-                      </span>{" "}
-                      <span
-                        className="text-sm"
-                        lang={entry.primaryLang}
-                        style={entry.primaryIsFallback ? { color: "var(--tick-low)" } : undefined}
-                      >
-                        {entry.primaryText}
-                      </span>
+                    <button
+                      type="button"
+                      disabled={!isExpandable}
+                      aria-expanded={isExpandable ? revealed : undefined}
+                      onClick={isExpandable ? () => toggleRevealed(entry.id) : undefined}
+                      className={`min-w-0 flex-1 text-left ${isExpandable ? "cursor-pointer" : ""}`}
+                    >
+                      <p className="text-sm leading-snug">
+                        <span className="font-data mr-1.5 text-[10px] tabular-nums text-muted-foreground">
+                          {entry.time}
+                        </span>
+                        <span
+                          className="font-data mr-1 text-xs font-semibold"
+                          style={{ color: getSpeakerColor(entry.speaker) }}
+                        >
+                          {entry.speaker}
+                        </span>
+                        <span
+                          lang={entry.primaryLang}
+                          style={entry.primaryIsFallback ? { color: "var(--tick-low)" } : undefined}
+                        >
+                          {entry.primaryText}
+                        </span>
+                      </p>
                       {revealed && hasSecondary && (
                         <p className="mt-0.5 text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
                           {entry.secondaryText}
                         </p>
                       )}
-                    </div>
-                  </button>
-                  {/* Rendered outside the row's own toggle `<button>` above, not nested inside
-                      it — a disabled `<button>` (a row with nothing else to expand) suppresses
-                      pointer events for its entire subtree in Chromium, which made the badge's
-                      own `<details>` disclosure completely unclickable when nested inside one. */}
-                  {entry.confidenceBadge && <div className="pb-1 pl-9 pr-2">{entry.confidenceBadge}</div>}
-                  {revealed && entry.actions && <div className="pb-1 pl-9 pr-2">{entry.actions}</div>}
+                    </button>
+                    {entry.confidenceBadge && <div className="shrink-0">{entry.confidenceBadge}</div>}
+                  </div>
+                  {revealed && entry.actions && <div className="pb-1 pl-2 pr-2">{entry.actions}</div>}
                 </div>
               );
             })

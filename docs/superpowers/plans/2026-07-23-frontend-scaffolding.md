@@ -285,7 +285,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-full flex-col">
       <header className="border-b border-black/10 dark:border-white/10">
         <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-          <span className="font-semibold">Workshop Copilot</span>
+          <span className="font-semibold">Interlingo</span>
           <ul className="flex gap-4 text-sm">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>

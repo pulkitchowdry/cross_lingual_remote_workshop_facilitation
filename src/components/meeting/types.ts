@@ -17,11 +17,14 @@ export type MeetingTranscriptSegment = {
   language: string;
   startedAt: string | Date;
   sttConfidence?: number | null;
+  networkQuality?: number | null;
   translations: Array<{
     targetLanguage: string;
     text: string;
     confidence?: number | null;
     confidenceLevel?: string | null;
     rootCause?: string | null;
+    translationConfidence?: number | null;
+    terminologyConfidence?: number | null;
   }>;
 };

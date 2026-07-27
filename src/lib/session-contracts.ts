@@ -45,6 +45,25 @@ export const INSIGHT_HISTORY_LIMIT = 50;
  */
 export const CHAT_MESSAGE_MAX_LENGTH = 1_000;
 
+/**
+ * "Explain simply"/"Give an example" (CaptionComprehensionActions, used from both a
+ * caption's own comprehension actions and a chat message's) wrap a quoted caption or
+ * message verbatim in a fixed phrase (see i18n.ts's explainSimplyQuestion/
+ * giveExampleQuestion) and submit it through the same sendChatMessage that caps every
+ * message at CHAT_MESSAGE_MAX_LENGTH — but a caption itself is allowed up to 3,000
+ * characters (facilitator/learn actions' own publish caps). Left untruncated, a caption
+ * (or, less likely, a long chat message) long enough makes the generated question
+ * exceed the chat cap, and sendChatMessage rejects it every single time with no way for
+ * the asker to shorten text they didn't write themselves — the button becomes
+ * permanently, silently broken for that line. The margin below is comfortably larger
+ * than the longest wrapper phrase + quote marks across en/zh/es.
+ */
+const QUOTED_QUESTION_WRAPPER_MARGIN = 150;
+export function truncateForQuotedQuestion(text: string): string {
+  const maxLength = CHAT_MESSAGE_MAX_LENGTH - QUOTED_QUESTION_WRAPPER_MARGIN;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
 export type SessionRole = "facilitator" | "learner" | "co-facilitator" | "observer";
 
 /**

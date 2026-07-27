@@ -16,7 +16,7 @@ export interface ConfidenceSignals {
   translation?: number;
   /** Lower when the caption uses glossary terms this session has no approved translation for. */
   terminology?: number;
-  /** Reserved for a future client-reported network/connection-quality signal — see issue #130's "Future Enhancements". */
+  /** Derived from the speaking participant's live LiveKit connection quality — see estimateNetworkConfidence. */
   network?: number;
   /** Reserved for a future audio-input-level signal — no server-side source for this yet. */
   audioQuality?: number;
@@ -140,6 +140,31 @@ export function estimateTranslationConfidence(provider: string, wasTruncated: bo
   if (provider === "claude") return 96;
   if (provider === "nllb") return 88;
   return DEFAULT_SIGNAL;
+}
+
+/** livekit-client's `ConnectionQuality` enum values (a plain string union on the wire —
+ * see `@livekit/rtc-node`'s matching enum for the server-side agent path), mapped to a
+ * 0-100 score. `"unknown"` (the SDK's own default before the first quality report
+ * arrives) deliberately maps to `undefined`, same as no report at all — it isn't
+ * evidence of a *good* connection, just the absence of one yet. */
+const CONNECTION_QUALITY_SCORE: Record<string, number> = {
+  excellent: 100,
+  good: 75,
+  poor: 35,
+  lost: 0,
+};
+
+/**
+ * The Confidence Score's network signal (issue #130's "Future Enhancements") — derived
+ * from the speaking participant's own live LiveKit connection quality at the moment
+ * their audio was captured, reported by the client (browser-mic path) or the
+ * server-side caption-agent worker (facilitator LiveKit-capture path). `undefined` for
+ * `"unknown"`/no report, which `computeOverallConfidence` already treats as "no
+ * evidence of a problem" rather than a measured 100.
+ */
+export function estimateNetworkConfidence(quality: string | null | undefined): number | undefined {
+  if (!quality) return undefined;
+  return CONNECTION_QUALITY_SCORE[quality];
 }
 
 interface GlossaryTermLike {

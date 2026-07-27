@@ -56,6 +56,12 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
 export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: CaptionSpeaker, initialLanguage: SupportedLanguage) {
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
+  // Latest connection-quality report from the browser (LiveCaptionStream.tsx sends a
+  // small JSON text frame alongside its binary audio chunks — see the `isBinary` branch
+  // in the `message` handler below) — read fresh at each segment's publish time, same
+  // reasoning as caption-agent.ts's own connectionQualityByIdentity map for the
+  // server-captured facilitator path.
+  let latestNetworkQuality: string | undefined;
 
   // server.ts's upgrade handler only checks `captionAgentActive` once, at handshake
   // time. If the LiveKit caption-agent worker starts capturing this same
@@ -138,6 +144,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
             startedAt,
             endedAt,
             sttConfidence: event.confidence,
+            networkQuality: latestNetworkQuality,
             instrumentation: {
               source: "browser-ws",
               audioSubmittedAtMs,
@@ -161,7 +168,23 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     throw error;
   }
 
-  ws.on("message", (data) => {
+  ws.on("message", (data, isBinary) => {
+    // LiveCaptionStream.tsx sends its `MediaRecorder` audio chunks as binary frames and
+    // its connection-quality reports as small JSON text frames over this same socket —
+    // a text frame here is never audio, so it must be branched off before reaching
+    // `sendAudio` (which expects nothing but raw PCM/opus bytes).
+    if (!isBinary) {
+      try {
+        const payload = JSON.parse(data.toString("utf8")) as { type?: string; quality?: string };
+        if (payload.type === "connection-quality" && typeof payload.quality === "string") {
+          latestNetworkQuality = payload.quality;
+        }
+      } catch {
+        // Malformed control frame — ignore it, the next one (or the STT stream itself)
+        // isn't affected.
+      }
+      return;
+    }
     firstAudioSubmittedAtMs ??= captionLatencyNowMs();
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });

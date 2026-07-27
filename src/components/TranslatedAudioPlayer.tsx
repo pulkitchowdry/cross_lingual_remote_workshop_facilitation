@@ -270,7 +270,6 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           </button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{dict.typedCaptionsAlwaysAudible}</p>
     </div>
   );
 }

@@ -16,7 +16,12 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
-import { CHAT_MESSAGE_MAX_LENGTH, MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
+import {
+  MESSAGE_HISTORY_LIMIT,
+  SUPPORTED_LANGUAGES,
+  TRANSCRIPT_HISTORY_LIMIT,
+  truncateForQuotedQuestion,
+} from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { resolveTranslatedText } from "@/lib/translation-view";
@@ -25,24 +30,6 @@ import { sendChatMessage } from "@/app/sessions/actions";
 import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 
 export const metadata: Metadata = { title: "Learner session" };
-
-/**
- * "Explain simply"/"Give an example" (CaptionComprehensionActions) wrap a caption
- * verbatim in a fixed phrase (see i18n.ts's explainSimplyQuestion/giveExampleQuestion)
- * and submit it through the same sendChatMessage that caps every message at
- * CHAT_MESSAGE_MAX_LENGTH — but captions themselves are allowed up to 3,000 characters
- * (facilitator/learn actions' own publish caps). Left untruncated, any caption long
- * enough makes the generated question exceed the chat cap, and sendChatMessage rejects
- * it every single time with no way for the learner to shorten a caption they didn't
- * write themselves — the button becomes permanently, silently broken for that caption.
- * The margin below is comfortably larger than the longest wrapper phrase + quote marks
- * across en/zh/es.
- */
-const QUOTED_QUESTION_WRAPPER_MARGIN = 150;
-function truncateForQuotedQuestion(text: string): string {
-  const maxLength = CHAT_MESSAGE_MAX_LENGTH - QUOTED_QUESTION_WRAPPER_MARGIN;
-  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
-}
 
 /**
  * generateAndPersistSessionSummary (insights.ts) is fired unawaited from endSession
@@ -185,6 +172,9 @@ export default async function LearnerSessionPage({
             level={translation.confidenceLevel as "high" | "medium" | "low"}
             rootCause={translation.rootCause as RootCause | null}
             uiLang={lang}
+            translationScore={translation.translationConfidence}
+            networkScore={segment.networkQuality}
+            speechRecognitionScore={segment.sttConfidence}
           />
         ) : undefined,
       // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'

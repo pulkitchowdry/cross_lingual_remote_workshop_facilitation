@@ -11,7 +11,12 @@ import {
   logCaptionLatency,
   type CaptionInstrumentationContext,
 } from "@/lib/caption-latency-log";
-import { computeOverallConfidence, estimateCentralGlossaryConfidence, estimateTerminologyConfidence } from "@/lib/confidence";
+import {
+  computeOverallConfidence,
+  estimateCentralGlossaryConfidence,
+  estimateNetworkConfidence,
+  estimateTerminologyConfidence,
+} from "@/lib/confidence";
 import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
 import { recordUnknownGlossaryTerms } from "@/lib/glossary-suggestions";
 
@@ -33,6 +38,11 @@ export async function publishTranslatedCaption(
     isTyped?: boolean;
     /** 0-100 speech-recognition confidence from the STT tier, when it reported one — see src/lib/confidence.ts. Undefined for typed captions. */
     sttConfidence?: number;
+    /** The speaking participant's live LiveKit connection quality at capture time ("excellent" |
+     * "good" | "poor" | "lost"), reported by the browser-mic path (LiveCaptionStream.tsx) or the
+     * server-side caption-agent worker — mapped to a 0-100 score by estimateNetworkConfidence.
+     * Undefined for typed captions and any capture path with no quality report yet. */
+    networkQuality?: string;
     instrumentation?: CaptionInstrumentationContext;
   },
 ) {
@@ -69,6 +79,9 @@ export async function publishTranslatedCaption(
   }));
   const glossaryMatches = findGlossaryMatches(input.originalText, centralGlossaryEntries);
   const terminologyConfidence = estimateTerminologyConfidence(input.originalText, glossaryTerms);
+  // Per-segment, not per-target-language — the same connection-quality report applies to
+  // every translation of this one caption, same reasoning as sttConfidence above it.
+  const networkConfidence = estimateNetworkConfidence(input.networkQuality);
   const translations = await Promise.all(
     SUPPORTED_LANGUAGES.map(async ({ value: target }) => {
       const glossaryHint = buildGlossaryPromptHint(glossaryMatches, target);
@@ -85,6 +98,7 @@ export async function publishTranslatedCaption(
         // session-specific term or a central-glossary mismatch is enough on its own
         // to make this caption's terminology handling suspect.
         terminology: Math.min(terminologyConfidence, centralGlossaryConfidence),
+        network: networkConfidence,
       });
       return {
         targetLanguage: target,
@@ -94,6 +108,10 @@ export async function publishTranslatedCaption(
         confidence: confidence.overall,
         confidenceLevel: confidence.level,
         rootCause: confidence.rootCause,
+        // Individual signals for the Confidence Score breakdown UI (ConfidenceBadge) — see
+        // that column's own schema comment for why audioQuality isn't persisted.
+        translationConfidence: confidence.breakdown.translation,
+        terminologyConfidence: confidence.breakdown.terminology,
       };
     }),
   );
@@ -129,6 +147,7 @@ export async function publishTranslatedCaption(
       endedAt: input.endedAt,
       isTyped: input.isTyped ?? false,
       sttConfidence: input.sttConfidence,
+      networkQuality: networkConfidence,
       translations: {
         create: successfulTranslations,
       },
