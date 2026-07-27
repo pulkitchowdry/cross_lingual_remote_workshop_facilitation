@@ -124,9 +124,9 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
                     level={translation.confidenceLevel as "high" | "medium" | "low"}
                     rootCause={translation.rootCause as RootCause | null}
                     uiLang={uiLang}
+                    isTyped={segment.isTyped}
                     translationScore={translation.translationConfidence}
                     networkScore={segment.networkQuality}
-                    speechRecognitionScore={segment.sttConfidence}
                   />
                 </div>
               )}

@@ -190,16 +190,14 @@ model Translation {
   confidence          Int?
   confidenceLevel     String?
   /// The signal identified as most responsible for a Medium/Low confidenceLevel, if any — one of
-  /// "audio" | "speech-recognition" | "translation" | "terminology" | "network".
+  /// "audio" | "translation" | "network".
   rootCause           String?
-  /// 0-100 per-signal breakdown feeding `confidence` above (translation/terminology always
-  /// present; speechRecognition only when the source segment's sttConfidence was reported) —
-  /// see src/lib/confidence.ts's ConfidenceSignals. audioQuality/network are deliberately
-  /// excluded: nothing in this app measures either signal yet (both always default to 100 in
-  /// computeOverallConfidence), so persisting and displaying them would misrepresent an
-  /// unmeasured signal as a confirmed "no problem" reading.
+  /// 0-100 translation-signal breakdown feeding `confidence` above — see
+  /// src/lib/confidence.ts's ConfidenceSignals. audioQuality/network aren't stored per
+  /// translation: audioQuality has no real measurement source at all yet (always the
+  /// same default), and network is a property of the segment's own capture, not any one
+  /// translation of it — see TranscriptSegment.networkQuality.
   translationConfidence Int?
-  terminologyConfidence Int?
   preservedSpans      Json?
   transcriptSegment   TranscriptSegment @relation(fields: [transcriptSegmentId], references: [id], onDelete: Cascade)
 

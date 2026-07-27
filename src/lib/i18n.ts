@@ -387,13 +387,13 @@ export interface Dictionary {
     confidenceLevelLow: string;
     confidenceScoreLabel: (percent: number) => string;
     confidenceBreakdownOverall: string;
-    confidenceBreakdownSpeechRecognition: string;
+    confidenceBreakdownAudio: string;
     confidenceBreakdownTranslation: string;
     confidenceBreakdownNetwork: string;
+    confidenceNotMeasured: string;
+    confidenceTyped: string;
     confidenceReasonAudio: string;
-    confidenceReasonSpeechRecognition: string;
     confidenceReasonTranslation: string;
-    confidenceReasonTerminology: string;
     confidenceReasonNetwork: string;
     confidenceReasonGeneric: string;
     requestClarification: string;
@@ -793,13 +793,13 @@ const en: Dictionary = {
     confidenceLevelLow: "Low",
     confidenceScoreLabel: (percent) => `Confidence Score ${percent}%`,
     confidenceBreakdownOverall: "Overall",
-    confidenceBreakdownSpeechRecognition: "Speech recognition",
+    confidenceBreakdownAudio: "Audio quality",
     confidenceBreakdownTranslation: "Translation",
     confidenceBreakdownNetwork: "Network",
+    confidenceNotMeasured: "not measured",
+    confidenceTyped: "Typed",
     confidenceReasonAudio: "We couldn't hear you clearly.",
-    confidenceReasonSpeechRecognition: "Some words could not be recognised accurately.",
     confidenceReasonTranslation: "This sentence could not be translated reliably.",
-    confidenceReasonTerminology: "Some technical terms may not have translated correctly.",
     confidenceReasonNetwork: "A network issue may have affected this message.",
     confidenceReasonGeneric: "Some content may not have translated correctly.",
     requestClarification: "Request clarification",
@@ -1182,13 +1182,13 @@ const zh: Dictionary = {
     confidenceLevelLow: "低",
     confidenceScoreLabel: (percent) => `置信度 ${percent}%`,
     confidenceBreakdownOverall: "总体",
-    confidenceBreakdownSpeechRecognition: "语音识别",
+    confidenceBreakdownAudio: "音频质量",
     confidenceBreakdownTranslation: "翻译",
     confidenceBreakdownNetwork: "网络",
+    confidenceNotMeasured: "未测量",
+    confidenceTyped: "已输入",
     confidenceReasonAudio: "我们没能听清楚你的声音。",
-    confidenceReasonSpeechRecognition: "部分词语未能被准确识别。",
     confidenceReasonTranslation: "这句话未能可靠地翻译。",
-    confidenceReasonTerminology: "部分专业术语可能未能正确翻译。",
     confidenceReasonNetwork: "网络问题可能影响了这条消息。",
     confidenceReasonGeneric: "部分内容可能未能正确翻译。",
     requestClarification: "请求澄清",
@@ -1571,13 +1571,13 @@ const es: Dictionary = {
     confidenceLevelLow: "Baja",
     confidenceScoreLabel: (percent) => `Puntuación de confianza ${percent}%`,
     confidenceBreakdownOverall: "General",
-    confidenceBreakdownSpeechRecognition: "Reconocimiento de voz",
+    confidenceBreakdownAudio: "Calidad de audio",
     confidenceBreakdownTranslation: "Traducción",
     confidenceBreakdownNetwork: "Red",
+    confidenceNotMeasured: "no medido",
+    confidenceTyped: "Escrito",
     confidenceReasonAudio: "No pudimos escucharte con claridad.",
-    confidenceReasonSpeechRecognition: "Algunas palabras no se reconocieron con precisión.",
     confidenceReasonTranslation: "Esta frase no se pudo traducir de forma fiable.",
-    confidenceReasonTerminology: "Algunos términos técnicos podrían no haberse traducido correctamente.",
     confidenceReasonNetwork: "Un problema de red pudo haber afectado este mensaje.",
     confidenceReasonGeneric: "Parte del contenido podría no haberse traducido correctamente.",
     requestClarification: "Solicitar aclaración",

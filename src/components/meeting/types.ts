@@ -16,6 +16,7 @@ export type MeetingTranscriptSegment = {
   originalText: string;
   language: string;
   startedAt: string | Date;
+  isTyped?: boolean;
   sttConfidence?: number | null;
   networkQuality?: number | null;
   translations: Array<{
@@ -25,6 +26,5 @@ export type MeetingTranscriptSegment = {
     confidenceLevel?: string | null;
     rootCause?: string | null;
     translationConfidence?: number | null;
-    terminologyConfidence?: number | null;
   }>;
 };
