@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Card } from "@/components/ui/Card";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { RequiredFieldMessages } from "@/components/RequiredFieldMessages";
 import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
 import type { Dictionary } from "@/lib/i18n";
 import type { GlossaryFormResult, GlossaryUploadResult } from "@/app/sessions/[sessionId]/facilitator/glossary/actions";
@@ -31,12 +32,18 @@ type Dict = Dictionary["glossary"];
 export function GlossaryManager({
   entries,
   dict,
+  requiredFieldMessage,
   saveAction,
   deleteAction,
   uploadAction,
 }: {
   entries: GlossaryEntryView[];
   dict: Dict;
+  /** Localizes the browser's native "Please fill in this field" validation bubble for
+   * the required `sourceTerm` field below — see RequiredFieldMessages' own doc comment.
+   * Passed down separately from `dict` since `dict` here is only the `glossary` slice
+   * of the full Dictionary (see GlossaryPage), not the `common` one this message lives in. */
+  requiredFieldMessage: string;
   saveAction: (entryId: string | null, prevState: GlossaryFormResult, formData: FormData) => Promise<GlossaryFormResult>;
   deleteAction: (entryId: string) => Promise<void>;
   uploadAction: (prevState: GlossaryUploadResult, formData: FormData) => Promise<GlossaryUploadResult>;
@@ -82,6 +89,7 @@ export function GlossaryManager({
           key={editingId}
           entry={editingEntry}
           dict={dict}
+          requiredFieldMessage={requiredFieldMessage}
           saveAction={saveAction}
           onDone={() => setEditingId(null)}
         />
@@ -163,11 +171,13 @@ export function GlossaryManager({
 function GlossaryEntryForm({
   entry,
   dict,
+  requiredFieldMessage,
   saveAction,
   onDone,
 }: {
   entry: GlossaryEntryView | null;
   dict: Dict;
+  requiredFieldMessage: string;
   saveAction: (entryId: string | null, prevState: GlossaryFormResult, formData: FormData) => Promise<GlossaryFormResult>;
   onDone: () => void;
 }) {
@@ -186,6 +196,7 @@ function GlossaryEntryForm({
   return (
     <Card eyebrow={entry ? dict.editEntry : dict.addEntry}>
       <form action={formAction} className="flex flex-col gap-3">
+        <RequiredFieldMessages message={requiredFieldMessage} />
         <label className="flex flex-col gap-1 text-sm">
           {dict.formSourceTermLabel}
           <input

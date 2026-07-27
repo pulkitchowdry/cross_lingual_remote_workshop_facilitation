@@ -44,6 +44,15 @@ function truncateForQuotedQuestion(text: string): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
+/**
+ * generateAndPersistSessionSummary (insights.ts) is fired unawaited from endSession
+ * (facilitator/actions.ts) and can still be finishing when `session.status` flips to
+ * ENDED — mirrors facilitator/page.tsx's own POST_SESSION_INSIGHT_GRACE_MS so a learner
+ * viewing right at that instant also gets a few more polls to catch the summary once it
+ * lands, instead of polling stopping cold at the exact ENDED transition.
+ */
+const POST_SESSION_SUMMARY_GRACE_MS = 30_000;
+
 export default async function LearnerSessionPage({
   params,
 }: {
@@ -141,6 +150,10 @@ export default async function LearnerSessionPage({
     "please-repeat": dict.common.clarificationReasonPleaseRepeat,
     "explain-differently": dict.common.clarificationReasonExplainDifferently,
   } as const;
+  const recentlyEnded =
+    participant.session.status === SessionStatus.ENDED &&
+    participant.session.endedAt !== null &&
+    new Date().getTime() - participant.session.endedAt.getTime() < POST_SESSION_SUMMARY_GRACE_MS;
   const transcriptEntries: TranscriptFeedEntry[] = [...participant.session.transcript].reverse().map((segment) => {
     const isOwnLanguage = segment.language === participant.preferredLanguage;
     const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
@@ -176,27 +189,32 @@ export default async function LearnerSessionPage({
         ) : undefined,
       // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'
       // doc comment for why (this page is a Server Component; the feed isn't).
-      actions: (
-        <div className="flex flex-col gap-2">
-          <CaptionComprehensionActions
-            sendAction={sendChatAction}
-            explainSimplyLabel={learnerDict.explainSimply}
-            giveExampleLabel={learnerDict.giveExample}
-            sendingLabel={dict.chat.sending}
-            explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
-            giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
-          />
-          {needsClarification && (
-            <ClarificationActions
+      // Omitted once the session has ENDED — same read-only reasoning as the chat
+      // composer's `readOnly: true` a few lines below: sendChatAction (sendChatMessage's
+      // own LIVE guard) rejects every submission once the session isn't live, and
+      // there's no facilitator left in the room to respond to a request anyway.
+      actions:
+        participant.session.status === SessionStatus.ENDED ? undefined : (
+          <div className="flex flex-col gap-2">
+            <CaptionComprehensionActions
               sendAction={sendChatAction}
-              originalText={originalText}
-              requestClarificationLabel={dict.common.requestClarification}
-              reasonLabels={clarificationReasonLabels}
+              explainSimplyLabel={learnerDict.explainSimply}
+              giveExampleLabel={learnerDict.giveExample}
               sendingLabel={dict.chat.sending}
+              explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
+              giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
             />
-          )}
-        </div>
-      ),
+            {needsClarification && (
+              <ClarificationActions
+                sendAction={sendChatAction}
+                originalText={originalText}
+                requestClarificationLabel={dict.common.requestClarification}
+                reasonLabels={clarificationReasonLabels}
+                sendingLabel={dict.chat.sending}
+              />
+            )}
+          </div>
+        ),
     };
   });
 
@@ -212,6 +230,7 @@ export default async function LearnerSessionPage({
       {(participant.session.status === SessionStatus.DRAFT || participant.session.status === SessionStatus.LIVE) && (
         <SessionAutoRefresh />
       )}
+      {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_SUMMARY_GRACE_MS} />}
       <LanguageMenu current={lang} languages={learnerLanguageOptions} onSelect={changeLanguageAction} />
       {/* Narrower than the page's workshop-room-wide shell (see AppShell) — before the
           video room renders below, this is just two lines of text and a small card, which
@@ -310,7 +329,7 @@ export default async function LearnerSessionPage({
               jumpToLatestLabel: dict.common.jumpToLatest,
             }}
             captionsHeader={
-              textToSpeechProvider.isConfigured && (
+              textToSpeechProvider.isConfigured ? (
                 <TranslatedAudioPlayer
                   segments={participant.session.transcript.map((segment) => ({
                     id: segment.id,
@@ -322,6 +341,8 @@ export default async function LearnerSessionPage({
                   }))}
                   preferredLanguage={participant.preferredLanguage}
                 />
+              ) : (
+                <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>
               )
             }
             chatTabLabel={dict.common.chatTab}

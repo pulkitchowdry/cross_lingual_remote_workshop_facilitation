@@ -74,6 +74,10 @@ export interface Dictionary {
     statusLive: string;
     statusEnded: string;
     startSession: string;
+    // Pending-state label for the "Start session" button (StartSessionButton) — mirrors
+    // ChatSendButton/JoinSubmitButton's own pending label, so a rapid double-click
+    // disables the button instead of submitting `startSession` twice.
+    startingSession: string;
     endSession: string;
     confirmEndSessionTitle: string;
     confirmEndSessionBody: string;
@@ -123,6 +127,12 @@ export interface Dictionary {
     waitingToStart: string;
     noInterventionHintWaiting: string;
     insightsNotConfigured: string;
+    // Distinct from insightsNotConfigured — shown instead of it when insight detection
+    // didn't run because the session itself is in Strict Privacy Mode (translationMode
+    // LOCAL_ONLY, see insights.ts), not because INSIGHT_MODEL_API_KEY is missing. Without
+    // this distinction, a facilitator who deliberately chose Strict Privacy Mode sees
+    // copy that reads as a misconfiguration to fix, when nothing is actually wrong.
+    insightsDisabledPrivacyMode: string;
     languageChangeLiveWarning: string;
     liveTranscript: string;
     transcriptEmpty: string;
@@ -141,6 +151,11 @@ export interface Dictionary {
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
+    // Shown instead of linkRevokedMsg/the active QR+link+revoke UI once the session has
+    // ENDED — the join page itself rejects an ENDED session's token outright (see
+    // join/[token]/page.tsx), so this card can't be left looking active/shareable once
+    // that's true, even if the link was never separately revoked.
+    linkEndedMsg: string;
     learnerLinkAriaLabel: string;
     copyLink: string;
     linkCopied: string;
@@ -214,6 +229,7 @@ export interface Dictionary {
     audioBlocked: string;
     playBlockedAudio: string;
     audioSkipped: string;
+    audioUnavailable: string;
     captionComposerLabel: string;
     captionComposerPlaceholder: string;
     captionAudioHint: string;
@@ -316,6 +332,7 @@ export interface Dictionary {
     captionPositionBottom: string;
     captionPositionTop: string;
     allowLearnerPresenting: string;
+    allowLearnerPresentingFailed: string;
     leave: string;
     expandSidebar: string;
     resizeSidebar: string;
@@ -492,6 +509,7 @@ const en: Dictionary = {
     statusLive: "live",
     statusEnded: "ended",
     startSession: "Start session",
+    startingSession: "Starting…",
     endSession: "End session",
     confirmEndSessionTitle: "End this session?",
     confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
@@ -525,6 +543,7 @@ const en: Dictionary = {
     waitingToStart: "Waiting to begin",
     noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
     insightsNotConfigured: "Automatic insight detection isn't configured for this session — nothing here is analyzed. Use the typed caption/chat tools to follow along manually.",
+    insightsDisabledPrivacyMode: "This session uses Strict Privacy Mode, which never sends the transcript to Claude — automatic insight detection is intentionally disabled. Use the typed caption/chat tools to follow along manually.",
     languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
@@ -539,6 +558,7 @@ const en: Dictionary = {
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
+    linkEndedMsg: "This session has ended — this link no longer works. Create a new session to invite learners again.",
     learnerLinkAriaLabel: "Learner invitation link",
     copyLink: "Copy link",
     linkCopied: "Copied!",
@@ -606,6 +626,7 @@ const en: Dictionary = {
     audioBlocked: "Translated audio playback was blocked by the browser.",
     playBlockedAudio: "Play translated audio",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
+    audioUnavailable: "Translated audio isn't set up for this deployment (no text-to-speech provider configured) — captions still translate as text.",
     captionComposerLabel: "Type a caption for everyone",
     captionComposerPlaceholder: "Type something to be read aloud to everyone…",
     captionAudioHint: "Read aloud to everyone in their language, even if they haven't turned on translated audio — useful if you can't speak.",
@@ -696,6 +717,7 @@ const en: Dictionary = {
     captionPositionBottom: "Bottom",
     captionPositionTop: "Top",
     allowLearnerPresenting: "Allow participants to share screen & use whiteboard",
+    allowLearnerPresentingFailed: "Couldn't update — try again",
     leave: "Leave meeting",
     expandSidebar: "Show chat",
     resizeSidebar: "Resize chat panel",
@@ -850,6 +872,7 @@ const zh: Dictionary = {
     statusLive: "进行中",
     statusEnded: "已结束",
     startSession: "开始场次",
+    startingSession: "正在开始……",
     endSession: "结束场次",
     confirmEndSessionTitle: "确定要结束此场次吗？",
     confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
@@ -885,6 +908,7 @@ const zh: Dictionary = {
     waitingToStart: "等待开始",
     noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
     insightsNotConfigured: "此场次未配置自动洞察检测——此处内容不会被分析。请改用手动输入字幕/聊天工具跟进。",
+    insightsDisabledPrivacyMode: "此场次已启用严格隐私模式，转录内容不会发送给 Claude——自动洞察检测因此被有意禁用。请改用手动输入字幕/聊天工具跟进。",
     languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
@@ -899,6 +923,7 @@ const zh: Dictionary = {
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
+    linkEndedMsg: "此场次已结束——该链接已失效。请创建新场次以重新邀请学员。",
     learnerLinkAriaLabel: "学员邀请链接",
     copyLink: "复制链接",
     linkCopied: "已复制！",
@@ -966,6 +991,7 @@ const zh: Dictionary = {
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     playBlockedAudio: "播放翻译语音",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
+    audioUnavailable: "此部署未启用翻译语音（未配置文本转语音服务）——字幕文字翻译仍正常可用。",
     captionComposerLabel: "为所有人输入字幕",
     captionComposerPlaceholder: "输入内容，将朗读给所有人听……",
     captionAudioHint: "会以每个人的语言朗读给他们听，即使他们未开启翻译语音——适合无法说话时使用。",
@@ -1056,6 +1082,7 @@ const zh: Dictionary = {
     captionPositionBottom: "底部",
     captionPositionTop: "顶部",
     allowLearnerPresenting: "允许参与者共享屏幕和使用白板",
+    allowLearnerPresentingFailed: "更新失败——请重试",
     leave: "离开会议",
     expandSidebar: "显示聊天",
     resizeSidebar: "调整聊天面板大小",
@@ -1212,6 +1239,7 @@ const es: Dictionary = {
     statusLive: "en vivo",
     statusEnded: "finalizada",
     startSession: "Iniciar sesión",
+    startingSession: "Iniciando…",
     endSession: "Finalizar sesión",
     confirmEndSessionTitle: "¿Finalizar esta sesión?",
     confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
@@ -1245,6 +1273,7 @@ const es: Dictionary = {
     waitingToStart: "Esperando para comenzar",
     noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
     insightsNotConfigured: "La detección automática de información no está configurada para esta sesión — nada aquí se analiza. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
+    insightsDisabledPrivacyMode: "Esta sesión usa el Modo de privacidad estricta, que nunca envía la transcripción a Claude — la detección automática de información está deshabilitada a propósito. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
     languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
@@ -1259,6 +1288,7 @@ const es: Dictionary = {
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
+    linkEndedMsg: "Esta sesión ha finalizado — este enlace ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
     learnerLinkAriaLabel: "Enlace de invitación para alumnos",
     copyLink: "Copiar enlace",
     linkCopied: "¡Copiado!",
@@ -1326,6 +1356,7 @@ const es: Dictionary = {
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     playBlockedAudio: "Reproducir audio traducido",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
+    audioUnavailable: "El audio traducido no está habilitado en este despliegue (no hay un proveedor de texto a voz configurado) — los subtítulos de texto se siguen traduciendo con normalidad.",
     captionComposerLabel: "Escribe un subtítulo para todos",
     captionComposerPlaceholder: "Escribe algo para que se lea en voz alta a todos…",
     captionAudioHint: "Se leerá en voz alta a todos en su idioma, aunque no hayan activado el audio traducido — útil si no puedes hablar.",
@@ -1416,6 +1447,7 @@ const es: Dictionary = {
     captionPositionBottom: "Abajo",
     captionPositionTop: "Arriba",
     allowLearnerPresenting: "Permitir que los participantes compartan pantalla y usen la pizarra",
+    allowLearnerPresentingFailed: "No se pudo actualizar — inténtalo de nuevo",
     leave: "Salir de la reunión",
     expandSidebar: "Mostrar chat",
     resizeSidebar: "Cambiar tamaño del panel de chat",

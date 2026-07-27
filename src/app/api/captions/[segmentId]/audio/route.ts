@@ -76,6 +76,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // past the session's own "delete after N days" privacy choice, as long as the
   // cleanup cron just hadn't physically deleted the row yet.
   if (!session || isSessionRetentionExpired(session)) {
+    // This segment's own cached audio (across whichever languages have been requested
+    // for it) must not keep outliving the session's configured retention deadline just
+    // because it's sitting in this process's in-memory `audioCache` — a full proactive
+    // sweep (evicting every segment's cache entries the moment a session's retention
+    // cron actually runs) is a larger cross-file change than fits here. This narrower,
+    // request-triggered eviction at least makes the cache self-heal for an expired
+    // session's segments as they're naturally requested again, one segmentId at a time.
+    for (const key of audioCache.keys()) {
+      if (key.startsWith(`${segmentId}:`)) audioCache.delete(key);
+    }
     return Response.json({ error: "This session's data is no longer available." }, { status: 404 });
   }
 

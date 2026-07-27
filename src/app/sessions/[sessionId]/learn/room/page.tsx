@@ -102,7 +102,7 @@ export default async function LearnerRoomPage({
           de-duplication anywhere in the pipeline). This is always the sole capture path
           for a learner's own speech, so the Start/Stop control always applies. */}
       <LiveCaptionStream sessionId={participant.session.id} lang={lang} />
-      {textToSpeechProvider.isConfigured && (
+      {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
           segments={participant.session.transcript.map((segment) => ({
             id: segment.id,
@@ -114,6 +114,8 @@ export default async function LearnerRoomPage({
           }))}
           preferredLanguage={participant.preferredLanguage}
         />
+      ) : (
+        <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>
       )}
     </>
   );

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { joinSession } from "@/app/join/[token]/actions";
 import { prisma } from "@/lib/db";
+import { learnerParticipantId } from "@/lib/session-access";
 import { hashToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { detectBrowserLanguage, getDictionary, resolveLanguage } from "@/lib/i18n";
@@ -28,6 +30,21 @@ export default async function JoinPage({
     where: { tokenHash: hashToken(token) },
     include: { session: { include: { translations: true } } },
   });
+
+  // A learner revisiting their own invite link (bookmarked/shared link opened again
+  // after already joining) shouldn't see the join form a second time — send them
+  // straight back into the session they already joined. `learnerParticipantId` reads a
+  // cookie scoped to one sessionId (see session-access.ts), so this is checked against
+  // invite.session.id specifically — the same session the token itself resolves to, not
+  // just "any learner cookie exists somewhere". Checked before the invite-validity gate
+  // below so it still applies even if the invite link has since been revoked/expired or
+  // the session has ended in the meantime.
+  if (invite) {
+    const existingParticipantId = await learnerParticipantId(invite.session.id);
+    if (existingParticipantId) {
+      redirect(`/sessions/${invite.session.id}/learn`);
+    }
+  }
 
   if (
     !invite ||

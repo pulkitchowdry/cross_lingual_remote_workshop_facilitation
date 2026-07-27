@@ -87,6 +87,22 @@ export function MeetingSidebar({
       // Already released — nothing to do.
     }
   }
+  // Keyboard equivalent of the pointer-drag resize above — same width state
+  // (`sidebarWidth`/`setSidebarWidth`, which already clamps to
+  // SIDEBAR_MIN_WIDTH/SIDEBAR_MAX_WIDTH in MeetingShellContext), just stepped
+  // instead of dragged. Sidebar is docked right, so ArrowLeft (which drags the
+  // handle further from the sidebar) grows it, matching onResizePointerMove's
+  // own sign convention.
+  const RESIZE_STEP = 16;
+  function onResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setSidebarWidth(sidebarWidth + RESIZE_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setSidebarWidth(sidebarWidth - RESIZE_STEP);
+    }
+  }
 
   if (!sidebarOpen) {
     // The toolbar has no chat button (7 buttons total, per design) — this is
@@ -100,7 +116,14 @@ export function MeetingSidebar({
           type="button"
           onClick={() => setSidebarOpen(true)}
           aria-label={dict.expandSidebar}
-          className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95"
+          // MeetingToolbar's control-bar row wraps to two lines below ~396px viewport
+          // width (7 buttons at 44px + gaps don't fit narrower than that) — at
+          // `bottom-20` this button's own footprint (80px-128px from the viewport
+          // bottom) lands squarely on top of that wrapped second row. `bottom-36`
+          // clears the wrapped toolbar's full height (~128px) with room to spare;
+          // above that width the toolbar fits on one line and the extra gap here is
+          // harmless.
+          className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95 max-[430px]:bottom-36"
           style={{ background: "var(--accent)" }}
         >
           <ChatIcon className="h-5 w-5" />
@@ -260,9 +283,14 @@ export function MeetingSidebar({
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={onResizePointerUp}
+        onKeyDown={onResizeKeyDown}
+        tabIndex={0}
         role="separator"
         aria-orientation="vertical"
         aria-label={dict.resizeSidebar}
+        aria-valuenow={sidebarWidth}
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
       />
       {panel}
     </div>

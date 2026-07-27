@@ -77,7 +77,13 @@ export async function localSynthesize(
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ text, language }),
     cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
+    // localTranslate below budgets 5s for up to 3000 chars (translate.py's
+    // MAX_TEXT_LENGTH). This endpoint's own MAX_TEXT_LENGTH (tts.py) is 6000 chars —
+    // double that — so a near-max-length synthesis request needs proportionately more
+    // than the old 8s here, which was actually *less* than translate's budget despite
+    // fronting a larger text ceiling. 12s keeps a long synthesis request from getting
+    // disproportionately more likely to hit the abort than a long translation does.
+    signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`local-inference synthesize failed with status ${response.status}.`);
   const audio = new Uint8Array(await response.arrayBuffer());

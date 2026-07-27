@@ -10,6 +10,7 @@ import { translateText } from "@/lib/providers/translation";
 import { isRateLimited } from "@/lib/rate-limit";
 import { isPrivateMessageRequest, validateFacilitatorPrivateRecipient } from "@/lib/message-visibility";
 import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 
 type ChatRole = "facilitator" | "learner";
 
@@ -161,6 +162,20 @@ export async function saveWhiteboardSnapshot(sessionId: string, elements: unknow
   const isFacilitator = await hasFacilitatorAccess(sessionId);
   const isLearner = Boolean(await learnerParticipantId(sessionId));
   if (!isFacilitator && !isLearner) redirect("/setup");
+
+  // Matches the SessionStatus.LIVE + retention check the sibling whiteboard API routes
+  // already apply (src/app/api/whiteboard/[sessionId]/route.ts and .../translate/route.ts)
+  // — without it, a still-valid facilitator/learner cookie could keep auto-saving whiteboard
+  // edits (every debounced edit calls this) into a session that has already ended or is past
+  // its own configured retention deadline. No-op rather than redirect: this is called
+  // fire-and-forget from a client-side debounce timer with no navigation to redirect.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { status: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true },
+  });
+  if (!session || session.status !== SessionStatus.LIVE || isSessionRetentionExpired(session)) {
+    return;
+  }
 
   await prisma.whiteboardSnapshot.upsert({
     where: { sessionId },

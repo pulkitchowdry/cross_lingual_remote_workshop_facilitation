@@ -29,6 +29,7 @@ import type { RootCause } from "@/lib/confidence";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { facilitatorVisibleSessionMessageWhere, visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { StartSessionButton } from "@/components/StartSessionButton";
 import {
   endSession,
   resolveInsight,
@@ -82,6 +83,7 @@ export default async function FacilitatorSessionPage({
     messageCount,
     questionCount,
     pendingGlossarySuggestions,
+    misunderstoodConfusionInsights,
   ] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
@@ -155,6 +157,21 @@ export default async function FacilitatorSessionPage({
     prisma.glossarySuggestion.findMany({
       where: { sessionId, status: "PENDING" },
       orderBy: { occurrenceCount: "desc" },
+    }),
+    // Post-session "Misunderstood topics" recap: dedicated to exactly CONFUSION, with no
+    // take-limit — deriving this from `session.insights` (INSIGHT_HISTORY_LIMIT-capped
+    // across every insight type) reintroduced exactly the "silently drops genuinely
+    // recent CONFUSION insights" bug the group confusion badge (recentConfusionInsights
+    // above) and "Act now" (activeActionItems above) were already given their own
+    // dedicated queries to avoid. Unlike those two, this one is intentionally not
+    // time-windowed and not limited to status: ACTIVE — it's a historical recap of the
+    // whole session, not a live signal or an actionable queue, so a topic the
+    // facilitator already resolved mid-session still belongs in the record of what was
+    // misunderstood.
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, summary: true },
     }),
   ]);
   if (!session) notFound();
@@ -259,6 +276,16 @@ export default async function FacilitatorSessionPage({
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const chatMessages = [...session.messages].reverse();
   const learnerInviteRevoked = session.joinLinks.some((link) => link.revokedAt !== null);
+  // Every insight-derived UI state below (the "Act now" empty state, the post-session AI
+  // summary fallback) used to gate solely on insightProvider.isConfigured — but
+  // generateSessionInsights/generateAndPersistSessionSummary (insights.ts) also skip
+  // Claude entirely whenever the session itself is in Strict Privacy Mode
+  // (translationMode LOCAL_ONLY), a separate, session-level switch. Without this check
+  // too, a Strict Privacy Mode session with a configured API key silently read as
+  // "insight detection ran and found nothing" instead of "never ran" — actively
+  // misleading, not just uninformative.
+  const insightsUnavailableReason: "privacyMode" | "notConfigured" | null =
+    session.translationMode === "LOCAL_ONLY" ? "privacyMode" : !insightProvider.isConfigured ? "notConfigured" : null;
   const recentlyEnded =
     session.status === SessionStatus.ENDED &&
     session.endedAt !== null &&
@@ -274,8 +301,11 @@ export default async function FacilitatorSessionPage({
         : null,
     messageCount,
     questionCount,
-    misunderstoodTopics: session.insights
-      .filter((item) => item.type === "CONFUSION")
+    // Derived from the dedicated, unbounded misunderstoodConfusionInsights query above —
+    // not from session.insights, which is capped at INSIGHT_HISTORY_LIMIT across every
+    // insight type and could silently drop a genuinely recent CONFUSION insight once
+    // enough other-typed insights accumulated. See that query's own comment.
+    misunderstoodTopics: misunderstoodConfusionInsights
       .slice(0, 5)
       .map((item) => ({ id: item.id, summary: item.summary })),
   };
@@ -320,9 +350,7 @@ export default async function FacilitatorSessionPage({
       <div className="flex flex-wrap items-center gap-3" aria-live="polite">
         {session.status === SessionStatus.DRAFT && (
           <form action={startAction}>
-            <button className="font-data rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground">
-              {dict.startSession}
-            </button>
+            <StartSessionButton label={dict.startSession} pendingLabel={dict.startingSession} />
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
@@ -411,8 +439,10 @@ export default async function FacilitatorSessionPage({
                 <p className="whitespace-pre-wrap">{session.summary}</p>
               ) : (
                 <p className="text-muted-foreground">
-                  {!insightProvider.isConfigured
-                    ? dict.insightsNotConfigured
+                  {insightsUnavailableReason
+                    ? insightsUnavailableReason === "privacyMode"
+                      ? dict.insightsDisabledPrivacyMode
+                      : dict.insightsNotConfigured
                     : recentlyEnded
                       ? dict.sessionSummaryPending
                       : dict.sessionSummaryUnavailable}
@@ -475,7 +505,7 @@ export default async function FacilitatorSessionPage({
               jumpToLatestLabel: commonDict.jumpToLatest,
             }}
             captionsHeader={
-              textToSpeechProvider.isConfigured && (
+              textToSpeechProvider.isConfigured ? (
                 <TranslatedAudioPlayer
                   segments={session.transcript.map((segment) => ({
                     id: segment.id,
@@ -487,6 +517,8 @@ export default async function FacilitatorSessionPage({
                   }))}
                   preferredLanguage={session.sourceLanguage}
                 />
+              ) : (
+                <p className="text-xs text-muted-foreground">{getDictionary(lang).learner.audioUnavailable}</p>
               )
             }
             chatTabLabel={commonDict.chatTab}
@@ -582,12 +614,15 @@ export default async function FacilitatorSessionPage({
           <Card eyebrow={dict.waitingToStart}>
             <p className="text-muted-foreground">{dict.noInterventionHintWaiting}</p>
           </Card>
-        ) : !insightProvider.isConfigured ? (
+        ) : insightsUnavailableReason ? (
           // Distinct from "looks on track" below — that phrasing asserts insight
           // detection actually ran and found nothing, which would be actively
-          // misleading when it never ran at all (no INSIGHT_MODEL_API_KEY set).
+          // misleading when it never ran at all (no INSIGHT_MODEL_API_KEY set, or this
+          // session is in Strict Privacy Mode — see insightsUnavailableReason above).
           <Card eyebrow={dict.noInterventionYet}>
-            <p className="text-muted-foreground">{dict.insightsNotConfigured}</p>
+            <p className="text-muted-foreground">
+              {insightsUnavailableReason === "privacyMode" ? dict.insightsDisabledPrivacyMode : dict.insightsNotConfigured}
+            </p>
           </Card>
         ) : confusionLevel.level !== "CALM" ? (
           // The group confusion badge above counts RESOLVED insights too, by design
@@ -661,7 +696,15 @@ export default async function FacilitatorSessionPage({
         <p className="mt-2 text-xs text-muted-foreground">{dict.dashboardLinkHint}</p>
       </Card>
       <Card eyebrow={dict.learnerInvitation} title={dict.shareLink}>
-        {learnerInviteRevoked ? (
+        {/* Checked before learnerInviteRevoked/learnerLink below — the join page rejects
+            an ENDED session's token outright regardless of this join link's own
+            revoked/active state (see join/[token]/page.tsx), so this card can't keep
+            showing a working-looking QR/link/Revoke button once the session has ended;
+            a shared link would just hit that rejection, directly contradicting what
+            this card implied still worked. */}
+        {session.status === SessionStatus.ENDED ? (
+          <p className="text-muted-foreground">{dict.linkEndedMsg}</p>
+        ) : learnerInviteRevoked ? (
           <p className="text-muted-foreground">{dict.linkRevokedMsg}</p>
         ) : learnerLink ? (
           <div className="flex flex-col gap-3">
