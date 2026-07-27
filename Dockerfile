@@ -17,9 +17,21 @@
 # Prisma's CLI probes for OpenSSL to pick a query-engine build even though this
 # app's driver-adapter setup never loads that engine — without it, `prisma
 # generate`/`migrate deploy` still work but print a misleading warning on
-# every run. Installed once here and reused by every stage below.
+# every run. `ca-certificates` is NOT one of `node:*-bookworm-slim`'s default
+# packages, and Node's own `fetch`/`https` don't need it (they verify against
+# a root-CA store compiled into the Node binary itself) — but the LiveKit
+# Agents worker's native RTC client (`@livekit/rtc-node`, a compiled Rust
+# addon using the OS's OpenSSL trust store, not Node's) does. Without it,
+# `/etc/ssl/certs/ca-certificates.crt` doesn't exist at all, so every TLS
+# connection that native client makes fails outright — surfaced as
+# `ctx.connect()` throwing "failed to retrieve region info: error sending
+# request" for every session, everywhere, with no other symptom (Node's own
+# HTTPS calls, e.g. `fetch()` to LiveKit's REST API, keep working fine,
+# which is what made this so easy to misdiagnose as a network/DNS issue
+# rather than a missing package). Installed once here and reused by every
+# stage below.
 FROM node:24-bookworm-slim AS base
-RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
