@@ -67,7 +67,7 @@ describe("attachCaptionSocket", () => {
       translationMode: "LOCAL_ONLY",
     } as unknown as Session;
 
-    expect(() => attachCaptionSocket(ws, session)).toThrow(/cloud fallback is disabled/);
+    expect(() => attachCaptionSocket(ws, session, { role: "facilitator" }, "en")).toThrow(/cloud fallback is disabled/);
 
     // Advance well past the 3s duplicate-guard tick; if the interval had leaked
     // (the bug), this would still fire a DB query even though the socket was

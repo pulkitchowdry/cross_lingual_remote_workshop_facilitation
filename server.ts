@@ -1,6 +1,10 @@
 import { createServer } from "node:http";
 import { parse, fileURLToPath } from "node:url";
 import { loadEnvConfig } from "@next/env";
+// Type-only — erased at compile time, so this doesn't need to wait on the same
+// "after next initializes" ordering the runtime `@/lib/captions-socket` import below does.
+import type { CaptionSpeaker } from "@/lib/captions-socket";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 
 // Must run before any module that reads `process.env` at import time (e.g.
 // `@/lib/db`'s `assertRequiredEnv`) — Next only loads `.env.local`/`.env` for
@@ -26,8 +30,8 @@ async function main() {
   const { default: next } = await import("next");
   const { WebSocketServer } = await import("ws");
   const { prisma } = await import("@/lib/db");
-  const { SessionStatus } = await import("@/generated/prisma/client");
-  const { facilitatorCookieName } = await import("@/lib/session-security");
+  const { SessionStatus, ParticipantRole } = await import("@/generated/prisma/client");
+  const { facilitatorCookieName, learnerCookieName, hashToken } = await import("@/lib/session-security");
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
   const { AgentServer, ServerOptions, initializeLogger } = await import("@livekit/agents");
 
@@ -54,6 +58,30 @@ async function main() {
   const { verifyFacilitatorToken } = await import("@/lib/facilitator-token");
   const { attachCaptionSocket, closeWithReason } = await import("@/lib/captions-socket");
 
+  /**
+   * Resolves which role (if either) is authorized to stream mic audio for this
+   * session over this WebSocket — the facilitator's own cookie/token, or a
+   * learner's (mirroring `learnerParticipantId` in `session-access.ts`, which this
+   * file can't import directly since it depends on `next/headers`' request-scoped
+   * `cookies()`, not available in this raw-socket context). Facilitator is checked
+   * first since it's the more common/expected caller of this fallback.
+   */
+  async function resolveCaptionSpeaker(sessionId: string, cookies: Record<string, string>): Promise<CaptionSpeaker | null> {
+    const facilitatorToken = cookies[facilitatorCookieName(sessionId)];
+    if (facilitatorToken && (await verifyFacilitatorToken(sessionId, facilitatorToken))) {
+      return { role: "facilitator" };
+    }
+    const learnerToken = cookies[learnerCookieName(sessionId)];
+    if (learnerToken) {
+      const participant = await prisma.sessionParticipant.findFirst({
+        where: { accessTokenHash: hashToken(learnerToken), sessionId, role: ParticipantRole.LEARNER },
+        select: { id: true },
+      });
+      if (participant) return { role: "learner", participantId: participant.id };
+    }
+    return null;
+  }
+
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
   // Next's own dev tooling (HMR, the React DevTools bridge, etc.) upgrades
@@ -78,9 +106,8 @@ async function main() {
     if (!sessionId) throw new Error("sessionId is required.");
 
     const cookies = parseCookies(req.headers.cookie);
-    const token = cookies[facilitatorCookieName(sessionId)];
-    const authorized = token ? await verifyFacilitatorToken(sessionId, token) : false;
-    if (!authorized) throw new Error("Not authorized for this session.");
+    const speaker = await resolveCaptionSpeaker(sessionId, cookies);
+    if (!speaker) throw new Error("Not authorized for this session.");
 
     if (!speechToTextProvider.isConfigured || !speechToTextProvider.openStream) {
       throw new Error("Streaming speech-to-text is not configured: set STT_API_KEY or configure local-inference.");
@@ -100,11 +127,22 @@ async function main() {
     // lands — without this check, that would open a second, independent Deepgram
     // stream for the same audio and duplicate/interleave every caption line
     // (the same class of bug issue #95 fixed client-side, now backstopped here too).
-    if (found.captionAgentActive) {
+    // Facilitator-only: `captionAgentActive` has nothing to say about a learner's
+    // audio (see `captions-socket.ts`'s `CaptionSpeaker` doc comment).
+    if (speaker.role === "facilitator" && found.captionAgentActive) {
       throw new Error("Captions are already being captured automatically for this session.");
     }
 
-    attachCaptionSocket(ws, found);
+    // Resolved here (this function is already async) rather than inside
+    // `attachCaptionSocket`, which must stay synchronous — see that function's
+    // own doc comment.
+    const { resolveLearnerSpeaker } = await import("@/lib/speaker-resolution");
+    const initialLanguage =
+      speaker.role === "facilitator"
+        ? (found.sourceLanguage as SupportedLanguage)
+        : ((await resolveLearnerSpeaker(found.id, speaker.participantId))?.language ?? (found.sourceLanguage as SupportedLanguage));
+
+    attachCaptionSocket(ws, found, speaker, initialLanguage);
   }
 
   server.on("upgrade", async (req, socket, head) => {

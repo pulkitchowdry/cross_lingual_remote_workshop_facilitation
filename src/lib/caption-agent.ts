@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
@@ -53,12 +54,7 @@ async function resolveSpeakerContext(
   }
   if (identity.startsWith(LEARNER_IDENTITY_PREFIX)) {
     const participantId = identity.slice(LEARNER_IDENTITY_PREFIX.length);
-    const participant = await prisma.sessionParticipant.findUnique({
-      where: { id: participantId },
-      include: { user: true },
-    });
-    if (!participant || participant.sessionId !== session.id) return null;
-    return { language: participant.preferredLanguage as SupportedLanguage, speakerId: participant.user.displayName };
+    return resolveLearnerSpeaker(session.id, participantId);
   }
   return null;
 }

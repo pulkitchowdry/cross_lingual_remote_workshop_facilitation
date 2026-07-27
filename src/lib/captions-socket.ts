@@ -3,16 +3,24 @@ import { prisma } from "@/lib/db";
 import { SessionStatus, type Session } from "@/generated/prisma/client";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
+import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 /**
  * Wires a raw WebSocket (already upgraded and authorized — see `server.ts`)
  * to the STT stream for a live session. Shared so the socket-handling logic
- * lives in one place regardless of how the upgrade itself happened.
+ * lives in one place regardless of how the upgrade itself happened. Covers
+ * both roles this browser-mic fallback supports: the facilitator (their own
+ * session-wide source language) and a learner (their own `preferredLanguage`,
+ * resolved the same way `caption-agent.ts`'s LiveKit-capture path does).
  */
+export type CaptionSpeaker = { role: "facilitator" } | { role: "learner"; participantId: string };
+
 /** How often to re-check whether the caption-agent worker has started capturing this
- * same facilitator's mic elsewhere — see the `duplicateGuardInterval` comment below. */
+ * same facilitator's mic elsewhere — see the `duplicateGuardInterval` comment below.
+ * Facilitator-only: `captionAgentActive` is scoped to the facilitator's own audio (see
+ * caption-agent.ts), so it has nothing to say about a learner's browser-mic socket. */
 const DUPLICATE_CAPTURE_CHECK_MS = 3_000;
 
 /** RFC 6455 caps a close frame's reason at 123 bytes. `ws`'s own `close()`
@@ -36,8 +44,16 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
   ws.close(code, safeReason);
 }
 
-export function attachCaptionSocket(ws: WebSocket, session: Session) {
-  const sourceLanguage = session.sourceLanguage as SupportedLanguage;
+/**
+ * `initialLanguage` is resolved by the caller (`server.ts`'s
+ * `authorizeAndAttachCaptionSocket`, already async) rather than inside this
+ * function — `attachCaptionSocket` itself must stay synchronous (not `async`),
+ * since `openStream()` can throw *synchronously* (see the try/catch below) and
+ * callers/tests rely on that propagating as a real synchronous throw, not a
+ * rejected Promise, so the duplicate-guard-interval cleanup is verifiable
+ * without needing to await anything.
+ */
+export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: CaptionSpeaker, initialLanguage: SupportedLanguage) {
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
 
@@ -50,17 +66,23 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
   // (LiveCaptionStream.tsx) — a window that can stretch further if the tab is
   // backgrounded and its interval gets throttled. Re-checking here closes the
   // redundant stream promptly and authoritatively from the server side too,
-  // instead of relying solely on that client-side polling.
-  const duplicateGuardInterval = setInterval(() => {
-    void prisma.session
-      .findUnique({ where: { id: session.id }, select: { captionAgentActive: true } })
-      .then((current) => {
-        if (current?.captionAgentActive) {
-          closeWithReason(ws, 1011, "Captions are already being captured automatically for this session.");
-        }
-      })
-      .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
-  }, DUPLICATE_CAPTURE_CHECK_MS);
+  // instead of relying solely on that client-side polling. Facilitator-only (see
+  // `CaptionSpeaker`'s doc comment) — a learner's socket has no such duplicate risk
+  // to guard against today, since `caption-agent.ts` isn't reachably capturing
+  // anyone's audio in the environment this fallback exists for.
+  const duplicateGuardInterval =
+    speaker.role === "facilitator"
+      ? setInterval(() => {
+          void prisma.session
+            .findUnique({ where: { id: session.id }, select: { captionAgentActive: true } })
+            .then((current) => {
+              if (current?.captionAgentActive) {
+                closeWithReason(ws, 1011, "Captions are already being captured automatically for this session.");
+              }
+            })
+            .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
+        }, DUPLICATE_CAPTURE_CHECK_MS)
+      : null;
 
   // openStream() can throw synchronously (e.g. a strict-privacy session with no
   // local-inference tier configured — see its own "cloud fallback is disabled"
@@ -69,7 +91,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
   let sttStream: SpeechToTextStream;
   try {
     sttStream = speechToTextProvider.openStream!({
-      expectedLanguage: sourceLanguage,
+      expectedLanguage: initialLanguage,
       allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
       onSegment: (event) => {
         if (!event.isFinal) return;
@@ -95,10 +117,21 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
           // WebSocket first opened, for the rest of its lifetime.
           const current = await prisma.session.findUnique({ where: { id: session.id } });
           if (!current || current.status !== SessionStatus.LIVE) return;
+          let language: SupportedLanguage;
+          let speakerId: string | null;
+          if (speaker.role === "facilitator") {
+            language = current.sourceLanguage as SupportedLanguage;
+            speakerId = null;
+          } else {
+            const resolved = await resolveLearnerSpeaker(current.id, speaker.participantId);
+            if (!resolved) return;
+            language = resolved.language;
+            speakerId = resolved.speakerId;
+          }
           await publishTranslatedCaption(current, {
-            speakerId: null,
+            speakerId,
             originalText: event.text,
-            language: current.sourceLanguage as SupportedLanguage,
+            language,
             startedAt,
             endedAt,
             sttConfidence: event.confidence,
@@ -121,7 +154,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
       },
     });
   } catch (error) {
-    clearInterval(duplicateGuardInterval);
+    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
     throw error;
   }
 
@@ -130,11 +163,11 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });
   ws.on("close", () => {
-    clearInterval(duplicateGuardInterval);
+    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
     sttStream.close();
   });
   ws.on("error", () => {
-    clearInterval(duplicateGuardInterval);
+    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
     sttStream.close();
   });
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { notFound, redirect } from "next/navigation";
@@ -88,18 +89,27 @@ export default async function LearnerRoomPage({
       }}
     />
   );
-  const captionsHeader = textToSpeechProvider.isConfigured && (
-    <TranslatedAudioPlayer
-      segments={participant.session.transcript.map((segment) => ({
-        id: segment.id,
-        hasTranslation:
-          segment.language === participant.preferredLanguage ||
-          segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-        isTyped: segment.isTyped,
-        language: segment.language,
-      }))}
-      preferredLanguage={participant.preferredLanguage}
-    />
+  const captionsHeader = (
+    <>
+      {/* No `agentCapturing` equivalent for learners yet — `captionAgentActive` is
+          facilitator-scoped (see captions-socket.ts's `CaptionSpeaker` doc comment), so
+          this always shows the Start/Stop control rather than hiding it behind a signal
+          that can't currently reflect a learner's own capture state. */}
+      <LiveCaptionStream sessionId={participant.session.id} lang={lang} />
+      {textToSpeechProvider.isConfigured && (
+        <TranslatedAudioPlayer
+          segments={participant.session.transcript.map((segment) => ({
+            id: segment.id,
+            hasTranslation:
+              segment.language === participant.preferredLanguage ||
+              segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
+            isTyped: segment.isTyped,
+            language: segment.language,
+          }))}
+          preferredLanguage={participant.preferredLanguage}
+        />
+      )}
+    </>
   );
 
   return (
