@@ -154,6 +154,7 @@ export interface Dictionary {
     sessionEndedSummary: string;
     sessionResultsHeading: string;
     sessionResultsSummary: string;
+    sessionResultsCardEyebrow: string;
     viewResults: string;
     returnToDashboard: string;
     resultsNotReadyHeading: string;
@@ -189,6 +190,7 @@ export interface Dictionary {
     analyticsConfidenceHeading: string;
     analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
     analyticsConfusionTrendSummary: (bucketCount: number, highestLevel: string) => string;
+    confusionLevelLabel: Record<"CALM" | "SOME" | "HIGH", string>;
     analyticsEmptyState: string;
     analyticsFrozenNotice: string;
     // Centralised Technical Glossary (issue #131) — link to the shared glossary
@@ -535,6 +537,7 @@ const en: Dictionary = {
     sessionEndedSummary: "This session has ended. The video room is closed, but the full transcript and chat history below remain available until the session's retention period expires.",
     sessionResultsHeading: "Session results",
     sessionResultsSummary: "This session has ended. Review the final summary and analytics snapshot below.",
+    sessionResultsCardEyebrow: "Session ended",
     viewResults: "View results",
     returnToDashboard: "Return to dashboard",
     resultsNotReadyHeading: "Results are not ready yet",
@@ -567,6 +570,7 @@ const en: Dictionary = {
       `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Confusion trend: ${bucketCount} time buckets, highest level: ${highestLevel}`,
+    confusionLevelLabel: { CALM: "Calm", SOME: "Some confusion", HIGH: "High confusion" },
     analyticsEmptyState: "No analytics yet — data will appear as the session progresses.",
     analyticsFrozenNotice: "Final snapshot — this session has ended",
     glossaryNavLabel: "Manage glossary",
@@ -885,6 +889,7 @@ const zh: Dictionary = {
     sessionEndedSummary: "此场次已结束。视频会议室已关闭，但以下完整转录和聊天记录会保留，直到该场次的保留期限到期为止。",
     sessionResultsHeading: "场次结果",
     sessionResultsSummary: "此场次已结束。请在下方查看最终摘要和数据分析快照。",
+    sessionResultsCardEyebrow: "场次已结束",
     viewResults: "查看结果",
     returnToDashboard: "返回控制台",
     resultsNotReadyHeading: "结果尚未就绪",
@@ -917,6 +922,7 @@ const zh: Dictionary = {
       `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `困惑趋势：${bucketCount} 个时间区间，最高等级：${highestLevel}`,
+    confusionLevelLabel: { CALM: "平静", SOME: "一些困惑", HIGH: "困惑较多" },
     analyticsEmptyState: "暂无分析数据——数据将随会话进行而出现。",
     analyticsFrozenNotice: "最终快照——本次会话已结束",
     glossaryNavLabel: "管理术语表",
@@ -1235,6 +1241,7 @@ const es: Dictionary = {
     sessionEndedSummary: "Esta sesión ha finalizado. La sala de video está cerrada, pero la transcripción completa y el historial de chat siguen disponibles a continuación hasta que expire el período de retención de la sesión.",
     sessionResultsHeading: "Resultados de la sesión",
     sessionResultsSummary: "Esta sesión ha finalizado. Revisa el resumen final y la instantánea de analítica a continuación.",
+    sessionResultsCardEyebrow: "Sesión finalizada",
     viewResults: "Ver resultados",
     returnToDashboard: "Volver al panel",
     resultsNotReadyHeading: "Los resultados aún no están listos",
@@ -1267,6 +1274,7 @@ const es: Dictionary = {
       `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Tendencia de confusión: ${bucketCount} intervalos de tiempo, nivel máximo: ${highestLevel}`,
+    confusionLevelLabel: { CALM: "Tranquilo", SOME: "Algo de confusión", HIGH: "Mucha confusión" },
     analyticsEmptyState: "Aún no hay analítica — los datos aparecerán a medida que avance la sesión.",
     analyticsFrozenNotice: "Instantánea final — esta sesión ha terminado",
     glossaryNavLabel: "Gestionar glosario",

@@ -201,7 +201,7 @@ export function LanguageMenu({
         // AccessibilityPanel.tsx: this trigger sits in the same header row as the
         // font-size toggle, so it needs to stay immune to the font-size preference or it
         // shifts sideways the moment text size changes.
-        className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-60"
+        className="font-data flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-60"
       >
         <TranslateIcon />
         {dict.language}

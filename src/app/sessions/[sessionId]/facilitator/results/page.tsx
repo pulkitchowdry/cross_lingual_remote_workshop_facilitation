@@ -12,7 +12,6 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { publicSessionMessageWhere } from "@/lib/message-visibility";
-import { TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { insightProvider } from "@/lib/providers/insight";
 
 export const metadata: Metadata = { title: "Session results" };
@@ -32,11 +31,6 @@ export default async function FacilitatorSessionResultsPage({
       where: { id: sessionId },
       include: {
         participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
-        transcript: {
-          include: { translations: true },
-          orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-          take: TRANSCRIPT_HISTORY_LIMIT,
-        },
         insights: {
           orderBy: { createdAt: "desc" },
         },
@@ -72,7 +66,7 @@ export default async function FacilitatorSessionResultsPage({
   const misunderstoodTopics = session.insights
     .filter((item) => item.type === "CONFUSION")
     .slice(0, 5)
-    .map((item) => item.summary);
+    .map((item) => ({ id: item.id, summary: item.summary }));
 
   const analyticsView =
     session.status === SessionStatus.ENDED ? await buildFacilitatorAnalyticsView(sessionId, session, lang) : null;
@@ -107,7 +101,7 @@ export default async function FacilitatorSessionResultsPage({
         </Card>
       ) : (
         <>
-          <Card eyebrow={dict.sessionEndedHeading} title={session.title} accent="var(--tick-high)">
+          <Card eyebrow={dict.sessionResultsCardEyebrow} title={session.title} accent="var(--tick-high)">
             <p className="text-muted-foreground">{dict.sessionResultsSummary}</p>
           </Card>
 
@@ -157,7 +151,7 @@ export default async function FacilitatorSessionResultsPage({
                 </p>
                 <ul className="mt-1 list-inside list-disc text-sm">
                   {misunderstoodTopics.map((topic) => (
-                    <li key={topic}>{topic}</li>
+                    <li key={topic.id}>{topic.summary}</li>
                   ))}
                 </ul>
               </div>

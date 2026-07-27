@@ -50,7 +50,7 @@ function ToolbarButton({
           disabled={disabled}
           aria-label={label}
           aria-pressed={active}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10"
+          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             background: active ? "var(--accent)" : "var(--surface-raised)",
             color: active ? "var(--accent-foreground)" : "var(--foreground)",
@@ -240,7 +240,7 @@ export function MeetingToolbar({
             <button
               type="button"
               aria-label={dict.settings}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground sm:h-10 sm:w-10"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground"
             >
               <SettingsIcon />
             </button>
@@ -316,7 +316,7 @@ export function MeetingToolbar({
               onClick={handleLeave}
               disabled={leaveButtonProps.disabled}
               aria-label={dict.leave}
-              className="flex h-9 w-9 items-center justify-center rounded-full sm:h-10 sm:w-10"
+              className="flex h-10 w-10 items-center justify-center rounded-full"
               style={{ background: "var(--tick-low)", color: "#fff" }}
             >
               <LeaveIcon />

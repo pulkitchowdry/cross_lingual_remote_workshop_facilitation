@@ -45,7 +45,7 @@ export function ThemeToggle() {
       // AccessibilityPanel.tsx: this sits right next to the font-size toggle in the
       // header, so it needs to stay immune to the very font-size preference that toggle
       // controls, or it shifts sideways the moment text size changes.
-      className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+      className="font-data flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
     >
       <span
         className="h-[6px] w-[6px] rounded-full"

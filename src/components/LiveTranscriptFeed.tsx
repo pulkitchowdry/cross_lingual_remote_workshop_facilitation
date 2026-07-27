@@ -119,7 +119,10 @@ export function LiveTranscriptFeed({
                       {entry.time}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <span className="font-data text-xs font-semibold" style={{ color: getSpeakerColor(entry.speaker) }}>
+                      <span
+                        className="font-data break-words text-xs font-semibold"
+                        style={{ color: getSpeakerColor(entry.speaker) }}
+                      >
                         {entry.speaker}
                       </span>{" "}
                       <span
@@ -153,7 +156,7 @@ export function LiveTranscriptFeed({
           <button
             type="button"
             onClick={scrollToLatest}
-            className="font-data absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-foreground shadow"
+            className="font-data absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow"
           >
             {jumpToLatestLabel} ↓
           </button>

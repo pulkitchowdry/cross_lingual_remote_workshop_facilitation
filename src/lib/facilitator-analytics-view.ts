@@ -54,14 +54,6 @@ export async function buildFacilitatorAnalyticsView(
     status: SessionStatus;
     endedAt: Date | null;
     participants: { userId: string; user: { displayName: string } }[];
-    transcript: {
-      translations: {
-        targetLanguage: string;
-        confidence: number | null;
-        confidenceLevel: string | null;
-        rootCause: string | null;
-      }[];
-    }[];
   },
   lang: SupportedLanguage,
 ): Promise<FacilitatorAnalyticsView> {
@@ -129,7 +121,10 @@ export async function buildFacilitatorAnalyticsView(
       analyticsBlockersHeading: dict.analyticsBlockersHeading,
       analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
       analyticsConfidenceHeading: dict.analyticsConfidenceHeading,
-      analyticsConfusionTrendSummary: dict.analyticsConfusionTrendSummary(analytics.confusionTrend.length, highestLevel),
+      analyticsConfusionTrendSummary: dict.analyticsConfusionTrendSummary(
+        analytics.confusionTrend.length,
+        dict.confusionLevelLabel[highestLevel],
+      ),
       analyticsEmptyState: dict.analyticsEmptyState,
       analyticsFrozenNotice: dict.analyticsFrozenNotice,
     },
