@@ -17,6 +17,7 @@ import { getDictionary } from "@/lib/i18n";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
+import type { FacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 
 type Role = "facilitator" | "learner";
 
@@ -41,6 +42,7 @@ function MeetingRoomInner({
   languageOptions,
   captionsHeader,
   captionComposer,
+  analyticsView,
 }: {
   sessionId: string;
   role: Role;
@@ -62,6 +64,7 @@ function MeetingRoomInner({
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   captionsHeader?: ReactNode;
   captionComposer?: ReactNode;
+  analyticsView?: FacilitatorAnalyticsView;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { workspaceMode } = useMeetingShell();
@@ -151,6 +154,7 @@ function MeetingRoomInner({
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
           defaultTab={sidebarDefaultTab}
+          analyticsView={analyticsView}
         />
       </div>
       {/* `shrink-0` — defense in depth alongside globals.css's `.lk-button-group` height
@@ -195,6 +199,7 @@ export function MeetingRoom(props: {
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   captionsHeader?: ReactNode;
   captionComposer?: ReactNode;
+  analyticsView?: FacilitatorAnalyticsView;
 }) {
   return (
     <MeetingShellProvider>

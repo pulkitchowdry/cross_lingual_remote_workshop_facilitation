@@ -89,6 +89,31 @@ model Session {
   glossaryTerms      GlossaryTerm[]
   glossarySuggestions GlossarySuggestion[]
   whiteboard         WhiteboardSnapshot?
+  translations       SessionTranslation[]
+}
+
+/**
+ * Per-language translations of a session's facilitator-authored `title`/`goal`,
+ * populated once at createSession() time (mirrors MessageTranslation's "translate
+ * into every SUPPORTED_LANGUAGES entry up front" pattern, not TranscriptSegment's
+ * per-utterance one — a session's title/goal are set once and read many times, so
+ * there's no live translation step to repeat). `title`/`goal` are nullable, not a
+ * required pair: the two fields are translated independently (two separate
+ * translateText calls), so a transient failure on one must not discard the other.
+ * No row exists at all for the session's own sourceLanguage (translateText returns
+ * null for a same-language pair, same as MessageTranslation) — the facilitator's own
+ * views always render the raw Session.title/goal columns directly.
+ */
+model SessionTranslation {
+  id             String  @id @default(cuid())
+  sessionId      String
+  targetLanguage String
+  title          String?
+  goal           String?
+  provider       String
+  session        Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, targetLanguage])
 }
 
 model SessionParticipant {

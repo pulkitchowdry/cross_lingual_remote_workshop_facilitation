@@ -10,6 +10,7 @@ import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/
 import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
 import { getDictionary } from "@/lib/i18n";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
+import type { FacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 
 /**
  * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
@@ -97,6 +98,7 @@ export function LiveSessionRoom({
   languageOptions,
   captionsHeader,
   captionComposer,
+  analyticsView,
 }: {
   sessionId: string;
   role: Role;
@@ -119,6 +121,8 @@ export function LiveSessionRoom({
   captionsHeader?: ReactNode;
   /** Below the captions feed — the typed-caption composer. */
   captionComposer?: ReactNode;
+  /** Facilitator-only "Analytics" sidebar tab (see MeetingSidebar) — omitted entirely for learners. */
+  analyticsView?: FacilitatorAnalyticsView;
 }) {
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
@@ -472,6 +476,7 @@ export function LiveSessionRoom({
           languageOptions={languageOptions}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
+          analyticsView={analyticsView}
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
         <RoomAudioRenderer />

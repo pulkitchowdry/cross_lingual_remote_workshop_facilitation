@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { LiveTranscriptFeed, type TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { resolveTranslatedText } from "@/lib/translation-view";
 import { getDictionary } from "@/lib/i18n";
+import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { RootCause } from "@/lib/confidence";
 
 /**
  * The meeting sidebar's "Captions" tab — the same transcript history as the
@@ -34,6 +36,11 @@ export function TranslationHistoryTab({
   const entries: TranscriptFeedEntry[] = transcript.map((segment) => {
     const resolved = resolveTranslatedText(segment, uiLang);
     const isOriginal = segment.language === uiLang;
+    // Confidence Score (issue #130) only applies to translated lines — the same
+    // lookup CaptionOverlay/learn/page.tsx/facilitator/page.tsx already use against
+    // this identical `transcript` prop shape; this tab was simply never wired up to
+    // it, so the badge never appeared in the meeting sidebar's Captions tab.
+    const translation = segment.translations.find((item) => item.targetLanguage === uiLang);
     return {
       id: segment.id,
       time: timeFormatter.format(new Date(segment.startedAt)),
@@ -45,6 +52,15 @@ export function TranslationHistoryTab({
       primaryIsFallback: !resolved.hasTranslation,
       secondaryText: !isOriginal ? segment.originalText : undefined,
       secondaryLang: !isOriginal ? segment.language : undefined,
+      confidenceBadge:
+        !isOriginal && translation?.confidence != null && translation.confidenceLevel ? (
+          <ConfidenceBadge
+            score={translation.confidence}
+            level={translation.confidenceLevel as "high" | "medium" | "low"}
+            rootCause={translation.rootCause as RootCause | null}
+            uiLang={uiLang}
+          />
+        ) : undefined,
     };
   });
 

@@ -11,6 +11,7 @@ import {
   learnerInviteCookieName,
 } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { translateText } from "@/lib/providers/translation";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
@@ -71,6 +72,38 @@ export async function createSession(formData: FormData) {
   // that's simply never revoked or reclaimed.
   const linkExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+  // Populated once here, at creation — mirrors sendChatMessage's per-language fan-out
+  // (sessions/actions.ts) for the exact same reason: a session's title/goal are set
+  // once and read many times (unlike a transcript segment's live per-utterance
+  // translation), so every learner-facing render site can just look this up by their
+  // own preferredLanguage instead of re-translating on every read. Run outside the
+  // `$transaction` below — these are outbound network calls (Claude/local-inference),
+  // not DB writes, and shouldn't hold a DB transaction open for their duration.
+  const allowCloudFallback = translationMode !== TranslationMode.LOCAL_ONLY;
+  const sessionTranslations = (
+    await Promise.all(
+      SUPPORTED_LANGUAGES.map(async ({ value: targetLanguage }) => {
+        const [titleResult, goalResult] = await Promise.all([
+          translateText(title, sourceLanguage, targetLanguage, { allowCloudFallback }),
+          translateText(goal, sourceLanguage, targetLanguage, { allowCloudFallback }),
+        ]);
+        // translateText returns null both for the source language itself (nothing to
+        // translate — no row needed, the facilitator's own views render the raw
+        // columns directly) and for a genuine failure/unconfigured tier. Either way,
+        // skip the row entirely rather than persisting a fabricated "translation"
+        // that's actually just the untranslated original — same convention as
+        // MessageTranslation.
+        if (!titleResult && !goalResult) return null;
+        return {
+          targetLanguage,
+          title: titleResult?.text ?? null,
+          goal: goalResult?.text ?? null,
+          provider: (titleResult ?? goalResult)!.provider,
+        };
+      }),
+    )
+  ).filter((translation): translation is NonNullable<typeof translation> => translation !== null);
+
   const session = await prisma.$transaction(async (transaction) => {
     const facilitator = await transaction.user.create({
       data: { displayName: facilitatorName, preferredLanguage: sourceLanguage },
@@ -110,6 +143,9 @@ export async function createSession(formData: FormData) {
               expiresAt: linkExpiresAt,
             },
           ],
+        },
+        translations: {
+          create: sessionTranslations,
         },
       },
     });

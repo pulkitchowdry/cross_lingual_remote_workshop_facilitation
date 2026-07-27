@@ -7,6 +7,7 @@ import { hashToken } from "@/lib/session-security";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { detectBrowserLanguage, getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { resolveTranslatedText } from "@/lib/translation-view";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { JoinSubmitButton } from "@/components/JoinSubmitButton";
@@ -25,7 +26,7 @@ export default async function JoinPage({
   const { lang: langParam } = await searchParams;
   const invite = await prisma.joinLink.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { session: true },
+    include: { session: { include: { translations: true } } },
   });
 
   if (
@@ -83,6 +84,22 @@ export default async function JoinPage({
   const browserDefault = langParam ? undefined : detectBrowserLanguage((await headers()).get("accept-language"), sourceLanguageDefault);
   const lang = resolveLanguage(langParam, browserDefault ?? sourceLanguageDefault);
   const dict = getDictionary(lang);
+  // The session title is facilitator-authored, in session.sourceLanguage — translated
+  // once at createSession() time into every SUPPORTED_LANGUAGES entry (see
+  // SessionTranslation/setup/actions.ts), same lookup-by-viewer-language pattern as
+  // TranscriptSegment/Translation. Falls back to "Translation unavailable" (not the
+  // untranslated original) when no row exists for `lang`, matching every other
+  // per-viewer-translated surface in this app (captions, chat).
+  const resolvedTitle = resolveTranslatedText(
+    {
+      language: invite.session.sourceLanguage,
+      originalText: invite.session.title,
+      translations: invite.session.translations
+        .filter((translation) => translation.title != null)
+        .map((translation) => ({ targetLanguage: translation.targetLanguage, text: translation.title! })),
+    },
+    lang,
+  );
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
@@ -106,7 +123,9 @@ export default async function JoinPage({
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {dict.join.invitedTo}
         </p>
-        <h1 className="font-heading text-2xl font-semibold">{invite.session.title}</h1>
+        <h1 className="font-heading text-2xl font-semibold" lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}>
+          {resolvedTitle.hasTranslation ? resolvedTitle.text : dict.common.translationUnavailable}
+        </h1>
         <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
       </div>
       <form action={joinSession} className="flex flex-col gap-4">
