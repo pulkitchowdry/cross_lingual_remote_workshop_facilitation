@@ -68,6 +68,18 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   // segment.
   const attemptTokenRef = useRef(0);
 
+  const playBlockedSegment = () => {
+    const audio = audioRef.current;
+    // A direct call inside a real click handler — unlike the original attempt inside
+    // playNext's own promise chain, this one runs synchronously within a genuine user
+    // gesture, so the browser's autoplay policy allows it. `audio.src` is still set to
+    // the blocked segment from the failed attempt; no need to re-fetch it.
+    void audio?.play().catch(() => {
+      // Still blocked somehow (shouldn't happen from within a real click, but stay
+      // defensive) — leave errorKind as "blocked" so the retry button stays visible.
+    });
+  };
+
   const playNext = () => {
     const audio = audioRef.current;
     const next = queueRef.current.shift();
@@ -92,9 +104,14 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       if (token !== attemptTokenRef.current) return;
       if (playError instanceof DOMException && playError.name === "NotAllowedError") {
         setErrorKind("blocked");
-        playingRef.current = false;
-        currentRef.current = null;
-        playNext();
+        // Deliberately NOT advancing the queue here (unlike every other failure path in
+        // this file) — an autoplay block applies to every subsequent attempt just as
+        // much as this one, so calling playNext() would silently burn through the
+        // entire queue one blocked segment at a time until the listener happened to
+        // interact with the page for an unrelated reason. `currentRef`/`playingRef`
+        // stay as they are (audio.src is still this segment's URL) so `playBlockedSegment`
+        // can retry the exact same element from within a real click, and `onEnded`/
+        // `onPlaying` below resume normal queue processing once it actually plays.
       }
     });
   };
@@ -189,6 +206,15 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
             {error}
           </p>
+        )}
+        {errorKind === "blocked" && (
+          <button
+            type="button"
+            onClick={playBlockedSegment}
+            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground"
+          >
+            {dict.playBlockedAudio}
+          </button>
         )}
       </div>
       <p className="text-xs text-muted-foreground">{dict.typedCaptionsAlwaysAudible}</p>

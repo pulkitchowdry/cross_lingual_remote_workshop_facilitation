@@ -1,5 +1,5 @@
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { safeRevalidatePath } from "@/lib/safe-revalidate";
 import { insightProvider, validateInsightDraft, type InsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -136,7 +136,7 @@ export async function generateSessionInsights(session: Session): Promise<void> {
           });
         }
 
-        revalidatePath(`/sessions/${session.id}/facilitator`);
+        safeRevalidatePath(`/sessions/${session.id}/facilitator`);
       },
       // The Claude call inside this transaction can take a few seconds; Prisma's default
       // 5s transaction timeout is tuned for pure-DB work and would abort a slow-but-healthy
@@ -280,8 +280,8 @@ export async function generateAndPersistSessionSummary(session: Session): Promis
     if (!summary) return;
 
     await prisma.session.update({ where: { id: session.id }, data: { summary } });
-    revalidatePath(`/sessions/${session.id}/facilitator`);
-    revalidatePath(`/sessions/${session.id}/learn`);
+    safeRevalidatePath(`/sessions/${session.id}/facilitator`);
+    safeRevalidatePath(`/sessions/${session.id}/learn`);
   } catch (error) {
     console.error("generateAndPersistSessionSummary failed", error);
   }

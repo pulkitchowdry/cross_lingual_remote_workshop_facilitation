@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocalParticipant } from "@livekit/components-react";
 import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -8,11 +9,20 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 const CHUNK_INTERVAL_MS = 250;
 
 /**
- * Streams facilitator mic audio to `/api/captions/stream` over a WebSocket —
- * true streaming STT (Deepgram's live API), replacing the earlier
- * chunked-REST approach. Short `MediaRecorder` timeslices keep frames small
- * enough for near-real-time transcription; the server persists and
- * DataChannel-pushes each final transcript as it arrives.
+ * Streams mic audio to `/api/captions/stream` over a WebSocket — true
+ * streaming STT (Deepgram's live API, or local-inference's chunked
+ * equivalent), for facilitator or learner alike. Short `MediaRecorder`
+ * timeslices keep frames small enough for near-real-time transcription; the
+ * server persists and DataChannel-pushes each final transcript as it
+ * arrives.
+ *
+ * Tied directly to the participant's own LiveKit mic toggle (`useLocalParticipant`'s
+ * `isMicrophoneEnabled`) rather than a separate "Start captions" button — unmuting to
+ * speak is already the one action every participant takes to be heard at all, so
+ * requiring a second, independent click here (previously this component's only
+ * trigger) was pure friction with no benefit. Renders a status indicator only, not a
+ * button; the only remaining manual control is a "Retry" affordance if the socket
+ * itself fails while the mic is still on.
  */
 export function LiveCaptionStream({
   sessionId,
@@ -23,15 +33,16 @@ export function LiveCaptionStream({
   lang: SupportedLanguage;
   /**
    * True when the server-side caption agent (`caption-agent.ts`) is already
-   * streaming this facilitator's mic track — it auto-subscribes as soon as
+   * streaming this participant's mic track — it auto-subscribes as soon as
    * the ControlBar mic is unmuted. Starting this WebSocket path on top of
    * that would open a second, independent STT pipeline for the same audio,
-   * duplicating every caption line (issue #95). When true, replace the
-   * "Start" button with a status notice instead of letting it be clicked.
+   * duplicating every caption line (issue #95). When true, this never
+   * auto-starts and instead shows a status notice.
    */
   agentCapturing?: boolean;
 }) {
   const dict = getDictionary(lang).captions;
+  const { isMicrophoneEnabled } = useLocalParticipant();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +50,12 @@ export function LiveCaptionStream({
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const stoppedByUserRef = useRef(false);
+  // Mirrors `isStreaming`/`isConnecting` for the auto-start effect below to read
+  // synchronously — that effect only re-runs when `isMicrophoneEnabled`/`agentCapturing`
+  // change, not on every streaming-state update, so it needs a way to check "is a
+  // connection already in flight or established" without depending on (and re-firing
+  // for) those state values themselves.
+  const activeRef = useRef(false);
   /** Whether the current socket ever reached `OPEN` — see caption-socket-client.ts's "opaque" case. */
   const hasOpenedRef = useRef(false);
   // The full, untruncated error text from a server `{ type: "error", message }` data
@@ -50,6 +67,7 @@ export function LiveCaptionStream({
   const lastServerMessageRef = useRef<string | null>(null);
 
   const stop = useCallback(() => {
+    activeRef.current = false;
     stoppedByUserRef.current = true;
     hasOpenedRef.current = false;
     recorderRef.current?.stop();
@@ -64,8 +82,9 @@ export function LiveCaptionStream({
   useEffect(() => stop, [stop]);
 
   // The agent can start capturing (mic unmuted in ControlBar) after this WS path was
-  // already streaming — e.g. the facilitator clicked "Start" before turning their mic
-  // on. Without this, both pipelines would keep running and duplicating captions.
+  // already streaming — e.g. the mic was unmuted moments before the agent's own
+  // subscription caught up. Without this, both pipelines would keep running and
+  // duplicating captions.
   useEffect(() => {
     // `stop()` tears down the socket/recorder/mic stream (external systems), not just
     // local state — a legitimate effect, not state that could be computed during render.
@@ -74,6 +93,7 @@ export function LiveCaptionStream({
   }, [agentCapturing, isStreaming, stop]);
 
   const start = useCallback(async () => {
+    activeRef.current = true;
     setError(null);
     stoppedByUserRef.current = false;
     hasOpenedRef.current = false;
@@ -175,6 +195,20 @@ export function LiveCaptionStream({
     }
   }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
+  // The single trigger for this whole component: unmuting is already the one action
+  // every participant takes to be heard at all, so tying capture to it directly means
+  // there's nothing separate to click or forget. Skipped entirely while the server-side
+  // agent already covers this identity (`agentCapturing`) to avoid duplicating captions.
+  useEffect(() => {
+    if (agentCapturing) return;
+    if (isMicrophoneEnabled) {
+      if (!activeRef.current) void start();
+    } else if (activeRef.current) {
+      stop();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMicrophoneEnabled, agentCapturing]);
+
   if (agentCapturing) {
     return (
       <div className="flex items-center gap-2">
@@ -189,22 +223,37 @@ export function LiveCaptionStream({
     );
   }
 
+  if (!isMicrophoneEnabled) return null;
+
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => (isStreaming ? stop() : void start())}
-        disabled={isConnecting}
-        className="font-data shrink-0 rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
-        style={isStreaming ? { color: "var(--tick-high)", borderColor: "var(--tick-high)" } : undefined}
-        aria-pressed={isStreaming}
-      >
-        {isStreaming ? dict.stop : dict.start}
-      </button>
+      {isStreaming && (
+        <span
+          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
+          role="status"
+        >
+          {dict.streaming}
+        </span>
+      )}
       {error && (
-        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
-          {error}
-        </p>
+        <>
+          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+            {error}
+          </p>
+          {/* Mic is still on (the `!isMicrophoneEnabled` early return above already
+              covers the "mic off" case) but the socket itself failed — offer a manual
+              retry rather than silently staying disconnected until the mic is
+              toggled off and back on again. */}
+          <button
+            type="button"
+            onClick={() => void start()}
+            disabled={isConnecting}
+            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
+          >
+            {dict.retry}
+          </button>
+        </>
       )}
     </div>
   );

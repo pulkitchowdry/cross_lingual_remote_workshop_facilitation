@@ -209,6 +209,7 @@ export interface Dictionary {
     playTranslatedAudio: string;
     typedCaptionsAlwaysAudible: string;
     audioBlocked: string;
+    playBlockedAudio: string;
     audioSkipped: string;
     captionComposerLabel: string;
     captionComposerPlaceholder: string;
@@ -260,9 +261,9 @@ export interface Dictionary {
     sending: string;
   };
   captions: {
-    start: string;
-    stop: string;
     agentCapturing: string;
+    streaming: string;
+    retry: string;
     connectionFailed: string;
     connectionBlocked: string;
     sttError: string;
@@ -582,6 +583,7 @@ const en: Dictionary = {
     playTranslatedAudio: "Also play audio for captions in my own language",
     typedCaptionsAlwaysAudible: "Captions in a different language, and the facilitator's typed captions, are always read aloud, even if this is off.",
     audioBlocked: "Translated audio playback was blocked by the browser.",
+    playBlockedAudio: "Play translated audio",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
     captionComposerLabel: "Type a caption for everyone",
     captionComposerPlaceholder: "Type something to be read aloud to everyone…",
@@ -621,13 +623,11 @@ const en: Dictionary = {
     sending: "Sending…",
   },
   captions: {
-    start: "Start live captions from mic",
-    stop: "Stop live captions",
     agentCapturing: "Live captions are already running from your mic",
-    connectionFailed:
-      "Live captions disconnected. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
-    connectionBlocked:
-      "Live captions couldn't connect. Unmute your mic in the video room instead — captions start automatically. Or use the typed caption box above.",
+    streaming: "Live captions active from your mic",
+    retry: "Retry",
+    connectionFailed: "Live captions disconnected. Try again, or use the typed caption box above.",
+    connectionBlocked: "Live captions couldn't connect. Try again, or use the typed caption box above.",
     sttError: "Speech-to-text error.",
     micRecordingFailed: "Microphone recording failed.",
     micDenied: "Microphone access was denied or unavailable.",
@@ -930,6 +930,7 @@ const zh: Dictionary = {
     playTranslatedAudio: "同一语言的字幕也播放语音",
     typedCaptionsAlwaysAudible: "不同语言的字幕以及主持人输入的字幕，始终会朗读，即使此项关闭。",
     audioBlocked: "浏览器阻止了翻译语音的播放。",
+    playBlockedAudio: "播放翻译语音",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
     captionComposerLabel: "为所有人输入字幕",
     captionComposerPlaceholder: "输入内容，将朗读给所有人听……",
@@ -969,13 +970,11 @@ const zh: Dictionary = {
     sending: "发送中……",
   },
   captions: {
-    start: "从麦克风开始实时字幕",
-    stop: "停止实时字幕",
     agentCapturing: "已在通过你的麦克风自动生成实时字幕",
-    connectionFailed:
-      "实时字幕连接已断开。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
-    connectionBlocked:
-      "实时字幕未能连接。可在通话中开启麦克风代替——字幕会自动开始。也可使用上方的手动字幕框。",
+    streaming: "正在通过你的麦克风生成实时字幕",
+    retry: "重试",
+    connectionFailed: "实时字幕连接已断开。请重试，或使用上方的手动字幕框。",
+    connectionBlocked: "实时字幕未能连接。请重试，或使用上方的手动字幕框。",
     sttError: "语音转文字出错。",
     micRecordingFailed: "麦克风录音失败。",
     micDenied: "麦克风访问被拒绝或不可用。",
@@ -1278,6 +1277,7 @@ const es: Dictionary = {
     playTranslatedAudio: "También reproducir audio para subtítulos en mi propio idioma",
     typedCaptionsAlwaysAudible: "Los subtítulos en otro idioma, así como los subtítulos escritos por el facilitador, siempre se leen en voz alta, aunque esto esté desactivado.",
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
+    playBlockedAudio: "Reproducir audio traducido",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
     captionComposerLabel: "Escribe un subtítulo para todos",
     captionComposerPlaceholder: "Escribe algo para que se lea en voz alta a todos…",
@@ -1317,13 +1317,11 @@ const es: Dictionary = {
     sending: "Enviando…",
   },
   captions: {
-    start: "Iniciar subtítulos en vivo desde el micrófono",
-    stop: "Detener subtítulos en vivo",
     agentCapturing: "Los subtítulos en vivo ya se están generando desde tu micrófono",
-    connectionFailed:
-      "Se perdió la conexión de subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
-    connectionBlocked:
-      "No se pudieron conectar los subtítulos en vivo. Activa el micrófono en la sala de video — los subtítulos comenzarán solos. O usa el cuadro de subtítulos manual de arriba.",
+    streaming: "Subtítulos en vivo activos desde tu micrófono",
+    retry: "Reintentar",
+    connectionFailed: "Se perdió la conexión de subtítulos en vivo. Vuelve a intentarlo, o usa el cuadro de subtítulos manual de arriba.",
+    connectionBlocked: "No se pudieron conectar los subtítulos en vivo. Vuelve a intentarlo, o usa el cuadro de subtítulos manual de arriba.",
     sttError: "Error de conversión de voz a texto.",
     micRecordingFailed: "Falló la grabación del micrófono.",
     micDenied: "El acceso al micrófono fue denegado o no está disponible.",
