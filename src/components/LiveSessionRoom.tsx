@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LiveKitRoom, RoomAudioRenderer, useDataChannel, useLocalParticipant } from "@livekit/components-react";
+import { LiveKitRoom, useDataChannel, useLocalParticipant } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
+import { DuckedRoomAudio } from "@/components/meeting/DuckedRoomAudio";
+import { SyncParticipantLanguageAttribute } from "@/components/SyncParticipantLanguageAttribute";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
 import { getDictionary } from "@/lib/i18n";
@@ -94,6 +96,7 @@ export function LiveSessionRoom({
   canMessageFacilitatorPrivately,
   privateRecipientOptions,
   currentLanguage,
+  facilitatorSourceLanguage,
   onChangeLanguage,
   languageOptions,
   captionsHeader,
@@ -115,6 +118,12 @@ export function LiveSessionRoom({
   canMessageFacilitatorPrivately?: boolean;
   privateRecipientOptions?: PrivateRecipientOption[];
   currentLanguage: SupportedLanguage;
+  /** The session's own spoken/source language — the facilitator's language regardless
+   * of who's viewing. Used only as `useSpeakerLanguages`' defensive fallback for the
+   * facilitator identity during the narrow staleness window right after a facilitator
+   * language change (see `SyncParticipantLanguageAttribute`'s doc comment); every other
+   * participant's language comes from their own live LiveKit attribute. */
+  facilitatorSourceLanguage: SupportedLanguage;
   onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   /** Above the captions feed — the "play translated audio" opt-in control. */
@@ -479,7 +488,8 @@ export function LiveSessionRoom({
           analyticsView={analyticsView}
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
-        <RoomAudioRenderer />
+        <SyncParticipantLanguageAttribute lang={currentLanguage} />
+        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>

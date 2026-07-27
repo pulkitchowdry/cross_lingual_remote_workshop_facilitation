@@ -102,8 +102,6 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
       STT_API_KEY: ${STT_API_KEY:-}
-      DEEPL_API_KEY: ${DEEPL_API_KEY:-}
-      DEEPL_API_URL: ${DEEPL_API_URL:-}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
       CLAUDE_API_URL: ${CLAUDE_API_URL:-https://api.anthropic.com/v1/messages}
       INSIGHT_MODEL_API_KEY: ${INSIGHT_MODEL_API_KEY:-}

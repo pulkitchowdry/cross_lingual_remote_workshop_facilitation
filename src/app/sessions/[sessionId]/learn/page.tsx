@@ -312,6 +312,7 @@ export default async function LearnerSessionPage({
                       segment.language === participant.preferredLanguage ||
                       segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
                     isTyped: segment.isTyped,
+                    language: segment.language,
                   }))}
                   preferredLanguage={participant.preferredLanguage}
                 />

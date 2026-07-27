@@ -96,6 +96,7 @@ export default async function LearnerRoomPage({
           segment.language === participant.preferredLanguage ||
           segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
         isTyped: segment.isTyped,
+        language: segment.language,
       }))}
       preferredLanguage={participant.preferredLanguage}
     />
@@ -119,6 +120,7 @@ export default async function LearnerRoomPage({
           viewerUserId={participant.userId}
           canMessageFacilitatorPrivately
           currentLanguage={lang}
+          facilitatorSourceLanguage={resolveLanguage(participant.session.sourceLanguage)}
           onChangeLanguage={changeLanguageAction}
           languageOptions={learnerLanguageOptions}
           captionsHeader={captionsHeader}

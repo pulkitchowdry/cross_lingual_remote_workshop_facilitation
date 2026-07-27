@@ -7,27 +7,36 @@ interface CaptionForPlayback {
   id: string;
   hasTranslation: boolean;
   isTyped: boolean;
+  /** The speaker's own language for this segment — compared against `preferredLanguage`
+   * to decide whether this listener should hear a dub automatically (see the doc
+   * comment below). */
+  language: string;
 }
 
-// isTyped travels with each queue entry (not just a bare id) so the
-// disable-opt-in effect below can tell which queued/playing segments are
-// facilitator/learner-typed captions (must always play, per the doc comment
-// below) apart from ones queued only because the opt-in was on.
+// alwaysPlay travels with each queue entry (not just a bare id) so the
+// disable-opt-in effect below can tell which queued/playing segments must play
+// regardless of the opt-in (typed captions, and any cross-language segment —
+// see the doc comment below) apart from ones queued only because the opt-in
+// was on (a same-language segment the listener chose to hear dubbed anyway).
 interface QueueEntry {
   id: string;
-  isTyped: boolean;
+  alwaysPlay: boolean;
 }
 
 /**
  * Translated-audio playback for the learner's caption feed — Part 3 of
- * `docs/TRANSLATION_ARCHITECTURE.md`. Spoken captions stay opt-in: nothing is
- * synthesized or played until the learner explicitly enables it, per the
- * doc's privacy decision. Facilitator-typed captions are the exception —
- * they stand in for the facilitator's voice (typed because they can't speak,
- * not as a translation nicety), so those always play regardless of the
- * opt-in. Fetches `/api/captions/[segmentId]/audio` on demand for each new
- * segment and queues playback so overlapping captions don't talk over each
- * other.
+ * `docs/TRANSLATION_ARCHITECTURE.md`. A spoken caption in a *different*
+ * language than this listener's own auto-plays its dub by default — the
+ * raw speaker audio is ducked for them locally (see `DuckedRoomAudio`), so
+ * without this they'd hear nothing at all for that speaker. Facilitator- and
+ * learner-typed captions are a second, independent always-play case — they
+ * stand in for a speaker's voice when they can't/didn't speak, not a
+ * translation nicety. `enabled` is now only an opt-*in* for the narrow
+ * remaining case of a same-language segment (the listener wants to hear a
+ * dub even though they'd understand the original fine) — everything that
+ * needs a dub to be heard at all already plays without it. Fetches
+ * `/api/captions/[segmentId]/audio` on demand for each new segment and
+ * queues playback so overlapping captions don't talk over each other.
  */
 type PlaybackErrorKind = "blocked" | "skipped";
 
@@ -49,7 +58,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   // The entry currently loaded into <audio> (playing, or about to play once
   // its play() promise resolves) — null when nothing is in flight. Used by
   // the disable-opt-in effect to decide whether the in-flight item must
-  // survive (isTyped) or gets cut off.
+  // survive (alwaysPlay) or gets cut off.
   const currentRef = useRef<QueueEntry | null>(null);
   // Bumped on every playNext() call. A failed load rejects the pending
   // play() promise AND fires <audio onError> for that same attempt — both
@@ -119,33 +128,36 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       hasMountedRef.current = true;
       return;
     }
-    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || enabled);
+    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || segment.language !== preferredLanguage || enabled);
     if (toQueue.length === 0) return;
 
-    queueRef.current.push(...toQueue.map((segment) => ({ id: segment.id, isTyped: segment.isTyped })));
+    queueRef.current.push(
+      ...toQueue.map((segment) => ({ id: segment.id, alwaysPlay: segment.isTyped || segment.language !== preferredLanguage })),
+    );
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments, enabled]);
+  }, [segments, enabled, preferredLanguage]);
 
   useEffect(() => {
     // Unchecking the box must actually silence playback that exists *because
     // of* the opt-in, not just stop queueing new segments — without this,
     // whatever was already playing (or queued right behind it) kept right on
-    // talking after the learner turned the control off. But typed captions
-    // stand in for the facilitator's voice and always play regardless of the
-    // opt-in (see the doc comment above), so only cut off entries that are
-    // NOT isTyped — a typed segment already playing or queued keeps going.
+    // talking after the learner turned the control off. But typed captions and
+    // cross-language segments always play regardless of the opt-in (see the
+    // doc comment above), so only cut off entries that are NOT `alwaysPlay` —
+    // one of those already playing or queued keeps going.
     if (enabled) return;
     const current = currentRef.current;
-    if (current && !current.isTyped) {
+    if (current && !current.alwaysPlay) {
       audioRef.current?.pause();
       playingRef.current = false;
       currentRef.current = null;
     }
-    queueRef.current = queueRef.current.filter((entry) => entry.isTyped);
-    // If we just cut off a non-typed current item (or nothing was playing),
-    // resume immediately so any surviving typed entries aren't stranded in
-    // the queue until the next `segments` update happens to trigger playNext.
+    queueRef.current = queueRef.current.filter((entry) => entry.alwaysPlay);
+    // If we just cut off a non-always-play current item (or nothing was
+    // playing), resume immediately so any surviving always-play entries
+    // aren't stranded in the queue until the next `segments` update happens
+    // to trigger playNext.
     if (!playingRef.current && queueRef.current.length > 0) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);

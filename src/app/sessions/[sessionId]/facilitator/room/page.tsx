@@ -91,6 +91,7 @@ export default async function FacilitatorRoomPage({
           segment.language === session.sourceLanguage ||
           segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
         isTyped: segment.isTyped,
+        language: segment.language,
       }))}
       preferredLanguage={session.sourceLanguage}
     />
@@ -119,6 +120,7 @@ export default async function FacilitatorRoomPage({
           viewerUserId={session.facilitatorId}
           privateRecipientOptions={privateRecipientOptions}
           currentLanguage={lang}
+          facilitatorSourceLanguage={lang}
           onChangeLanguage={changeLanguageAction}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
