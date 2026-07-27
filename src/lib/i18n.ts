@@ -152,6 +152,16 @@ export interface Dictionary {
     qrAlt: string;
     sessionEndedHeading: string;
     sessionEndedSummary: string;
+    sessionResultsHeading: string;
+    sessionResultsSummary: string;
+    viewResults: string;
+    returnToDashboard: string;
+    resultsNotReadyHeading: string;
+    resultsNotReadySummary: string;
+    basicSessionInfo: string;
+    sessionStartedAt: string;
+    sessionEndedAt: string;
+    sessionGoal: string;
     /** The one-shot, end-of-session AI narrative (Session.summary — see insights.ts's
      * generateAndPersistSessionSummary) is plain text, not structured data — these three
      * cover its only three render states: not yet generated (still LIVE-adjacent),
@@ -522,6 +532,16 @@ const en: Dictionary = {
     qrAlt: "QR code for the learner invitation link",
     sessionEndedHeading: "Session transcript",
     sessionEndedSummary: "This session has ended. The video room is closed, but the full transcript and chat history below remain available until the session's retention period expires.",
+    sessionResultsHeading: "Session results",
+    sessionResultsSummary: "This session has ended. Review the final summary and analytics snapshot below.",
+    viewResults: "View results",
+    returnToDashboard: "Return to dashboard",
+    resultsNotReadyHeading: "Results are not ready yet",
+    resultsNotReadySummary: "End the session before viewing the post-session results.",
+    basicSessionInfo: "Session information",
+    sessionStartedAt: "Started",
+    sessionEndedAt: "Ended",
+    sessionGoal: "Goal",
     sessionSummaryHeading: "AI session summary",
     sessionSummaryPending: "Generating a summary of this session…",
     sessionSummaryUnavailable: "No AI summary is available for this session.",
@@ -860,6 +880,16 @@ const zh: Dictionary = {
     qrAlt: "学员邀请链接二维码",
     sessionEndedHeading: "场次转录记录",
     sessionEndedSummary: "此场次已结束。视频会议室已关闭，但以下完整转录和聊天记录会保留，直到该场次的保留期限到期为止。",
+    sessionResultsHeading: "场次结果",
+    sessionResultsSummary: "此场次已结束。请在下方查看最终摘要和数据分析快照。",
+    viewResults: "查看结果",
+    returnToDashboard: "返回控制台",
+    resultsNotReadyHeading: "结果尚未就绪",
+    resultsNotReadySummary: "请先结束场次，再查看场次后的结果。",
+    basicSessionInfo: "场次信息",
+    sessionStartedAt: "开始时间",
+    sessionEndedAt: "结束时间",
+    sessionGoal: "目标",
     sessionSummaryHeading: "AI 场次摘要",
     sessionSummaryPending: "正在生成此场次的摘要……",
     sessionSummaryUnavailable: "此场次暂无 AI 摘要。",
@@ -1198,6 +1228,16 @@ const es: Dictionary = {
     qrAlt: "Código QR del enlace de invitación para alumnos",
     sessionEndedHeading: "Transcripción de la sesión",
     sessionEndedSummary: "Esta sesión ha finalizado. La sala de video está cerrada, pero la transcripción completa y el historial de chat siguen disponibles a continuación hasta que expire el período de retención de la sesión.",
+    sessionResultsHeading: "Resultados de la sesión",
+    sessionResultsSummary: "Esta sesión ha finalizado. Revisa el resumen final y la instantánea de analítica a continuación.",
+    viewResults: "Ver resultados",
+    returnToDashboard: "Volver al panel",
+    resultsNotReadyHeading: "Los resultados aún no están listos",
+    resultsNotReadySummary: "Finaliza la sesión antes de ver los resultados posteriores.",
+    basicSessionInfo: "Información de la sesión",
+    sessionStartedAt: "Inicio",
+    sessionEndedAt: "Finalización",
+    sessionGoal: "Objetivo",
     sessionSummaryHeading: "Resumen de la sesión (IA)",
     sessionSummaryPending: "Generando un resumen de esta sesión…",
     sessionSummaryUnavailable: "No hay ningún resumen de IA disponible para esta sesión.",

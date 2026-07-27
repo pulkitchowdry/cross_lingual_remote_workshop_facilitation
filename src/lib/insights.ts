@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { insightProvider, validateInsightDraft, type InsightDraft } from "@/lib/providers/insight";
 import type { Session } from "@/generated/prisma/client";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { publicSessionMessageWhere } from "@/lib/message-visibility";
 
 const CONTEXT_WINDOW = 20;
 /**
@@ -257,7 +258,7 @@ export async function generateAndPersistSessionSummary(session: Session): Promis
         select: { originalText: true },
       }),
       prisma.message.findMany({
-        where: { sessionId: session.id },
+        where: publicSessionMessageWhere(session.id),
         select: { kind: true, originalText: true },
       }),
       prisma.sessionParticipant.count({ where: { sessionId: session.id, role: "LEARNER" } }),
@@ -285,4 +286,3 @@ export async function generateAndPersistSessionSummary(session: Session): Promis
     console.error("generateAndPersistSessionSummary failed", error);
   }
 }
-
