@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Market Scan — Three Problems, One Gap</title>
+<style>
+  :root{
+    /* Matches the app's default "Slate Night" theme (src/app/globals.css) */
+    --background: #0d1117;
+    --foreground: #e6e9ef;
+    --surface-raised: #171d27;
+    --border-subtle: rgba(255,255,255,0.10);
+    --border-strong: rgba(255,255,255,0.22);
+    --muted-foreground: #8b93a3;
+    --tech: #4f7fd1;   /* --accent */
+    --sem: #c47cb8;    /* --speaker-3 */
+    --eff: #4fbf8f;    /* --tick-high */
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body{
+    background: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .mono{ font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; }
+
+  section.slide{
+    width: 1280px; height: 720px; max-width: 100%;
+    background: var(--background);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 36px 56px 24px;
+    display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+
+  .kicker{
+    font-size: 13px; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--eff); font-weight: 700; margin-bottom: 8px;
+  }
+  h1{
+    font-size: 28px; line-height: 1.18; margin: 0 0 6px 0; font-weight: 800;
+    letter-spacing: -0.4px; text-wrap: balance; max-width: 1080px;
+  }
+  p.caption{
+    font-size: 14.5px; line-height: 1.4; color: var(--muted-foreground);
+    max-width: 980px; margin: 0 0 4px 0; font-weight: 500;
+  }
+
+  .venn-wrap{
+    flex: 1; position: relative; min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .venn{
+    position: relative;
+    width: 100%; max-width: 860px;
+    aspect-ratio: 860 / 680;
+  }
+  .venn svg{ position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .ttl{
+    position: absolute; transform: translate(-50%, -50%);
+    text-align: center; width: 240px; pointer-events: none;
+  }
+  .ttl .name{
+    font-size: 15px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .ttl .def{ font-size: 11px; color: var(--muted-foreground); margin-top: 3px; line-height: 1.35; font-weight: 500; }
+  .ttl.tech .name{ color: var(--tech); }
+  .ttl.sem .name{ color: var(--sem); }
+  .ttl.eff .name{ color: var(--eff); }
+
+  .zone{
+    position: absolute; transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; gap: 4px; align-items: center;
+  }
+  .zone.grid{
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px;
+  }
+  .co{
+    font-size: 10.5px; font-weight: 700; text-align: center;
+    background: var(--surface-raised); border: 1px solid var(--border-subtle);
+    border-radius: 5px; padding: 4px 8px; line-height: 1.25; width: 100%;
+    white-space: nowrap;
+  }
+  .co .sub{ display:block; font-size: 8.5px; font-weight: 500; color: var(--muted-foreground); white-space: normal; }
+  .co.dashed{ border-width: 1.5px; border-style: dashed; border-color: var(--border-strong); }
+
+  .legend{
+    position: absolute; right: 6px; bottom: 2px;
+    display: flex; gap: 14px; align-items: center;
+    background: var(--surface-raised); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 6px 12px;
+    font-size: 10px; color: var(--muted-foreground); font-weight: 600;
+  }
+  .legend .swatch{ display: inline-flex; align-items: center; gap: 6px; }
+  .legend .ln{ width: 18px; height: 0; border-top: 2px solid var(--muted-foreground); display:inline-block; }
+  .legend .ln.dashed{ border-top-style: dashed; }
+
+  .footer-bar{
+    position: absolute; bottom: 10px; left: 56px;
+    font-size: 11px; color: var(--muted-foreground);
+  }
+</style>
+</head>
+<body>
+
+<section class="slide">
+  <div class="kicker mono">Market scan &middot; Weaver&rsquo;s three levels of communication problems</div>
+  <h1>Every vendor solves one or two of these. Nobody ships all three.</h1>
+  <p class="caption">Technical (accurate transmission), semantic (shared meaning across languages), and effectiveness (did the facilitator learn what actually happened) &mdash; mapped against every tool our market scan found.</p>
+
+  <div class="venn-wrap">
+    <div class="venn">
+      <svg viewBox="0 0 860 680" aria-hidden="true">
+        <circle cx="430" cy="220" r="165" fill="none" stroke="var(--tech)" stroke-width="2.5"/>
+        <circle cx="320" cy="410" r="165" fill="none" stroke="var(--sem)" stroke-width="2.5"/>
+        <circle cx="575" cy="420" r="205" fill="none" stroke="var(--eff)" stroke-width="2.5"/>
+      </svg>
+
+      <!-- Technical only: title + the 4 general video tools -->
+      <div class="ttl tech" style="left:49%; top:13%;">
+        <div class="name">Technical</div>
+        <div class="def">transmit the signal accurately</div>
+      </div>
+      <div class="zone grid" style="left:49%; top:32%; width:290px;">
+        <div class="co">Microsoft Teams</div>
+        <div class="co">Google Meet</div>
+        <div class="co">Whereby</div>
+        <div class="co">GoToMeeting</div>
+      </div>
+
+      <!-- Semantic only: title (no vendor solves semantic alone) -->
+      <div class="ttl sem" style="left:31.5%; top:56%;">
+        <div class="name">Semantic</div>
+        <div class="def">convey the intended meaning across languages</div>
+      </div>
+
+      <!-- Effectiveness only: title (no vendor solves effectiveness alone) -->
+      <div class="ttl eff" style="left:72%; top:58%;">
+        <div class="name">Effectiveness</div>
+        <div class="def">confirm it changed understanding</div>
+      </div>
+
+      <!-- Technical + Semantic -->
+      <div class="zone" style="left:40%; top:44%; width:150px;">
+        <div class="co">Zoom<span class="sub">AI Companion, paid tier</span></div>
+        <div class="co">Wordly</div>
+        <div class="co">KUDO AI</div>
+        <div class="co">Interprefy</div>
+        <div class="co">DeepL Voice</div>
+        <div class="co">Palabra.ai</div>
+        <div class="co">JotMe</div>
+        <div class="co">Meta Seamless</div>
+      </div>
+
+      <!-- Technical + Effectiveness -->
+      <div class="zone" style="left:60%; top:42%; width:150px;">
+        <div class="co">Fireflies.ai</div>
+        <div class="co">Fellow</div>
+        <div class="co">Read.ai</div>
+        <div class="co">MS latecomer patent</div>
+      </div>
+
+      <!-- Semantic + Effectiveness: empty, left blank -->
+
+      <!-- Center: all three -->
+      <div class="zone" style="left:49.5%; top:50.5%; width:172px;">
+        <div class="co dashed">LINC<span class="sub">research, pulled back for revision</span></div>
+        <div class="co dashed">AWS Live Meeting Assistant<span class="sub">generic, not workshop-specific</span></div>
+      </div>
+
+      <div class="legend">
+        <span class="swatch"><span class="ln"></span> Shipping product</span>
+        <span class="swatch"><span class="ln dashed"></span> Research / generic</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-bar mono">Cross-Lingual Remote Workshop Facilitation</div>
+</section>
+
+</body>
+</html>

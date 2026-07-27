@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import type { FacilitatorAnalytics } from "@/lib/facilitator-analytics";
-import type { FacilitatorAnalyticsLabels } from "@/lib/facilitator-analytics-view";
+import type { FacilitatorAnalyticsLabels, ActiveActionItemView } from "@/lib/facilitator-analytics-view";
 
 interface AnalyticsPanelProps {
   analytics: FacilitatorAnalytics;
@@ -19,6 +19,16 @@ interface AnalyticsPanelProps {
   blockersSummary: string;
   languageRows: string[];
   confidenceSummary: string;
+  /** Unresolved BLOCKER/CONFUSION insights, each carrying a bound `resolveInsight`
+   * server action — always present on the view model, but only actually rendered
+   * when `showActiveActionItems` is set (see that prop's own doc comment). */
+  activeActionItems: ActiveActionItemView[];
+  /** The facilitator dashboard already has its own standalone "Act now" section
+   * outside this component, so it leaves this false to avoid showing the same
+   * blocker/confusion cards twice on one page. The live meeting room's Analytics tab
+   * (MeetingSidebar) has no equivalent section of its own — it sets this true so a
+   * facilitator can see and resolve them without leaving the call. */
+  showActiveActionItems?: boolean;
 }
 
 /**
@@ -37,6 +47,8 @@ export function AnalyticsPanelContent({
   blockersSummary,
   languageRows,
   confidenceSummary,
+  activeActionItems,
+  showActiveActionItems,
 }: AnalyticsPanelProps) {
   const isEmpty =
     analytics.confusionTrend.every((point) => point.count === 0) &&
@@ -49,6 +61,38 @@ export function AnalyticsPanelContent({
   return (
     <div className="flex flex-col gap-3">
       {isFrozen && <p className="text-muted-foreground text-xs">{labels.analyticsFrozenNotice}</p>}
+      {showActiveActionItems && activeActionItems.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h3 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {labels.analyticsActNowHeading}
+          </h3>
+          {activeActionItems.map((item) => {
+            const isConfusion = item.type === "CONFUSION";
+            return (
+              <Card
+                key={item.id}
+                eyebrow={isConfusion ? labels.confusionLabel : labels.blockerLabel}
+                accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
+              >
+                <p>{item.summary}</p>
+                {item.evidenceText && (
+                  <p
+                    className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
+                    lang={item.evidenceLang ?? undefined}
+                  >
+                    “{item.evidenceText}”
+                  </p>
+                )}
+                <form action={item.resolveAction} className="mt-2">
+                  <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                    {labels.resolveBlockerLabel}
+                  </button>
+                </form>
+              </Card>
+            );
+          })}
+        </div>
+      )}
       {isEmpty ? (
         <Card>
           <p className="text-muted-foreground">{labels.analyticsEmptyState}</p>

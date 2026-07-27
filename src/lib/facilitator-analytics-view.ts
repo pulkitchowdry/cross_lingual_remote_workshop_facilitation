@@ -6,11 +6,18 @@ import {
   computeConfusionTrend,
   computeParticipationFromGroups,
   computeBlockerStats,
+  computeActiveActionItems,
   computeLanguageStats,
   computeConfidenceStats,
   type FacilitatorAnalytics,
+  type ActiveActionItem,
 } from "@/lib/facilitator-analytics";
 import { facilitatorVisibleSessionMessageWhere } from "@/lib/message-visibility";
+import { resolveInsight } from "@/app/sessions/[sessionId]/facilitator/actions";
+
+export interface ActiveActionItemView extends ActiveActionItem {
+  resolveAction: () => Promise<void>;
+}
 
 export interface FacilitatorAnalyticsLabels {
   analyticsDrawerLabel: string;
@@ -24,6 +31,10 @@ export interface FacilitatorAnalyticsLabels {
   analyticsConfusionTrendSummary: string;
   analyticsEmptyState: string;
   analyticsFrozenNotice: string;
+  analyticsActNowHeading: string;
+  blockerLabel: string;
+  confusionLabel: string;
+  resolveBlockerLabel: string;
 }
 
 export interface FacilitatorAnalyticsView {
@@ -36,6 +47,13 @@ export interface FacilitatorAnalyticsView {
   blockersSummary: string;
   languageRows: string[];
   confidenceSummary: string;
+  /** Unresolved BLOCKER/CONFUSION insights ("Act now" queue), each with a bound
+   * `resolveInsight` server action — same data the facilitator dashboard's own
+   * standalone "Act now" section shows, so a facilitator inside the live meeting room
+   * (which never rendered this before) can see and resolve them without leaving the
+   * call. See AnalyticsPanelContent's `showActiveActionItems` for where this actually
+   * gets rendered vs. just carried on the view model. */
+  activeActionItems: ActiveActionItemView[];
 }
 
 /**
@@ -54,41 +72,53 @@ export async function buildFacilitatorAnalyticsView(
     status: SessionStatus;
     endedAt: Date | null;
     facilitatorId: string;
+    sourceLanguage: string;
     participants: { userId: string; user: { displayName: string } }[];
   },
   lang: SupportedLanguage,
 ): Promise<FacilitatorAnalyticsView> {
   const dict = getDictionary(lang).facilitator;
+  const commonDict = getDictionary(lang).common;
 
-  // Both unbounded (not sliced from a count-capped `include`, which could silently
+  // All unbounded (not sliced from a count-capped `include`, which could silently
   // drop an older-but-still-relevant row once enough newer ones of any type/sender
   // accumulated) — see the matching, more detailed comments in facilitator/page.tsx's
-  // own historical version of these same three queries.
-  const [allBlockerInsights, allMessagesForParticipation, allConfusionInsights, allTranslations] = await Promise.all([
-    prisma.insight.findMany({
-      where: { sessionId, type: "BLOCKER" },
-      select: { status: true, createdAt: true },
-    }),
-    prisma.message.groupBy({
-      by: ["senderId", "kind", "isAnonymous"],
-      // Facilitator-visible, not public-only: a learner who also checks "message
-      // facilitator privately" alongside "flag as question" produces a message with a
-      // non-null recipientId that publicSessionMessageWhere would silently drop from
-      // this facilitator-only participation view, even though the facilitator already
-      // sees it in their own chat panel. See facilitatorVisibleSessionMessageWhere's
-      // own doc comment.
-      where: facilitatorVisibleSessionMessageWhere(sessionId, session.facilitatorId),
-      _count: true,
-    }),
-    prisma.insight.findMany({
-      where: { sessionId, type: "CONFUSION" },
-      select: { createdAt: true },
-    }),
-    prisma.translation.findMany({
-      where: { transcriptSegment: { sessionId } },
-      select: { targetLanguage: true, confidence: true, confidenceLevel: true, rootCause: true },
-    }),
-  ]);
+  // own historical version of these same queries.
+  const [allBlockerInsights, allMessagesForParticipation, allConfusionInsights, allTranslations, activeActionItemInsights] =
+    await Promise.all([
+      prisma.insight.findMany({
+        where: { sessionId, type: "BLOCKER" },
+        select: { status: true, createdAt: true },
+      }),
+      prisma.message.groupBy({
+        by: ["senderId", "kind", "isAnonymous"],
+        // Facilitator-visible, not public-only: a learner who also checks "message
+        // facilitator privately" alongside "flag as question" produces a message with a
+        // non-null recipientId that publicSessionMessageWhere would silently drop from
+        // this facilitator-only participation view, even though the facilitator already
+        // sees it in their own chat panel. See facilitatorVisibleSessionMessageWhere's
+        // own doc comment.
+        where: facilitatorVisibleSessionMessageWhere(sessionId, session.facilitatorId),
+        _count: true,
+      }),
+      prisma.insight.findMany({
+        where: { sessionId, type: "CONFUSION" },
+        select: { createdAt: true },
+      }),
+      prisma.translation.findMany({
+        where: { transcriptSegment: { sessionId } },
+        select: { targetLanguage: true, confidence: true, confidenceLevel: true, rootCause: true },
+      }),
+      // Active BLOCKER/CONFUSION insights ("Act now" queue) — a dedicated, unbounded
+      // query rather than sliced from any count-capped list, for the same reason
+      // computeBlockerStats' input isn't: an older unresolved item must never silently
+      // fall out of view just because enough newer insights of any type accumulated.
+      prisma.insight.findMany({
+        where: { sessionId, type: { in: ["BLOCKER", "CONFUSION"] }, status: "ACTIVE" },
+        include: { evidence: { include: { transcriptSegment: { include: { translations: true } } } } },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
 
   const analytics: FacilitatorAnalytics = {
     confusionTrend: computeConfusionTrend(
@@ -118,6 +148,13 @@ export async function buildFacilitatorAnalyticsView(
     "CALM",
   );
 
+  const activeActionItems: ActiveActionItemView[] = computeActiveActionItems(
+    activeActionItemInsights,
+    session.sourceLanguage,
+    lang,
+    commonDict.translationUnavailable,
+  ).map((item) => ({ ...item, resolveAction: resolveInsight.bind(null, sessionId, item.id) }));
+
   return {
     analytics,
     labels: {
@@ -135,6 +172,10 @@ export async function buildFacilitatorAnalyticsView(
       ),
       analyticsEmptyState: dict.analyticsEmptyState,
       analyticsFrozenNotice: dict.analyticsFrozenNotice,
+      analyticsActNowHeading: dict.actNow,
+      blockerLabel: dict.blocker,
+      confusionLabel: dict.confusion,
+      resolveBlockerLabel: dict.resolveBlocker,
     },
     participationRows: analytics.participation.map((entry) =>
       dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount, entry.isAnonymousAny),
@@ -146,5 +187,6 @@ export async function buildFacilitatorAnalyticsView(
       analytics.confidence.mediumCount,
       analytics.confidence.lowCount,
     ),
+    activeActionItems,
   };
 }
