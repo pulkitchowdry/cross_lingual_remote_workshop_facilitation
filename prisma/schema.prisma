@@ -87,6 +87,7 @@ model Session {
   messages           Message[]
   insights           Insight[]
   glossaryTerms      GlossaryTerm[]
+  glossarySuggestions GlossarySuggestion[]
   whiteboard         WhiteboardSnapshot?
 }
 
@@ -176,6 +177,57 @@ model GlossaryTerm {
   aliases             String[]
   preserveVerbatim    Boolean  @default(false)
   session             Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sourceTerm])
+}
+
+/**
+ * The shared, cross-session "Centralised Technical Glossary" (issue #131) —
+ * unlike GlossaryTerm above (one session's ad-hoc approved translations),
+ * rows here are visible to and editable by every facilitator, and are looked
+ * up before translation for ANY session regardless of who created the entry.
+ * `translations` maps a target language code (matches Session.learnerLanguages/
+ * SUPPORTED_LANGUAGES, e.g. "zh"/"es") to the preferred rendering; a language
+ * missing from the map falls back to `sourceTerm` verbatim, which is exactly
+ * what `translate: false` entries want (e.g. product names like "LiveKit").
+ */
+model CentralGlossaryEntry {
+  id           String   @id @default(cuid())
+  sourceTerm   String   @unique
+  category     String?
+  notes        String?
+  /// false = always keep sourceTerm verbatim in every target language, ignoring `translations`.
+  translate    Boolean  @default(true)
+  translations Json
+  /// Ships with the app (seeded by migration), vs. added by a facilitator — surfaced in the
+  /// glossary page so built-ins read as defaults rather than something a facilitator typed in.
+  isBuiltIn    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum GlossarySuggestionStatus {
+  PENDING
+  APPROVED
+  IGNORED
+}
+
+/**
+ * A technical term detected in a session's transcript that has no
+ * CentralGlossaryEntry yet (issue #131's "Record unknown technical terms" +
+ * "Recommend new glossary entries in the post-meeting summary"). Accumulates
+ * occurrenceCount across a session rather than one row per mention, so the
+ * post-meeting recommendation list can be ranked by how often a term came up.
+ */
+model GlossarySuggestion {
+  id              String                   @id @default(cuid())
+  sessionId       String
+  sourceTerm      String
+  occurrenceCount Int                      @default(1)
+  lastSeenAt      DateTime                 @default(now())
+  status          GlossarySuggestionStatus @default(PENDING)
+  createdAt       DateTime                 @default(now())
+  session         Session                  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, sourceTerm])
 }

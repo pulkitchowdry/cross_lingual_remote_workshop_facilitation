@@ -180,6 +180,15 @@ export interface Dictionary {
     analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
     analyticsEmptyState: string;
     analyticsFrozenNotice: string;
+    // Centralised Technical Glossary (issue #131) — link to the shared glossary
+    // management page, and the post-meeting "unknown term" recommendation review
+    // shown once a session has ended.
+    glossaryNavLabel: string;
+    glossarySuggestionsHeading: string;
+    glossarySuggestionsHint: string;
+    glossarySuggestionOccurrences: (count: number) => string;
+    glossarySuggestionApprove: string;
+    glossarySuggestionIgnore: string;
   };
   learner: {
     welcome: (name: string) => string;
@@ -355,6 +364,46 @@ export interface Dictionary {
     message: string;
     retry: string;
   };
+  /** Centralised Technical Glossary management page (issue #131) — shared across every
+   * facilitator/session, so this page's copy isn't tied to any one session's language. */
+  glossary: {
+    pageHeading: string;
+    pageSubtitle: string;
+    backToDashboard: string;
+    searchPlaceholder: string;
+    builtInBadge: string;
+    verbatimBadge: string;
+    tableSourceTerm: string;
+    tableCategory: string;
+    tableTranslations: string;
+    tableActions: string;
+    emptyState: string;
+    addEntry: string;
+    editEntry: string;
+    deleteEntry: string;
+    confirmDeleteTitle: string;
+    /** Contains a literal "{term}" placeholder — a plain string, not a function, because
+     * this whole dict is passed as a prop to GlossaryManager, a Client Component, and
+     * RSC can't serialize functions across that boundary (see AnalyticsDrawer's identical
+     * constraint in facilitator/page.tsx). Interpolated client-side instead. */
+    confirmDeleteBody: string;
+    formSourceTermLabel: string;
+    formCategoryLabel: string;
+    formNotesLabel: string;
+    formTranslateLabel: string;
+    formTranslateVerbatim: string;
+    formTranslateNormally: string;
+    formTranslationsHint: string;
+    formSave: string;
+    formCancel: string;
+    uploadHeading: string;
+    uploadHint: string;
+    uploadButton: string;
+    uploadUploading: string;
+    /** Contains a literal "{count}" placeholder — see confirmDeleteBody's comment above. */
+    uploadSuccess: string;
+    uploadError: string;
+  };
 }
 
 const en: Dictionary = {
@@ -497,6 +546,12 @@ const en: Dictionary = {
       `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
     analyticsEmptyState: "No analytics yet — data will appear as the session progresses.",
     analyticsFrozenNotice: "Final snapshot — this session has ended",
+    glossaryNavLabel: "Manage glossary",
+    glossarySuggestionsHeading: "Suggested glossary entries",
+    glossarySuggestionsHint: "Technical terms this session used that aren't in the shared glossary yet.",
+    glossarySuggestionOccurrences: (count) => `Mentioned ${count} time${count === 1 ? "" : "s"}`,
+    glossarySuggestionApprove: "Add to glossary",
+    glossarySuggestionIgnore: "Ignore",
   },
   learner: {
     welcome: (name) => `Welcome, ${name}`,
@@ -654,6 +709,39 @@ const en: Dictionary = {
     message: "An unexpected error occurred. You can try again, or reload the page.",
     retry: "Try again",
   },
+  glossary: {
+    pageHeading: "Technical glossary",
+    pageSubtitle: "Shared with every facilitator — preferred translations for technical terms, product names, and acronyms.",
+    backToDashboard: "Back to dashboard",
+    searchPlaceholder: "Search terms…",
+    builtInBadge: "Built-in",
+    verbatimBadge: "Keep verbatim",
+    tableSourceTerm: "Source term",
+    tableCategory: "Category",
+    tableTranslations: "Preferred translations",
+    tableActions: "Actions",
+    emptyState: "No glossary entries match your search.",
+    addEntry: "Add entry",
+    editEntry: "Edit entry",
+    deleteEntry: "Delete",
+    confirmDeleteTitle: "Delete glossary entry?",
+    confirmDeleteBody: `"{term}" will no longer be used to guide translations for any session.`,
+    formSourceTermLabel: "Source term",
+    formCategoryLabel: "Category (optional)",
+    formNotesLabel: "Notes (optional)",
+    formTranslateLabel: "Translation behavior",
+    formTranslateVerbatim: "Keep verbatim in every language",
+    formTranslateNormally: "Translate, using the preferred translations below where set",
+    formTranslationsHint: "Leave a language blank to let the normal translation pipeline handle it.",
+    formSave: "Save",
+    formCancel: "Cancel",
+    uploadHeading: "Bulk upload",
+    uploadHint: "Upload a CSV or Excel file with a Source Term column, an optional Translate? column, and one column per language.",
+    uploadButton: "Upload file",
+    uploadUploading: "Uploading…",
+    uploadSuccess: "Added or updated {count} glossary entries.",
+    uploadError: "Couldn't read that file — check it matches the expected glossary format.",
+  },
 };
 
 const zh: Dictionary = {
@@ -796,6 +884,12 @@ const zh: Dictionary = {
       `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
     analyticsEmptyState: "暂无分析数据——数据将随会话进行而出现。",
     analyticsFrozenNotice: "最终快照——本次会话已结束",
+    glossaryNavLabel: "管理术语表",
+    glossarySuggestionsHeading: "推荐术语表条目",
+    glossarySuggestionsHint: "本场会话中使用过、但尚未加入共享术语表的技术术语。",
+    glossarySuggestionOccurrences: (count) => `出现 ${count} 次`,
+    glossarySuggestionApprove: "加入术语表",
+    glossarySuggestionIgnore: "忽略",
   },
   learner: {
     welcome: (name) => `欢迎，${name}`,
@@ -953,6 +1047,39 @@ const zh: Dictionary = {
     message: "发生了意外错误。你可以重试，或刷新页面。",
     retry: "重试",
   },
+  glossary: {
+    pageHeading: "技术术语表",
+    pageSubtitle: "与所有主持人共享——技术术语、产品名称和缩写的首选翻译。",
+    backToDashboard: "返回仪表盘",
+    searchPlaceholder: "搜索术语…",
+    builtInBadge: "内置",
+    verbatimBadge: "保持原文",
+    tableSourceTerm: "源术语",
+    tableCategory: "类别",
+    tableTranslations: "首选翻译",
+    tableActions: "操作",
+    emptyState: "没有匹配的术语表条目。",
+    addEntry: "添加条目",
+    editEntry: "编辑条目",
+    deleteEntry: "删除",
+    confirmDeleteTitle: "删除该术语表条目？",
+    confirmDeleteBody: "“{term}”将不再用于指导任何场次的翻译。",
+    formSourceTermLabel: "源术语",
+    formCategoryLabel: "类别（可选）",
+    formNotesLabel: "备注（可选）",
+    formTranslateLabel: "翻译方式",
+    formTranslateVerbatim: "所有语言均保持原文",
+    formTranslateNormally: "正常翻译，并在设置了首选翻译时使用",
+    formTranslationsHint: "某语言留空则交由正常翻译流程处理。",
+    formSave: "保存",
+    formCancel: "取消",
+    uploadHeading: "批量上传",
+    uploadHint: "上传包含“源术语”列、可选“是否翻译？”列以及每种语言各一列的 CSV 或 Excel 文件。",
+    uploadButton: "上传文件",
+    uploadUploading: "正在上传…",
+    uploadSuccess: "已新增或更新 {count} 条术语表条目。",
+    uploadError: "无法读取该文件——请检查其格式是否符合术语表要求。",
+  },
 };
 
 const es: Dictionary = {
@@ -1095,6 +1222,12 @@ const es: Dictionary = {
       `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
     analyticsEmptyState: "Aún no hay analítica — los datos aparecerán a medida que avance la sesión.",
     analyticsFrozenNotice: "Instantánea final — esta sesión ha terminado",
+    glossaryNavLabel: "Gestionar glosario",
+    glossarySuggestionsHeading: "Entradas de glosario sugeridas",
+    glossarySuggestionsHint: "Términos técnicos usados en esta sesión que aún no están en el glosario compartido.",
+    glossarySuggestionOccurrences: (count) => `Mencionado ${count} ${count === 1 ? "vez" : "veces"}`,
+    glossarySuggestionApprove: "Añadir al glosario",
+    glossarySuggestionIgnore: "Ignorar",
   },
   learner: {
     welcome: (name) => `Bienvenido/a, ${name}`,
@@ -1251,6 +1384,39 @@ const es: Dictionary = {
     title: "Algo salió mal",
     message: "Ocurrió un error inesperado. Puedes intentarlo de nuevo o recargar la página.",
     retry: "Intentar de nuevo",
+  },
+  glossary: {
+    pageHeading: "Glosario técnico",
+    pageSubtitle: "Compartido con todos los facilitadores — traducciones preferidas para términos técnicos, nombres de producto y siglas.",
+    backToDashboard: "Volver al panel",
+    searchPlaceholder: "Buscar términos…",
+    builtInBadge: "Incorporado",
+    verbatimBadge: "Mantener literal",
+    tableSourceTerm: "Término de origen",
+    tableCategory: "Categoría",
+    tableTranslations: "Traducciones preferidas",
+    tableActions: "Acciones",
+    emptyState: "Ninguna entrada del glosario coincide con tu búsqueda.",
+    addEntry: "Añadir entrada",
+    editEntry: "Editar entrada",
+    deleteEntry: "Eliminar",
+    confirmDeleteTitle: "¿Eliminar entrada del glosario?",
+    confirmDeleteBody: `"{term}" dejará de usarse para guiar traducciones en cualquier sesión.`,
+    formSourceTermLabel: "Término de origen",
+    formCategoryLabel: "Categoría (opcional)",
+    formNotesLabel: "Notas (opcional)",
+    formTranslateLabel: "Comportamiento de traducción",
+    formTranslateVerbatim: "Mantener literal en todos los idiomas",
+    formTranslateNormally: "Traducir, usando las traducciones preferidas abajo cuando estén definidas",
+    formTranslationsHint: "Deja un idioma en blanco para que lo maneje el flujo normal de traducción.",
+    formSave: "Guardar",
+    formCancel: "Cancelar",
+    uploadHeading: "Carga masiva",
+    uploadHint: "Sube un archivo CSV o Excel con una columna Source Term, una columna opcional Translate? y una columna por idioma.",
+    uploadButton: "Subir archivo",
+    uploadUploading: "Subiendo…",
+    uploadSuccess: "Se añadieron o actualizaron {count} entradas del glosario.",
+    uploadError: "No se pudo leer ese archivo — verifica que coincida con el formato esperado del glosario.",
   },
 };
 

@@ -43,6 +43,7 @@ import {
   updateFacilitatorLanguage,
 } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { sendChatMessage } from "@/app/sessions/actions";
+import { approveGlossarySuggestion, ignoreGlossarySuggestion } from "@/app/sessions/[sessionId]/facilitator/glossary/actions";
 
 export const metadata: Metadata = { title: "Facilitator dashboard" };
 
@@ -89,6 +90,7 @@ export default async function FacilitatorSessionPage({
     allBlockerInsights,
     allMessagesForParticipation,
     allConfusionInsights,
+    pendingGlossarySuggestions,
   ] = await Promise.all([
     prisma.session.findUnique({
       where: { id: sessionId },
@@ -173,6 +175,12 @@ export default async function FacilitatorSessionPage({
     prisma.insight.findMany({
       where: { sessionId, type: "CONFUSION" },
       select: { createdAt: true },
+    }),
+    // Post-meeting glossary recommendations (issue #131) — unknown technical terms
+    // detected during this session's captions, not yet in the shared glossary.
+    prisma.glossarySuggestion.findMany({
+      where: { sessionId, status: "PENDING" },
+      orderBy: { occurrenceCount: "desc" },
     }),
   ]);
   if (!session) notFound();
@@ -417,6 +425,12 @@ export default async function FacilitatorSessionPage({
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
           {dict.learnersJoinedLabel(session.participants.length)}
         </span>
+        <Link
+          href={`/sessions/${sessionId}/facilitator/glossary`}
+          className="font-data ml-auto rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-accent"
+        >
+          {dict.glossaryNavLabel}
+        </Link>
       </div>
       {session.status === SessionStatus.LIVE && (
         <section className="flex flex-col gap-3">
@@ -484,6 +498,38 @@ export default async function FacilitatorSessionPage({
               )}
             </div>
           </Card>
+          {pendingGlossarySuggestions.length > 0 && (
+            <Card eyebrow={dict.glossarySuggestionsHeading}>
+              <p className="text-sm text-muted-foreground">{dict.glossarySuggestionsHint}</p>
+              <ul className="mt-3 flex flex-col gap-2">
+                {pendingGlossarySuggestions.map((suggestion) => (
+                  <li
+                    key={suggestion.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border-subtle p-2"
+                  >
+                    <div>
+                      <span className="font-medium">{suggestion.sourceTerm}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {dict.glossarySuggestionOccurrences(suggestion.occurrenceCount)}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <form action={approveGlossarySuggestion.bind(null, sessionId, suggestion.id)}>
+                        <button className="font-data rounded-md bg-accent-fill px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-accent-foreground">
+                          {dict.glossarySuggestionApprove}
+                        </button>
+                      </form>
+                      <form action={ignoreGlossarySuggestion.bind(null, sessionId, suggestion.id)}>
+                        <button className="font-data rounded-md border border-border-strong px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground hover:bg-background">
+                          {dict.glossarySuggestionIgnore}
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <AnalyticsDrawer
             analytics={analytics}
             isFrozen={true}
