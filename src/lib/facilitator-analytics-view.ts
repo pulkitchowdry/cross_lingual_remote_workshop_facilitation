@@ -1,0 +1,134 @@
+import { SessionStatus } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { getDictionary } from "@/lib/i18n";
+import type { SupportedLanguage } from "@/lib/session-contracts";
+import {
+  computeConfusionTrend,
+  computeParticipationFromGroups,
+  computeBlockerStats,
+  computeLanguageStats,
+  computeConfidenceStats,
+  type FacilitatorAnalytics,
+} from "@/lib/facilitator-analytics";
+
+export interface FacilitatorAnalyticsLabels {
+  analyticsDrawerLabel: string;
+  analyticsDrawerOpen: string;
+  analyticsDrawerClose: string;
+  analyticsConfusionTrendHeading: string;
+  analyticsParticipationHeading: string;
+  analyticsBlockersHeading: string;
+  analyticsLanguagesHeading: string;
+  analyticsConfidenceHeading: string;
+  analyticsEmptyState: string;
+  analyticsFrozenNotice: string;
+}
+
+export interface FacilitatorAnalyticsView {
+  analytics: FacilitatorAnalytics;
+  labels: FacilitatorAnalyticsLabels;
+  // Precomputed server-side (AnalyticsDrawer/AnalyticsPanelContent are "use client" —
+  // RSC can't serialize the dict's formatter functions across that prop boundary).
+  // Order matches analytics.participation / analytics.languages 1:1.
+  participationRows: string[];
+  blockersSummary: string;
+  languageRows: string[];
+  confidenceSummary: string;
+}
+
+/**
+ * Fetches and computes everything AnalyticsDrawer needs, shared by every page a
+ * facilitator can occupy during a session — originally only called from
+ * facilitator/page.tsx (the dashboard), which meant facilitator/room/page.tsx (the
+ * full-page live meeting `startSession` actually redirects into) never rendered any
+ * analytics at all for the entire duration of a live workshop. Extracted here so the
+ * two pages can't drift out of sync with each other the way they already had.
+ */
+export async function buildFacilitatorAnalyticsView(
+  sessionId: string,
+  session: {
+    startedAt: Date | null;
+    createdAt: Date;
+    status: SessionStatus;
+    endedAt: Date | null;
+    participants: { userId: string; user: { displayName: string } }[];
+    transcript: {
+      translations: {
+        targetLanguage: string;
+        confidence: number | null;
+        confidenceLevel: string | null;
+        rootCause: string | null;
+      }[];
+    }[];
+  },
+  lang: SupportedLanguage,
+): Promise<FacilitatorAnalyticsView> {
+  const dict = getDictionary(lang).facilitator;
+
+  // Both unbounded (not sliced from a count-capped `include`, which could silently
+  // drop an older-but-still-relevant row once enough newer ones of any type/sender
+  // accumulated) — see the matching, more detailed comments in facilitator/page.tsx's
+  // own historical version of these same three queries.
+  const [allBlockerInsights, allMessagesForParticipation, allConfusionInsights] = await Promise.all([
+    prisma.insight.findMany({
+      where: { sessionId, type: "BLOCKER" },
+      select: { status: true, createdAt: true },
+    }),
+    prisma.message.groupBy({
+      by: ["senderId", "kind", "isAnonymous"],
+      where: { sessionId },
+      _count: true,
+    }),
+    prisma.insight.findMany({
+      where: { sessionId, type: "CONFUSION" },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const analytics: FacilitatorAnalytics = {
+    confusionTrend: computeConfusionTrend(
+      allConfusionInsights.map((item) => item.createdAt),
+      session.startedAt ?? session.createdAt,
+      session.status === SessionStatus.ENDED ? (session.endedAt ?? new Date()) : new Date(),
+    ),
+    participation: computeParticipationFromGroups(
+      allMessagesForParticipation,
+      session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
+    ),
+    blockers: computeBlockerStats(allBlockerInsights.map((item) => ({ ...item, type: "BLOCKER", resolvedAt: null }))),
+    languages: computeLanguageStats(
+      session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
+    ),
+    confidence: computeConfidenceStats(
+      session.transcript.flatMap((segment) =>
+        segment.translations.map((t) => ({ confidence: t.confidence, confidenceLevel: t.confidenceLevel, rootCause: t.rootCause })),
+      ),
+    ),
+  };
+
+  return {
+    analytics,
+    labels: {
+      analyticsDrawerLabel: dict.analyticsDrawerLabel,
+      analyticsDrawerOpen: dict.analyticsDrawerOpen,
+      analyticsDrawerClose: dict.analyticsDrawerClose,
+      analyticsConfusionTrendHeading: dict.analyticsConfusionTrendHeading,
+      analyticsParticipationHeading: dict.analyticsParticipationHeading,
+      analyticsBlockersHeading: dict.analyticsBlockersHeading,
+      analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
+      analyticsConfidenceHeading: dict.analyticsConfidenceHeading,
+      analyticsEmptyState: dict.analyticsEmptyState,
+      analyticsFrozenNotice: dict.analyticsFrozenNotice,
+    },
+    participationRows: analytics.participation.map((entry) =>
+      dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount, entry.isAnonymousAny),
+    ),
+    blockersSummary: dict.analyticsBlockersSummary(analytics.blockers.raised, analytics.blockers.resolved, analytics.blockers.open),
+    languageRows: analytics.languages.map((entry) => dict.analyticsLanguagesRow(entry.language, entry.translationCount)),
+    confidenceSummary: dict.analyticsConfidenceSummary(
+      analytics.confidence.averagePercent,
+      analytics.confidence.mediumCount,
+      analytics.confidence.lowCount,
+    ),
+  };
+}

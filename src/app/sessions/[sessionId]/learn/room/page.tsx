@@ -13,6 +13,7 @@ import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 import { redactAnonymousSenders, visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { resolveTranslatedText } from "@/lib/translation-view";
 import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
 
 export const metadata: Metadata = { title: "Live session" };
@@ -47,6 +48,7 @@ export default async function LearnerRoomPage({
             include: { sender: true, translations: true },
             orderBy: { sentAt: "desc" },
           },
+          translations: true,
         },
       },
     },
@@ -61,6 +63,18 @@ export default async function LearnerRoomPage({
   const publishCaptionAction = publishLearnerCaption.bind(null, sessionId);
   const learnerLanguageOptions = SUPPORTED_LANGUAGES.filter((language) =>
     participant.session.learnerLanguages.includes(language.value),
+  );
+  // Same lookup as learn/page.tsx (the pre-live dashboard) — see its comment for why
+  // this falls back to "Translation unavailable" rather than the untranslated original.
+  const resolvedTitle = resolveTranslatedText(
+    {
+      language: participant.session.sourceLanguage,
+      originalText: participant.session.title,
+      translations: participant.session.translations
+        .filter((translation) => translation.title != null)
+        .map((translation) => ({ targetLanguage: translation.targetLanguage, text: translation.title! })),
+    },
+    lang,
   );
   const captionComposer = (
     <CaptionPublishForm
@@ -101,7 +115,7 @@ export default async function LearnerRoomPage({
           messages={redactAnonymousSenders([...participant.session.messages].reverse())}
           sendChatAction={sendChatAction}
           allowQuestions
-          title={participant.session.title}
+          title={resolvedTitle.hasTranslation ? resolvedTitle.text : getDictionary(lang).common.translationUnavailable}
           viewerUserId={participant.userId}
           canMessageFacilitatorPrivately
           currentLanguage={lang}

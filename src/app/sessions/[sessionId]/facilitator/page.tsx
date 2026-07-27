@@ -21,14 +21,7 @@ import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { INSIGHT_HISTORY_LIMIT, MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { computeConfusionLevel, DEFAULT_WINDOW_MS as DEFAULT_CONFUSION_WINDOW_MS } from "@/lib/confusion-level";
 import { computeLearnerConfusionLevels } from "@/lib/learner-confusion";
-import {
-  computeConfusionTrend,
-  computeParticipationFromGroups,
-  computeBlockerStats,
-  computeLanguageStats,
-  computeConfidenceStats,
-  type FacilitatorAnalytics,
-} from "@/lib/facilitator-analytics";
+import { buildFacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { RootCause } from "@/lib/confidence";
@@ -87,9 +80,6 @@ export default async function FacilitatorSessionPage({
     recentLearnerQuestions,
     messageCount,
     questionCount,
-    allBlockerInsights,
-    allMessagesForParticipation,
-    allConfusionInsights,
     pendingGlossarySuggestions,
   ] = await Promise.all([
     prisma.session.findUnique({
@@ -159,23 +149,6 @@ export default async function FacilitatorSessionPage({
     // whatever fits in the chat panel's most-recent page.
     prisma.message.count({ where: { sessionId } }),
     prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
-    prisma.insight.findMany({
-      where: { sessionId, type: "BLOCKER" },
-      select: { status: true, createdAt: true },
-    }),
-    prisma.message.groupBy({
-      by: ["senderId", "kind", "isAnonymous"],
-      where: { sessionId },
-      _count: true,
-    }),
-    // Unbounded by time (unlike recentConfusionInsights above, which is scoped to the
-    // last DEFAULT_CONFUSION_WINDOW_MS for the live group-confusion gauge) — the
-    // confusion *trend* buckets the whole session from start to now, so feeding it a
-    // 10-minute-windowed query would leave every earlier bucket permanently empty.
-    prisma.insight.findMany({
-      where: { sessionId, type: "CONFUSION" },
-      select: { createdAt: true },
-    }),
     // Post-meeting glossary recommendations (issue #131) — unknown technical terms
     // detected during this session's captions, not yet in the shared glossary.
     prisma.glossarySuggestion.findMany({
@@ -208,69 +181,13 @@ export default async function FacilitatorSessionPage({
     session.participants.map((participant) => [participant.userId, participant.user.displayName]),
   );
 
-  const analytics: FacilitatorAnalytics = {
-    // Fed allConfusionInsights (unbounded), not confusionTimestamps (10-minute-windowed,
-    // used only for the live gauge above) — and once the session has ended, `now` is
-    // pinned to session.endedAt so the trend stops growing empty buckets on every
-    // subsequent page load.
-    confusionTrend: computeConfusionTrend(
-      allConfusionInsights.map((item) => item.createdAt),
-      session.startedAt ?? session.createdAt,
-      session.status === SessionStatus.ENDED ? (session.endedAt ?? new Date()) : new Date(),
-    ),
-    participation: computeParticipationFromGroups(
-      allMessagesForParticipation,
-      session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
-    ),
-    blockers: computeBlockerStats(
-      allBlockerInsights.map((item) => ({ ...item, type: "BLOCKER", resolvedAt: null })),
-    ),
-    languages: computeLanguageStats(
-      session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
-    ),
-    confidence: computeConfidenceStats(
-      session.transcript.flatMap((segment) =>
-        segment.translations.map((t) => ({ confidence: t.confidence, confidenceLevel: t.confidenceLevel, rootCause: t.rootCause })),
-      ),
-    ),
-  };
-
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
   const commonDict = getDictionary(lang).common;
-  // AnalyticsDrawer is a "use client" component — RSC cannot serialize functions across
-  // that prop boundary, so the formatter functions on `dict` (analyticsParticipationRow/
-  // analyticsBlockersSummary/analyticsLanguagesRow) must be called here, server-side, and
-  // only their plain-string return values passed down. Computed once and reused at both
-  // AnalyticsDrawer render sites below (LIVE and ENDED) rather than duplicated.
-  const analyticsLabels = {
-    analyticsDrawerLabel: dict.analyticsDrawerLabel,
-    analyticsDrawerOpen: dict.analyticsDrawerOpen,
-    analyticsDrawerClose: dict.analyticsDrawerClose,
-    analyticsConfusionTrendHeading: dict.analyticsConfusionTrendHeading,
-    analyticsParticipationHeading: dict.analyticsParticipationHeading,
-    analyticsBlockersHeading: dict.analyticsBlockersHeading,
-    analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
-    analyticsConfidenceHeading: dict.analyticsConfidenceHeading,
-    analyticsEmptyState: dict.analyticsEmptyState,
-    analyticsFrozenNotice: dict.analyticsFrozenNotice,
-  };
-  const analyticsParticipationRows = analytics.participation.map((entry) =>
-    dict.analyticsParticipationRow(entry.displayName, entry.messageCount, entry.questionCount, entry.isAnonymousAny),
-  );
-  const analyticsBlockersSummary = dict.analyticsBlockersSummary(
-    analytics.blockers.raised,
-    analytics.blockers.resolved,
-    analytics.blockers.open,
-  );
-  const analyticsLanguageRows = analytics.languages.map((entry) =>
-    dict.analyticsLanguagesRow(entry.language, entry.translationCount),
-  );
-  const analyticsConfidenceSummary = dict.analyticsConfidenceSummary(
-    analytics.confidence.averagePercent,
-    analytics.confidence.mediumCount,
-    analytics.confidence.lowCount,
-  );
+  // Shared with facilitator/room/page.tsx (the full-page live meeting) so the two
+  // pages a facilitator can occupy never drift out of sync on what analytics show —
+  // see that module's doc comment for why this was extracted.
+  const analyticsView = await buildFacilitatorAnalyticsView(sessionId, session, lang);
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
   // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
   // above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N *most recent* segments — but
@@ -444,13 +361,13 @@ export default async function FacilitatorSessionPage({
             </Link>
           </Card>
           <AnalyticsDrawer
-            analytics={analytics}
+            analytics={analyticsView.analytics}
             isFrozen={false}
-            labels={analyticsLabels}
-            participationRows={analyticsParticipationRows}
-            blockersSummary={analyticsBlockersSummary}
-            languageRows={analyticsLanguageRows}
-            confidenceSummary={analyticsConfidenceSummary}
+            labels={analyticsView.labels}
+            participationRows={analyticsView.participationRows}
+            blockersSummary={analyticsView.blockersSummary}
+            languageRows={analyticsView.languageRows}
+            confidenceSummary={analyticsView.confidenceSummary}
           />
         </section>
       )}
@@ -531,13 +448,13 @@ export default async function FacilitatorSessionPage({
             </Card>
           )}
           <AnalyticsDrawer
-            analytics={analytics}
+            analytics={analyticsView.analytics}
             isFrozen={true}
-            labels={analyticsLabels}
-            participationRows={analyticsParticipationRows}
-            blockersSummary={analyticsBlockersSummary}
-            languageRows={analyticsLanguageRows}
-            confidenceSummary={analyticsConfidenceSummary}
+            labels={analyticsView.labels}
+            participationRows={analyticsView.participationRows}
+            blockersSummary={analyticsView.blockersSummary}
+            languageRows={analyticsView.languageRows}
+            confidenceSummary={analyticsView.confidenceSummary}
           />
           <SessionSidePanel
             chat={{

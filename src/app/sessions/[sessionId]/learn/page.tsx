@@ -19,6 +19,7 @@ import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { CHAT_MESSAGE_MAX_LENGTH, MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { resolveTranslatedText } from "@/lib/translation-view";
 import { redactAnonymousSenders, visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
@@ -76,6 +77,7 @@ export default async function LearnerSessionPage({
             orderBy: [{ sentAt: "desc" }, { id: "desc" }],
             take: MESSAGE_HISTORY_LIMIT,
           },
+          translations: true,
         },
       },
       user: true,
@@ -95,6 +97,32 @@ export default async function LearnerSessionPage({
   const changeLanguageAction = updateLearnerLanguage.bind(null, sessionId);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "learner");
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
+  // The session title/goal are facilitator-authored, in session.sourceLanguage —
+  // translated once at createSession() time into every SUPPORTED_LANGUAGES entry (see
+  // SessionTranslation/setup/actions.ts), looked up here the same way transcript/chat
+  // translations already are. Falls back to "Translation unavailable" (not the
+  // untranslated original) when no row exists for `lang`, matching every other
+  // per-viewer-translated surface in this app.
+  const resolvedTitle = resolveTranslatedText(
+    {
+      language: participant.session.sourceLanguage,
+      originalText: participant.session.title,
+      translations: participant.session.translations
+        .filter((translation) => translation.title != null)
+        .map((translation) => ({ targetLanguage: translation.targetLanguage, text: translation.title! })),
+    },
+    lang,
+  );
+  const resolvedGoal = resolveTranslatedText(
+    {
+      language: participant.session.sourceLanguage,
+      originalText: participant.session.goal,
+      translations: participant.session.translations
+        .filter((translation) => translation.goal != null)
+        .map((translation) => ({ targetLanguage: translation.targetLanguage, text: translation.goal! })),
+    },
+    lang,
+  );
   // participant.session.transcript is fetched newest-first (`orderBy: startedAt desc`,
   // see the query above) so `take: TRANSCRIPT_HISTORY_LIMIT` keeps the N most recent
   // segments — reversed here to chronological order before mapping so LiveTranscriptFeed
@@ -188,14 +216,23 @@ export default async function LearnerSessionPage({
           <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {learnerDict.welcome(participant.user.displayName)}
           </p>
-          <h1 className="font-heading text-2xl font-semibold">{participant.session.title}</h1>
+          <h1
+            className="font-heading text-2xl font-semibold"
+            lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}
+          >
+            {resolvedTitle.hasTranslation ? resolvedTitle.text : dict.common.translationUnavailable}
+          </h1>
           {/* The facilitator's own dashboard shows this goal right under the title
               (facilitator/page.tsx) — this page fetches the exact same `session.goal`
               (a plain scalar field, already included with no extra query) but never
               rendered it anywhere, so a learner never learns what the workshop is
               actually trying to achieve, before, during, or after it, unlike the person
               running it. */}
-          {participant.session.goal && <p className="text-sm text-muted-foreground">{participant.session.goal}</p>}
+          {participant.session.goal && (
+            <p className="text-sm text-muted-foreground" lang={resolvedGoal.hasTranslation ? resolvedGoal.lang : lang}>
+              {resolvedGoal.hasTranslation ? resolvedGoal.text : dict.common.translationUnavailable}
+            </p>
+          )}
           <p className="text-sm text-muted-foreground">{learnerDict.subtitle}</p>
         </div>
         <Card eyebrow={learnerDict.preferencesCard}>

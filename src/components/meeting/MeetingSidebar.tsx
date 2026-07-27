@@ -3,14 +3,16 @@
 import { useRef, useState, type ReactNode } from "react";
 import { SessionChatPanel, type PrivateRecipientOption } from "@/components/SessionChatPanel";
 import { TranslationHistoryTab } from "@/components/meeting/TranslationHistoryTab";
+import { AnalyticsPanelContent } from "@/components/AnalyticsDrawer";
 import { useMeetingShell, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "@/components/meeting/MeetingShellContext";
 import { ChatIcon, CloseIcon } from "@/components/meeting/icons";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { getDictionary } from "@/lib/i18n";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
+import type { FacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 
-type SidebarTab = "chat" | "captions";
+type SidebarTab = "chat" | "captions" | "analytics";
 
 export function MeetingSidebar({
   uiLang,
@@ -27,6 +29,7 @@ export function MeetingSidebar({
   captionsHeader,
   captionComposer,
   defaultTab = "chat",
+  analyticsView,
 }: {
   uiLang: SupportedLanguage;
   targetLanguage: string;
@@ -48,10 +51,14 @@ export function MeetingSidebar({
    * look at. Facilitators still default to Chat (matching SessionSidePanel's own
    * default), since they're the one composing captions, not just reading them. */
   defaultTab?: SidebarTab;
+  /** Facilitator-only "Analytics" tab (see facilitator/room/page.tsx) — omitted
+   * entirely (no tab rendered) when absent, e.g. for a learner. */
+  analyticsView?: FacilitatorAnalyticsView;
 }) {
   const { sidebarOpen, setSidebarOpen, sidebarWidth, setSidebarWidth } = useMeetingShell();
   const dict = getDictionary(uiLang).meeting;
   const commonDict = getDictionary(uiLang).common;
+  const analyticsTabLabel = getDictionary(uiLang).facilitator.analyticsDrawerLabel;
   const [tab, setTab] = useState<SidebarTab>(defaultTab);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
@@ -115,16 +122,20 @@ export function MeetingSidebar({
     );
   }
 
+  const tabs: Array<[SidebarTab, string]> = [
+    ["chat", commonDict.chatTab],
+    ["captions", commonDict.captionsTab],
+  ];
+  // Facilitator-only, and only once analyticsView is actually available (a learner,
+  // or a facilitator page that hasn't been wired up yet, simply omits the prop — see
+  // LiveSessionRoom's doc comment on it).
+  if (viewerIsFacilitator && analyticsView) tabs.push(["analytics", analyticsTabLabel]);
+
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 border-b border-border-subtle p-1.5">
         <div role="tablist" className="flex flex-1 gap-1 rounded-md bg-surface p-1">
-          {(
-            [
-              ["chat", commonDict.chatTab],
-              ["captions", commonDict.captionsTab],
-            ] as const
-          ).map(([value, label]) => (
+          {tabs.map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -161,7 +172,7 @@ export function MeetingSidebar({
             privateRecipientOptions={privateRecipientOptions}
             embedded
           />
-        ) : (
+        ) : tab === "captions" ? (
           <div className="h-full p-1.5">
             <TranslationHistoryTab
               transcript={transcript}
@@ -171,6 +182,22 @@ export function MeetingSidebar({
               composer={captionComposer}
             />
           </div>
+        ) : (
+          analyticsView && (
+            // No collapsible toggle here (unlike AnalyticsDrawer on the dashboard) —
+            // selecting this tab already is the "show analytics" action.
+            <div className="h-full overflow-y-auto p-2">
+              <AnalyticsPanelContent
+                analytics={analyticsView.analytics}
+                isFrozen={false}
+                labels={analyticsView.labels}
+                participationRows={analyticsView.participationRows}
+                blockersSummary={analyticsView.blockersSummary}
+                languageRows={analyticsView.languageRows}
+                confidenceSummary={analyticsView.confidenceSummary}
+              />
+            </div>
+          )
         )}
       </div>
     </div>

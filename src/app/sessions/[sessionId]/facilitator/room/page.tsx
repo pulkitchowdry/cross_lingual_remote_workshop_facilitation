@@ -15,6 +15,7 @@ import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { sendChatMessage } from "@/app/sessions/actions";
 import { publishCaption, updateFacilitatorLanguage } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { buildFacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 
 export const metadata: Metadata = { title: "Live session" };
 
@@ -56,6 +57,11 @@ export default async function FacilitatorRoomPage({
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
+  // Same view-model the dashboard (facilitator/page.tsx) computes — see that module's
+  // doc comment: without this, a facilitator saw no analytics at all for the entire
+  // duration of a live session, since `startSession` redirects them straight here and
+  // away from the only page that used to render it.
+  const analyticsView = await buildFacilitatorAnalyticsView(sessionId, session, lang);
   const sendChatAction = sendChatMessage.bind(null, sessionId, "facilitator");
   const changeLanguageAction = updateFacilitatorLanguage.bind(null, sessionId);
   const publishCaptionAction = publishCaption.bind(null, sessionId);
@@ -116,6 +122,7 @@ export default async function FacilitatorRoomPage({
           onChangeLanguage={changeLanguageAction}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
+          analyticsView={analyticsView}
         />
       </div>
     </div>
