@@ -11,57 +11,89 @@ const TICK_COLOR: Record<Confidence, string> = {
   low: "var(--tick-low)",
 };
 
+/** Symbol shown in place of the level's text label — kept to one glyph per level so the
+ * badge reads as a compact status dot rather than another line of text in an already
+ * dense transcript row. The level name itself isn't lost: it's still read out via the
+ * `aria-label` below and spelled out inline once the breakdown is expanded. */
+const LEVEL_SYMBOL: Record<Confidence, string> = {
+  high: "●",
+  medium: "▲",
+  low: "■",
+};
+
 /**
- * Recipient-facing Confidence Score (issue #130): a percent + level, expandable
- * (via native `<details>`, so it works on touch/keyboard, not just hover) into
- * the specific reason. A bare "Low confidence" is explicitly called out as
- * insufficient in the issue — this always resolves a concrete reason string
- * from `rootCause`, falling back to a generic "some content may not have
- * translated correctly" only when the level is Medium with no single root cause
- * (see computeOverallConfidence's doc comment for when that happens).
+ * Recipient-facing Confidence Score (issue #130): a symbol + level, expandable
+ * (via native `<details>`, so it works on touch/keyboard, not just hover) into a
+ * full per-signal breakdown plus the root-cause reason. A bare "Low confidence" is
+ * explicitly called out as insufficient in the issue — this always resolves a
+ * concrete reason string from `rootCause`, falling back to a generic "some content
+ * may not have translated correctly" only when the level is Medium with no single
+ * root cause (see computeOverallConfidence's doc comment for when that happens).
+ *
+ * The breakdown only lists signals this app actually measures (translation,
+ * terminology, and speech recognition when the source segment reported one) —
+ * audio quality and network aren't wired up to any real signal yet (see the
+ * Translation model's own schema comment), so they're omitted entirely rather than
+ * shown at a fake, unmeasured 100%.
  */
 export function ConfidenceBadge({
   score,
   level,
   rootCause,
   uiLang,
+  translationScore,
+  terminologyScore,
+  speechRecognitionScore,
 }: {
   score: number;
   level: Confidence;
   rootCause?: RootCause | null;
   uiLang: SupportedLanguage;
+  /** 0-100 translation-signal score (Translation.translationConfidence) — always measured. */
+  translationScore?: number | null;
+  /** 0-100 terminology-signal score (Translation.terminologyConfidence) — always measured. */
+  terminologyScore?: number | null;
+  /** 0-100 STT confidence (TranscriptSegment.sttConfidence) — null for typed captions and
+   * STT tiers that don't report one, in which case this row is omitted from the breakdown. */
+  speechRecognitionScore?: number | null;
 }) {
   const dict = getDictionary(uiLang).common;
   const color = TICK_COLOR[level];
   const levelLabel =
     level === "high" ? dict.confidenceLevelHigh : level === "medium" ? dict.confidenceLevelMedium : dict.confidenceLevelLow;
   const reason = reasonText(dict, rootCause, level);
-
-  if (level === "high") {
-    return (
-      <details className="inline-block align-middle">
-        <summary
-          className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wider"
-          style={{ color }}
-        >
-          {levelLabel}
-        </summary>
-        <p className="mt-1 max-w-xs text-xs font-normal normal-case text-muted-foreground">
-          {dict.confidenceScoreLabel(score)}
-        </p>
-      </details>
-    );
-  }
+  const breakdownRows: Array<[string, number]> = [
+    [dict.confidenceBreakdownOverall, score],
+    ...(translationScore != null ? ([[dict.confidenceBreakdownTranslation, translationScore]] as Array<[string, number]>) : []),
+    ...(terminologyScore != null ? ([[dict.confidenceBreakdownTerminology, terminologyScore]] as Array<[string, number]>) : []),
+    ...(speechRecognitionScore != null
+      ? ([[dict.confidenceBreakdownSpeechRecognition, speechRecognitionScore]] as Array<[string, number]>)
+      : []),
+  ];
 
   return (
     <details className="inline-block align-middle">
       <summary
-        className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wider"
+        className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-xs"
         style={{ color }}
+        aria-label={level === "high" ? levelLabel : `${levelLabel} · ${dict.confidenceScoreLabel(score)}`}
       >
-        {levelLabel} · {dict.confidenceScoreLabel(score)}
+        <span aria-hidden="true">{LEVEL_SYMBOL[level]}</span>
       </summary>
-      <p className="mt-1 max-w-xs text-xs font-normal normal-case text-muted-foreground">{reason}</p>
+      <div className="mt-1 max-w-xs text-xs font-normal normal-case text-muted-foreground">
+        <p className="font-medium" style={{ color }}>
+          {levelLabel}
+        </p>
+        <dl className="mt-1 flex flex-col gap-0.5">
+          {breakdownRows.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <dt>{label}</dt>
+              <dd className="font-data tabular-nums">{value}%</dd>
+            </div>
+          ))}
+        </dl>
+        {level !== "high" && <p className="mt-1.5">{reason}</p>}
+      </div>
     </details>
   );
 }

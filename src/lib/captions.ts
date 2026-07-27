@@ -94,6 +94,10 @@ export async function publishTranslatedCaption(
         confidence: confidence.overall,
         confidenceLevel: confidence.level,
         rootCause: confidence.rootCause,
+        // Individual signals for the Confidence Score breakdown UI (ConfidenceBadge) — see
+        // that column's own schema comment for why audioQuality/network aren't persisted.
+        translationConfidence: confidence.breakdown.translation,
+        terminologyConfidence: confidence.breakdown.terminology,
       };
     }),
   );

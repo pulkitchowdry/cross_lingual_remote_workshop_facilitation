@@ -232,6 +232,8 @@ export function MeetingSidebar({
               emptyLabel={captionsEmptyLabel}
               header={captionsHeader}
               composer={captionComposer}
+              sendChatAction={sendChatAction}
+              viewerIsFacilitator={viewerIsFacilitator}
             />
           </div>
         ) : (

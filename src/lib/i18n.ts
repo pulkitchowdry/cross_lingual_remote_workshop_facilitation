@@ -387,6 +387,7 @@ export interface Dictionary {
     confidenceLevelMedium: string;
     confidenceLevelLow: string;
     confidenceScoreLabel: (percent: number) => string;
+    confidenceBreakdownOverall: string;
     confidenceBreakdownAudio: string;
     confidenceBreakdownSpeechRecognition: string;
     confidenceBreakdownTranslation: string;
@@ -794,6 +795,7 @@ const en: Dictionary = {
     confidenceLevelMedium: "Needs attention",
     confidenceLevelLow: "Low",
     confidenceScoreLabel: (percent) => `Confidence Score ${percent}%`,
+    confidenceBreakdownOverall: "Overall",
     confidenceBreakdownAudio: "Audio quality",
     confidenceBreakdownSpeechRecognition: "Speech recognition",
     confidenceBreakdownTranslation: "Translation",
@@ -1184,6 +1186,7 @@ const zh: Dictionary = {
     confidenceLevelMedium: "需关注",
     confidenceLevelLow: "低",
     confidenceScoreLabel: (percent) => `置信度 ${percent}%`,
+    confidenceBreakdownOverall: "总体",
     confidenceBreakdownAudio: "音频质量",
     confidenceBreakdownSpeechRecognition: "语音识别",
     confidenceBreakdownTranslation: "翻译",
@@ -1574,6 +1577,7 @@ const es: Dictionary = {
     confidenceLevelMedium: "Requiere atención",
     confidenceLevelLow: "Baja",
     confidenceScoreLabel: (percent) => `Puntuación de confianza ${percent}%`,
+    confidenceBreakdownOverall: "General",
     confidenceBreakdownAudio: "Calidad de audio",
     confidenceBreakdownSpeechRecognition: "Reconocimiento de voz",
     confidenceBreakdownTranslation: "Traducción",

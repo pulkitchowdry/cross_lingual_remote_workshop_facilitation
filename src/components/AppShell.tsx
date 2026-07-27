@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-hidden="true"
             />
             <span className="font-heading font-semibold tracking-tight">
-              Workshop Copilot
+              Interlingo
             </span>
           </span>
           <ul className="flex items-center gap-6">

@@ -3,7 +3,8 @@
 import { useActionState, useId, useMemo, useState } from "react";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { ChatSendButton } from "@/components/ChatSendButton";
-import type { FormActionResult } from "@/lib/session-contracts";
+import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
+import { CHAT_MESSAGE_MAX_LENGTH, truncateForQuotedQuestion, type FormActionResult } from "@/lib/session-contracts";
 
 type ChatMessage = {
   id: string;
@@ -57,6 +58,7 @@ export function SessionChatPanel({
   privateRecipientOptions?: PrivateRecipientOption[];
 }) {
   const dict = getDictionary(resolveLanguage(targetLanguage)).chat;
+  const learnerDict = getDictionary(resolveLanguage(targetLanguage)).learner;
   const translationUnavailable = getDictionary(resolveLanguage(targetLanguage)).common.translationUnavailable;
   const Wrapper = embedded ? "div" : "aside";
   const privateModeStatusId = useId();
@@ -64,6 +66,19 @@ export function SessionChatPanel({
   const learnerPrivateCheckboxId = useId();
   const [learnerPrivateMode, setLearnerPrivateMode] = useState(false);
   const [selectedRecipientParticipantId, setSelectedRecipientParticipantId] = useState("");
+  // Which messages have their "Explain simply"/"Give an example" quick-questions
+  // revealed — same click-to-expand behavior as LiveTranscriptFeed's caption rows,
+  // kept local to this panel since a chat message's revealed state has no reason to
+  // survive a tab switch or an auto-refresh re-render.
+  const [revealedMessageIds, setRevealedMessageIds] = useState<Set<string>>(new Set());
+  function toggleRevealed(id: string) {
+    setRevealedMessageIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const selectedRecipient = privateRecipientOptions.find((option) => option.participantId === selectedRecipientParticipantId);
   const recipientByUserId = useMemo(
     () => new Map(privateRecipientOptions.map((option) => [option.userId, option])),
@@ -95,56 +110,97 @@ export function SessionChatPanel({
     <Wrapper className={embedded ? "flex h-full min-h-0 flex-col" : "flex h-full flex-col rounded-lg border border-border-subtle bg-surface-raised"}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
         {messages.length > 0 ? (
-          messages.map((message) => (
-            <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-data text-xs font-medium text-[var(--accent-text)]">
-                  {message.isAnonymous && !viewerIsFacilitator ? dict.anonymousLearner : message.sender.displayName}
-                </p>
-                <div className="flex items-center gap-1.5">
-                  {message.recipientId && (
-                    // Distinct accent color from the Anonymous badge below (previously
-                    // byte-for-byte identical styling) — "who can see this" and "is the
-                    // name hidden" are different facts about a message, and looked alike
-                    // enough in a fast-scrolling chat to be easy to mix up at a glance.
-                    <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
-                      {dict.privateBadge}
-                    </span>
-                  )}
-                  {message.isAnonymous && viewerIsFacilitator && (
-                    <span className="font-data rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      {dict.anonymousBadge}
-                    </span>
-                  )}
-                  {message.kind === "QUESTION" && (
-                    <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
-                      {dict.question}
-                    </span>
-                  )}
+          messages.map((message) => {
+            // A learner can ask "Explain simply"/"Give an example" about anyone else's
+            // message (mirrors CaptionComprehensionActions for captions — see
+            // TranslationHistoryTab), but not their own words, and never once the
+            // composer itself is gone (readOnly: nothing left in the room to answer).
+            const isExplainable = !viewerIsFacilitator && !readOnly && message.sender.id !== viewerUserId;
+            const revealed = isExplainable && revealedMessageIds.has(message.id);
+            const quotedText = translatedText(message, targetLanguage, translationUnavailable);
+            return (
+              <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-data text-xs font-medium text-[var(--accent-text)]">
+                    {message.isAnonymous && !viewerIsFacilitator ? dict.anonymousLearner : message.sender.displayName}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    {message.recipientId && (
+                      // Distinct accent color from the Anonymous badge below (previously
+                      // byte-for-byte identical styling) — "who can see this" and "is the
+                      // name hidden" are different facts about a message, and looked alike
+                      // enough in a fast-scrolling chat to be easy to mix up at a glance.
+                      <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
+                        {dict.privateBadge}
+                      </span>
+                    )}
+                    {message.isAnonymous && viewerIsFacilitator && (
+                      <span className="font-data rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {dict.anonymousBadge}
+                      </span>
+                    )}
+                    {message.kind === "QUESTION" && (
+                      <span className="font-data rounded-full border border-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--accent-text)]">
+                        {dict.question}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
-                {translatedText(message, targetLanguage, translationUnavailable)}
-              </p>
-              {message.language !== targetLanguage && (
-                <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
-                  {message.originalText}
-                </p>
-              )}
-              {viewerIsFacilitator && message.sender.id !== viewerUserId && recipientByUserId.has(message.sender.id) && (
-                <button
-                  type="button"
-                  className="font-data mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
-                  onClick={() => {
-                    const recipient = recipientByUserId.get(message.sender.id);
-                    if (recipient) setSelectedRecipientParticipantId(recipient.participantId);
-                  }}
-                >
-                  {dict.replyPrivately}
-                </button>
-              )}
-            </article>
-          ))
+                {isExplainable ? (
+                  <button
+                    type="button"
+                    aria-expanded={revealed}
+                    onClick={() => toggleRevealed(message.id)}
+                    className="mt-1 block w-full rounded-md text-left hover:bg-surface-raised"
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
+                      {quotedText}
+                    </p>
+                    {message.language !== targetLanguage && (
+                      <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
+                        {message.originalText}
+                      </p>
+                    )}
+                  </button>
+                ) : (
+                  <>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
+                      {quotedText}
+                    </p>
+                    {message.language !== targetLanguage && (
+                      <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
+                        {message.originalText}
+                      </p>
+                    )}
+                  </>
+                )}
+                {revealed && (
+                  <div className="mt-2">
+                    <CaptionComprehensionActions
+                      sendAction={sendAction}
+                      explainSimplyLabel={learnerDict.explainSimply}
+                      giveExampleLabel={learnerDict.giveExample}
+                      sendingLabel={dict.sending}
+                      explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(quotedText))}
+                      giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(quotedText))}
+                    />
+                  </div>
+                )}
+                {viewerIsFacilitator && message.sender.id !== viewerUserId && recipientByUserId.has(message.sender.id) && (
+                  <button
+                    type="button"
+                    className="font-data mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    onClick={() => {
+                      const recipient = recipientByUserId.get(message.sender.id);
+                      if (recipient) setSelectedRecipientParticipantId(recipient.participantId);
+                    }}
+                  >
+                    {dict.replyPrivately}
+                  </button>
+                )}
+              </article>
+            );
+          })
         ) : (
           <p className="text-sm text-muted-foreground">{dict.noMessages}</p>
         )}
@@ -159,7 +215,7 @@ export function SessionChatPanel({
           className="resize-none rounded-md border border-border-strong bg-background p-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="message"
           rows={2}
-          maxLength={1000}
+          maxLength={CHAT_MESSAGE_MAX_LENGTH}
           required
           placeholder={dict.placeholder}
         />
