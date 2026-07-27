@@ -60,6 +60,9 @@ export function computeConfusionTrend(
   now: Date,
   bucketMs: number = DEFAULT_WINDOW_MS,
 ): ConfusionTrendPoint[] {
+  if (!Number.isFinite(bucketMs) || bucketMs <= 0) {
+    return [{ bucketStart: sessionStart, groupLevel: "CALM", count: 0 }];
+  }
   const totalMs = Math.max(0, now.getTime() - sessionStart.getTime());
   const bucketCount = Math.max(1, Math.ceil(totalMs / bucketMs));
   const buckets: ConfusionTrendPoint[] = Array.from({ length: bucketCount }, (_, i) => ({
@@ -70,7 +73,7 @@ export function computeConfusionTrend(
 
   for (const timestamp of confusionInsightTimestamps) {
     const offset = timestamp.getTime() - sessionStart.getTime();
-    if (offset < 0) continue;
+    if (offset < 0 || offset > totalMs) continue;
     const index = Math.min(bucketCount - 1, Math.floor(offset / bucketMs));
     buckets[index].count += 1;
   }
@@ -113,9 +116,10 @@ export function computeParticipationFromGroups(
   for (const group of groups) {
     const entry = byUser.get(group.senderId);
     if (!entry) continue;
-    entry.messageCount += group._count;
-    if (group.kind === "QUESTION") entry.questionCount += group._count;
-    if (group.isAnonymous && group._count > 0) entry.isAnonymousAny = true;
+    const count = Math.max(0, group._count);
+    entry.messageCount += count;
+    if (group.kind === "QUESTION") entry.questionCount += count;
+    if (group.isAnonymous && count > 0) entry.isAnonymousAny = true;
   }
 
   return Array.from(byUser.values());
@@ -143,7 +147,15 @@ export function computeBlockerStats(
 export function computeConfidenceStats(
   translations: { confidence: number | null; confidenceLevel: string | null; rootCause: string | null }[],
 ): ConfidenceStats {
-  const scored = translations.filter((t): t is { confidence: number; confidenceLevel: string | null; rootCause: string | null } => t.confidence != null);
+  const scored = translations
+    .filter(
+      (t): t is { confidence: number; confidenceLevel: string | null; rootCause: string | null } =>
+        t.confidence != null && Number.isFinite(t.confidence),
+    )
+    .map((translation) => ({
+      ...translation,
+      confidence: Math.min(100, Math.max(0, translation.confidence)),
+    }));
   const averagePercent =
     scored.length === 0 ? 0 : Math.round(scored.reduce((sum, t) => sum + t.confidence, 0) / scored.length);
   const byRootCause: Record<string, number> = {};
@@ -152,7 +164,12 @@ export function computeConfidenceStats(
   for (const translation of scored) {
     if (translation.confidenceLevel === "medium") mediumCount += 1;
     if (translation.confidenceLevel === "low") lowCount += 1;
-    if (translation.rootCause) byRootCause[translation.rootCause] = (byRootCause[translation.rootCause] ?? 0) + 1;
+    if (
+      (translation.confidenceLevel === "medium" || translation.confidenceLevel === "low") &&
+      translation.rootCause
+    ) {
+      byRootCause[translation.rootCause] = (byRootCause[translation.rootCause] ?? 0) + 1;
+    }
   }
   return { averagePercent, mediumCount, lowCount, byRootCause };
 }
