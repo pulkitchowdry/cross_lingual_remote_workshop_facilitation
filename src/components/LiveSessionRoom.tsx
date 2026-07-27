@@ -8,6 +8,7 @@ import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
 import { DuckedRoomAudio } from "@/components/meeting/DuckedRoomAudio";
 import { SyncParticipantLanguageAttribute } from "@/components/SyncParticipantLanguageAttribute";
+import { scheduleCoordinatedRefresh } from "@/lib/coordinated-refresh";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
 import { getDictionary } from "@/lib/i18n";
@@ -15,14 +16,30 @@ import type { FormActionResult, SupportedLanguage } from "@/lib/session-contract
 import type { FacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
 
 /**
- * Refreshes the page as soon as a `notifyCaptionsChanged` DataChannel message
+ * Refreshes the page shortly after a `notifyCaptionsChanged` DataChannel message
  * arrives, so captions land near-instantly instead of waiting for the next
  * `SessionAutoRefresh` poll. Must render inside `<LiveKitRoom>` to reach room
  * context; renders nothing itself.
+ *
+ * Goes through `scheduleCoordinatedRefresh` rather than calling
+ * `router.refresh()` directly — see that module's doc comment for why: this
+ * trigger and SessionAutoRefresh's independent 2s poll used to each call
+ * `router.refresh()` on their own, and a burst of rapid caption publishes
+ * (every publish pushes this same DataChannel message to every other
+ * participant) could land one of these refreshes close enough to the other to
+ * reproduce LiveTranscriptFeed's "Each child in a list should have a unique
+ * key prop" warning — confirmed directly, with the underlying `entries` array
+ * proven well-formed the whole time. Sharing one coordinator between both
+ * triggers removes the specific overlap this was reproduced with; see
+ * issue/PR history for the residual open question (a much rarer recurrence
+ * survived this fix too, under synthetic worst-case load well beyond normal
+ * usage — most likely a React/Next internal reconciliation edge case under
+ * heavy transcript growth, not an application data bug, since `entries` has
+ * never once been observed malformed).
  */
 function CaptionChannelRefresher() {
   const router = useRouter();
-  useDataChannel("captions", () => router.refresh());
+  useDataChannel("captions", () => scheduleCoordinatedRefresh(() => router.refresh()));
   return null;
 }
 
