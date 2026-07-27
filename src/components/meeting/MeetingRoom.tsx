@@ -9,6 +9,7 @@ import { ParticipantStrip } from "@/components/meeting/ParticipantStrip";
 import { ParticipantGrid } from "@/components/meeting/ParticipantGrid";
 import { MeetingSidebar } from "@/components/meeting/MeetingSidebar";
 import { CaptionOverlay } from "@/components/meeting/CaptionOverlay";
+import { RaisedHandAnnouncer } from "@/components/meeting/RaisedHandAnnouncer";
 import { Whiteboard } from "@/components/meeting/Whiteboard";
 import { AutoPictureInPicture } from "@/components/meeting/AutoPictureInPicture";
 import { MeetingHeader } from "@/components/meeting/MeetingHeader";
@@ -116,6 +117,7 @@ function MeetingRoomInner({
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
       <AutoPictureInPicture primaryTrack={primaryTrack} />
+      <RaisedHandAnnouncer uiLang={uiLang} />
       <MeetingHeader
         title={title}
         inviteLink={inviteLink}

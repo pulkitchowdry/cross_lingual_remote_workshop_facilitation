@@ -11,6 +11,9 @@ import {
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 const SESSION_START = new Date("2026-07-26T11:40:00.000Z"); // 20 min before NOW
 const BUCKET_MS = 10 * 60 * 1000;
+/** A small class where the ratio-based HIGH threshold never becomes the limiting
+ * factor for these counts (matches this suite's pre-normalization expectations). */
+const SMALL_CLASS = 5;
 
 function minutesAfterStart(minutes: number): Date {
   return new Date(SESSION_START.getTime() + minutes * 60 * 1000);
@@ -18,7 +21,7 @@ function minutesAfterStart(minutes: number): Date {
 
 describe("computeConfusionTrend", () => {
   it("returns one CALM bucket per bucketMs-sized window from sessionStart to now, with no data", () => {
-    const result = computeConfusionTrend([], SESSION_START, NOW, BUCKET_MS);
+    const result = computeConfusionTrend([], SESSION_START, NOW, SMALL_CLASS, BUCKET_MS);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ bucketStart: SESSION_START, groupLevel: "CALM", count: 0 });
     expect(result[1]).toEqual({
@@ -30,22 +33,30 @@ describe("computeConfusionTrend", () => {
 
   it("buckets timestamps into the correct window and derives level via existing thresholds", () => {
     const timestamps = [minutesAfterStart(1), minutesAfterStart(2), minutesAfterStart(3)];
-    const result = computeConfusionTrend(timestamps, SESSION_START, NOW, BUCKET_MS);
+    const result = computeConfusionTrend(timestamps, SESSION_START, NOW, SMALL_CLASS, BUCKET_MS);
     expect(result[0]).toEqual({ bucketStart: SESSION_START, groupLevel: "HIGH", count: 3 });
     expect(result[1].count).toBe(0);
   });
 
+  it("normalizes the HIGH threshold by participant count, unlike a fixed absolute cutoff", () => {
+    const timestamps = [minutesAfterStart(1), minutesAfterStart(2), minutesAfterStart(3)];
+    // Same 3 confused learners as above, but out of a 20-person class (15%) — an
+    // ordinary rate, not an urgent one.
+    const result = computeConfusionTrend(timestamps, SESSION_START, NOW, 20, BUCKET_MS);
+    expect(result[0]).toEqual({ bucketStart: SESSION_START, groupLevel: "SOME", count: 3 });
+  });
+
   it("returns a single bucket when sessionStart equals now", () => {
-    const result = computeConfusionTrend([], NOW, NOW, BUCKET_MS);
+    const result = computeConfusionTrend([], NOW, NOW, SMALL_CLASS, BUCKET_MS);
     expect(result).toEqual([{ bucketStart: NOW, groupLevel: "CALM", count: 0 }]);
   });
 
   it("ignores future timestamps and invalid bucket sizes instead of producing invalid buckets", () => {
-    expect(computeConfusionTrend([new Date(NOW.getTime() + 60_000)], SESSION_START, NOW, BUCKET_MS)).toEqual([
+    expect(computeConfusionTrend([new Date(NOW.getTime() + 60_000)], SESSION_START, NOW, SMALL_CLASS, BUCKET_MS)).toEqual([
       { bucketStart: SESSION_START, groupLevel: "CALM", count: 0 },
       { bucketStart: new Date(SESSION_START.getTime() + BUCKET_MS), groupLevel: "CALM", count: 0 },
     ]);
-    expect(computeConfusionTrend([minutesAfterStart(1)], SESSION_START, NOW, 0)).toEqual([
+    expect(computeConfusionTrend([minutesAfterStart(1)], SESSION_START, NOW, SMALL_CLASS, 0)).toEqual([
       { bucketStart: SESSION_START, groupLevel: "CALM", count: 0 },
     ]);
   });

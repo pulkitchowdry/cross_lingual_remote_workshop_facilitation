@@ -1,4 +1,4 @@
-import { DEFAULT_WINDOW_MS } from "@/lib/confusion-level";
+import { DEFAULT_WINDOW_MS, levelForCount } from "@/lib/confusion-level";
 
 export interface ConfusionTrendPoint {
   bucketStart: Date;
@@ -43,21 +43,19 @@ export interface FacilitatorAnalytics {
   confidence: ConfidenceStats;
 }
 
-function levelForCount(count: number): "CALM" | "SOME" | "HIGH" {
-  if (count === 0) return "CALM";
-  if (count <= 2) return "SOME";
-  return "HIGH";
-}
-
 /**
  * Buckets CONFUSION insight timestamps into fixed `bucketMs`-wide windows from
  * `sessionStart` to `now`, reusing the same per-bucket thresholds as
- * computeConfusionLevel (confusion-level.ts) rather than a second scale.
+ * computeConfusionLevel (confusion-level.ts) rather than a second scale —
+ * including that scale's own participant-count normalization, so a large
+ * class's post-session confusion-trend chart isn't disproportionately
+ * alarmist for the same reason the live badge no longer is.
  */
 export function computeConfusionTrend(
   confusionInsightTimestamps: Date[],
   sessionStart: Date,
   now: Date,
+  participantCount: number,
   bucketMs: number = DEFAULT_WINDOW_MS,
 ): ConfusionTrendPoint[] {
   if (!Number.isFinite(bucketMs) || bucketMs <= 0) {
@@ -78,7 +76,7 @@ export function computeConfusionTrend(
     buckets[index].count += 1;
   }
 
-  return buckets.map((bucket) => ({ ...bucket, groupLevel: levelForCount(bucket.count) }));
+  return buckets.map((bucket) => ({ ...bucket, groupLevel: levelForCount(bucket.count, participantCount) }));
 }
 
 /** Per-learner message/question totals over the whole session, for every known

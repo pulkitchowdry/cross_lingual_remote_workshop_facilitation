@@ -52,7 +52,13 @@ export function RouteErrorFallback({
   // English Next.js internals instead of `dict.message` in exactly the real-world case
   // (a genuine backend failure) where a localized, reassuring message matters most.
   const isRedactedMessage = error.message?.startsWith("An error occurred in the Server Components render");
-  const displayMessage = isRedactedMessage ? dict.message : error.message || dict.message;
+  // createSession/joinSession (setup/actions.ts, join/[token]/actions.ts) throw plain,
+  // hardcoded-English `Error`s for their *expected* validation/lifecycle failures (rate
+  // limiting, a revoked/expired invite, a session that just ended) rather than a
+  // translated `FormActionResult` — look up a localized replacement for the ones a
+  // learner/facilitator can realistically hit before falling back to the raw message.
+  const knownTranslation = error.message ? dict.knownMessages[error.message] : undefined;
+  const displayMessage = isRedactedMessage ? dict.message : knownTranslation || error.message || dict.message;
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">

@@ -79,9 +79,11 @@ export function ParticipantChip({
         {raisedHand && (
           <span
             className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            role="img"
+            aria-label={dict.raisedHandTitle(name)}
             title={dict.raisedHandTitle(name)}
           >
-            <HandIcon className="h-3.5 w-3.5" />
+            <HandIcon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         )}
         <span
@@ -125,9 +127,11 @@ export function ParticipantChip({
         {raisedHand && (
           <span
             className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            role="img"
+            aria-label={dict.raisedHandTitle(name)}
             title={dict.raisedHandTitle(name)}
           >
-            <HandIcon className="h-3 w-3" />
+            <HandIcon className="h-3 w-3" aria-hidden="true" />
           </span>
         )}
         <span
