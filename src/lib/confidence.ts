@@ -1,4 +1,6 @@
 import type { Confidence } from "@/lib/types";
+import { preferredTranslation, translationUsesPreferredTerm, type GlossaryMatch } from "@/lib/glossary";
+import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
  * The individual communication-quality signals that feed a single translated
@@ -163,4 +165,36 @@ export function estimateTerminologyConfidence(originalText: string, glossary: Gl
   }).length;
   if (unresolvedMatches === 0) return DEFAULT_SIGNAL;
   return Math.max(20, DEFAULT_SIGNAL - unresolvedMatches * 25);
+}
+
+/**
+ * The Centralised Glossary (issue #131) equivalent of estimateTerminologyConfidence
+ * above, but for the shared cross-session glossary rather than one session's
+ * approved terms. Distinguishes two cases the issue calls out separately:
+ *   - "Glossary Mismatch": the term has a preferred translation and the output
+ *     didn't use it — a real quality problem, penalized harder (35pts) since the
+ *     preferred rendering is known and simply wasn't followed.
+ *   - "Unknown Technical Term": the term matched but the glossary has no
+ *     preferred translation for this language (translate:true, no override
+ *     entry, or a translate:false term the model happened to translate anyway) —
+ *     lighter penalty (15pts), since there's no ground truth to have violated,
+ *     just an opportunity to add one (see recordUnknownGlossaryTerms).
+ */
+export function estimateCentralGlossaryConfidence(
+  translatedText: string,
+  matches: GlossaryMatch[],
+  targetLanguage: SupportedLanguage,
+): number {
+  if (matches.length === 0) return DEFAULT_SIGNAL;
+  let penalty = 0;
+  for (const match of matches) {
+    const preferred = preferredTranslation(match.entry, targetLanguage);
+    if (preferred === null) {
+      penalty += 15;
+    } else if (!translationUsesPreferredTerm(translatedText, preferred)) {
+      penalty += 35;
+    }
+  }
+  if (penalty === 0) return DEFAULT_SIGNAL;
+  return Math.max(20, DEFAULT_SIGNAL - penalty);
 }

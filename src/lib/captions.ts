@@ -11,7 +11,9 @@ import {
   logCaptionLatency,
   type CaptionInstrumentationContext,
 } from "@/lib/caption-latency-log";
-import { computeOverallConfidence, estimateTerminologyConfidence } from "@/lib/confidence";
+import { computeOverallConfidence, estimateCentralGlossaryConfidence, estimateTerminologyConfidence } from "@/lib/confidence";
+import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
+import { recordUnknownGlossaryTerms } from "@/lib/glossary-suggestions";
 
 /**
  * Translates `originalText` into every learner language, persists it as a
@@ -39,19 +41,41 @@ export async function publishTranslatedCaption(
   // Confidence Score's terminology signal (issue #130) needs this session's glossary to
   // check whether the caption uses a term with no approved translation yet — fetched once
   // per segment rather than once per target language, since it's the same for all of them.
-  const glossaryTerms = await prisma.glossaryTerm.findMany({
-    where: { sessionId: session.id },
-    select: { sourceTerm: true, aliases: true, approvedTranslation: true },
-  });
+  const [glossaryTerms, centralGlossary] = await Promise.all([
+    prisma.glossaryTerm.findMany({
+      where: { sessionId: session.id },
+      select: { sourceTerm: true, aliases: true, approvedTranslation: true },
+    }),
+    // Centralised Technical Glossary (issue #131) — shared across every session/facilitator,
+    // unlike glossaryTerms above. Fetched once per segment (same reasoning as glossaryTerms:
+    // it's the same set for every target language) rather than per-language.
+    prisma.centralGlossaryEntry.findMany({
+      select: { sourceTerm: true, translate: true, translations: true },
+    }),
+  ]);
+  const centralGlossaryEntries: CentralGlossaryEntryLike[] = centralGlossary.map((entry) => ({
+    sourceTerm: entry.sourceTerm,
+    translate: entry.translate,
+    translations: (entry.translations as Record<string, string>) ?? {},
+  }));
+  const glossaryMatches = findGlossaryMatches(input.originalText, centralGlossaryEntries);
   const terminologyConfidence = estimateTerminologyConfidence(input.originalText, glossaryTerms);
   const translations = await Promise.all(
     SUPPORTED_LANGUAGES.map(async ({ value: target }) => {
-      const result = await translateText(input.originalText, input.language, target, { allowCloudFallback });
+      const glossaryHint = buildGlossaryPromptHint(glossaryMatches, target);
+      const result = await translateText(input.originalText, input.language, target, {
+        allowCloudFallback,
+        glossaryHint,
+      });
       if (!result) return null;
+      const centralGlossaryConfidence = estimateCentralGlossaryConfidence(result.text, glossaryMatches, target);
       const confidence = computeOverallConfidence({
         speechRecognition: input.sttConfidence,
         translation: result.confidence,
-        terminology: terminologyConfidence,
+        // The lower of the two terminology signals wins — either an unapproved
+        // session-specific term or a central-glossary mismatch is enough on its own
+        // to make this caption's terminology handling suspect.
+        terminology: Math.min(terminologyConfidence, centralGlossaryConfidence),
       });
       return {
         targetLanguage: target,
@@ -124,6 +148,16 @@ export async function publishTranslatedCaption(
   safeRevalidatePath(`/sessions/${session.id}/facilitator`);
   safeRevalidatePath(`/sessions/${session.id}/learn`);
   await roomProvider.notifyCaptionsChanged(session.id);
+
+  // Fire-and-forget, same pattern as generateSessionInsights below — post-meeting
+  // glossary recommendations (issue #131) don't need to block caption publishing.
+  const knownTerms = new Set([
+    ...centralGlossaryEntries.map((entry) => entry.sourceTerm),
+    ...glossaryTerms.map((term) => term.sourceTerm),
+  ]);
+  void recordUnknownGlossaryTerms(session.id, input.originalText, knownTerms).catch((error) => {
+    console.error("recordUnknownGlossaryTerms failed", error);
+  });
 
   if (insightProvider.isConfigured) {
     // Fire-and-forget: unlike a Vercel Function, this process stays alive

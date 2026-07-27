@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   computeOverallConfidence,
+  estimateCentralGlossaryConfidence,
   estimateTerminologyConfidence,
   estimateTranslationConfidence,
 } from "@/lib/confidence";
+import type { CentralGlossaryEntryLike, GlossaryMatch } from "@/lib/glossary";
 
 describe("computeOverallConfidence", () => {
   it("is High when every signal is strong", () => {
@@ -78,5 +80,28 @@ describe("estimateTerminologyConfidence", () => {
       { sourceTerm: "api gateway", aliases: ["gateway"], approvedTranslation: null },
     ]);
     expect(score).toBeLessThan(100);
+  });
+});
+
+describe("estimateCentralGlossaryConfidence", () => {
+  const featureFlag: CentralGlossaryEntryLike = {
+    sourceTerm: "Feature Flag",
+    translate: true,
+    translations: { zh: "功能开关" },
+  };
+  it("is unaffected with no matches", () => {
+    expect(estimateCentralGlossaryConfidence("任何文本", [], "zh")).toBe(100);
+  });
+
+  it("is full confidence when the translation used the preferred term (Glossary Match)", () => {
+    const matches: GlossaryMatch[] = [{ entry: featureFlag, matchedText: "Feature Flag" }];
+    expect(estimateCentralGlossaryConfidence("请检查这个 功能开关。", matches, "zh")).toBe(100);
+  });
+
+  it("is penalized harder for a Glossary Mismatch than an Unknown Technical Term", () => {
+    const matches: GlossaryMatch[] = [{ entry: featureFlag, matchedText: "Feature Flag" }];
+    const mismatchScore = estimateCentralGlossaryConfidence("请检查这个 特性标志。", matches, "zh");
+    const unknownScore = estimateCentralGlossaryConfidence("请检查这个术语。", matches, "es");
+    expect(mismatchScore).toBeLessThan(unknownScore);
   });
 });
