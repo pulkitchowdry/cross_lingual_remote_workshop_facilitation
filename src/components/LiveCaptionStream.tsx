@@ -23,19 +23,6 @@ const CHUNK_INTERVAL_MS = 250;
  * trigger) was pure friction with no benefit. Renders a status indicator only, not a
  * button; the only remaining manual control is a "Retry" affordance if the socket
  * itself fails while the mic is still on.
- *
- * Captures audio by cloning the `MediaStreamTrack` LiveKit already has open for the
- * published mic (`useLocalParticipant`'s `microphoneTrack`), NOT via a second
- * `getUserMedia({audio:true})` call — two independent concurrent mic captures on the
- * same physical device is a known source of silent failures on iOS Safari and some
- * Android browsers (see `livekit-client`'s own `createLocalTracks` comment referencing
- * WebKit bug 179363), which reproduced here as "captions never work on this device, no
- * matter how many times Retry is clicked" (issue #143) — every retry re-triggered the
- * same contention since it kept requesting a second capture. Cloning avoids opening a
- * second hardware capture entirely: no extra permission prompt, no contention, and
- * nothing here may ever call `.stop()` on the *original* published track — only on the
- * clone this component owns — or it would kill everyone's ability to hear this
- * participant's mic through LiveKit, not just this component's own STT stream.
  */
 export function LiveCaptionStream({
   sessionId,
@@ -55,7 +42,7 @@ export function LiveCaptionStream({
   agentCapturing?: boolean;
 }) {
   const dict = getDictionary(lang).captions;
-  const { isMicrophoneEnabled, microphoneTrack } = useLocalParticipant();
+  const { isMicrophoneEnabled } = useLocalParticipant();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,14 +93,6 @@ export function LiveCaptionStream({
   }, [agentCapturing, isStreaming, stop]);
 
   const start = useCallback(async () => {
-    // `isMicrophoneEnabled` can flip true an instant before LiveKit's own publish
-    // finishes and `microphoneTrack` catches up (they're driven by separate state
-    // updates off the same underlying event) — bail out quietly rather than surface a
-    // transient error; the auto-start effect below depends on `microphoneTrack` too,
-    // so it re-invokes this once the published track actually exists.
-    const publishedTrack = microphoneTrack?.track?.mediaStreamTrack;
-    if (!publishedTrack) return;
-
     activeRef.current = true;
     setError(null);
     stoppedByUserRef.current = false;
@@ -177,12 +156,22 @@ export function LiveCaptionStream({
         stop();
       };
 
-      // A clone of LiveKit's already-open mic track (see this component's doc comment)
-      // — not a second `getUserMedia()` call — so, unlike before, there's no async gap
-      // here for the socket to fail out from under while a permission prompt was
-      // pending; this line runs synchronously right after the socket is constructed
-      // above.
-      const stream = new MediaStream([publishedTrack.clone()]);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The WebSocket can already have failed and closed (running `stop()` via `onclose`
+      // above) while `getUserMedia`'s permission prompt was still pending — resolving
+      // after that must not resurrect a "streaming" state or leave the mic hot with
+      // nothing consuming it.
+      const socketFailed =
+        socketRef.current !== socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
+      if (socketFailed) {
+        stream.getTracks().forEach((track) => track.stop());
+        // socketRef.current has already moved on (e.g. a re-entrant start()) —
+        // this exact `socket` reference is otherwise unreachable from here on,
+        // so it must close itself or it (and its server-side STT session)
+        // leaks for the rest of the page's lifetime.
+        if (socketRef.current !== socket) socket.close();
+        return;
+      }
       streamRef.current = stream;
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
@@ -204,15 +193,12 @@ export function LiveCaptionStream({
     } finally {
       setIsConnecting(false);
     }
-  }, [sessionId, stop, microphoneTrack, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+  }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
   // The single trigger for this whole component: unmuting is already the one action
   // every participant takes to be heard at all, so tying capture to it directly means
   // there's nothing separate to click or forget. Skipped entirely while the server-side
   // agent already covers this identity (`agentCapturing`) to avoid duplicating captions.
-  // Also re-fires once `microphoneTrack` itself shows up — `isMicrophoneEnabled` can flip
-  // true a moment before it does (see `start`'s own bail-out for the same race), so this
-  // needs to be a real dependency, not just a signal `start` reads internally.
   useEffect(() => {
     if (agentCapturing) return;
     if (isMicrophoneEnabled) {
@@ -221,7 +207,7 @@ export function LiveCaptionStream({
       stop();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMicrophoneEnabled, agentCapturing, microphoneTrack]);
+  }, [isMicrophoneEnabled, agentCapturing]);
 
   if (agentCapturing) {
     return (
