@@ -176,6 +176,8 @@ export interface Dictionary {
     analyticsBlockersSummary: (raised: number, resolved: number, open: number) => string;
     analyticsLanguagesHeading: string;
     analyticsLanguagesRow: (language: string, count: number) => string;
+    analyticsConfidenceHeading: string;
+    analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
     analyticsEmptyState: string;
     analyticsFrozenNotice: string;
   };
@@ -314,6 +316,28 @@ export interface Dictionary {
     jumpToLatest: string;
     chatTab: string;
     captionsTab: string;
+    // Confidence Score (issue #130) — recipient-facing overall level label, the
+    // %-score line, per-signal breakdown labels, root-cause "why" reasons, and the
+    // clarification-request affordance shown when a caption's confidence is Medium/Low.
+    confidenceLevelHigh: string;
+    confidenceLevelMedium: string;
+    confidenceLevelLow: string;
+    confidenceScoreLabel: (percent: number) => string;
+    confidenceBreakdownAudio: string;
+    confidenceBreakdownSpeechRecognition: string;
+    confidenceBreakdownTranslation: string;
+    confidenceBreakdownTerminology: string;
+    confidenceReasonAudio: string;
+    confidenceReasonSpeechRecognition: string;
+    confidenceReasonTranslation: string;
+    confidenceReasonTerminology: string;
+    confidenceReasonNetwork: string;
+    confidenceReasonGeneric: string;
+    requestClarification: string;
+    clarificationReasonCouldNotHear: string;
+    clarificationReasonTranslationIncorrect: string;
+    clarificationReasonPleaseRepeat: string;
+    clarificationReasonExplainDifferently: string;
     // The browser's own native "Please fill in this field" validation bubble is
     // localized to the BROWSER's UI language (its own Accept-Language/OS setting), not
     // this page's `lang` — so on a fully zh/es-localized page it shows up in English
@@ -468,6 +492,9 @@ const en: Dictionary = {
       `${raised} raised · ${resolved} resolved · ${open} open`,
     analyticsLanguagesHeading: "Languages",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} translations`,
+    analyticsConfidenceHeading: "Confidence Score",
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
+      `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
     analyticsEmptyState: "No analytics yet — data will appear as the session progresses.",
     analyticsFrozenNotice: "Final snapshot — this session has ended",
   },
@@ -596,6 +623,25 @@ const en: Dictionary = {
     jumpToLatest: "Jump to latest",
     chatTab: "Chat",
     captionsTab: "Captions",
+    confidenceLevelHigh: "High",
+    confidenceLevelMedium: "Needs attention",
+    confidenceLevelLow: "Low",
+    confidenceScoreLabel: (percent) => `Confidence Score ${percent}%`,
+    confidenceBreakdownAudio: "Audio quality",
+    confidenceBreakdownSpeechRecognition: "Speech recognition",
+    confidenceBreakdownTranslation: "Translation",
+    confidenceBreakdownTerminology: "Terminology",
+    confidenceReasonAudio: "We couldn't hear you clearly.",
+    confidenceReasonSpeechRecognition: "Some words could not be recognised accurately.",
+    confidenceReasonTranslation: "This sentence could not be translated reliably.",
+    confidenceReasonTerminology: "Some technical terms may not have translated correctly.",
+    confidenceReasonNetwork: "A network issue may have affected this message.",
+    confidenceReasonGeneric: "Some content may not have translated correctly.",
+    requestClarification: "Request clarification",
+    clarificationReasonCouldNotHear: "I couldn't hear clearly",
+    clarificationReasonTranslationIncorrect: "Translation seems incorrect",
+    clarificationReasonPleaseRepeat: "Could you repeat that?",
+    clarificationReasonExplainDifferently: "Could you explain differently?",
     requiredFieldMessage: "Please fill in this field.",
   },
   notFound: {
@@ -745,6 +791,9 @@ const zh: Dictionary = {
       `提出 ${raised} · 已解决 ${resolved} · 未解决 ${open}`,
     analyticsLanguagesHeading: "语言",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} 次翻译`,
+    analyticsConfidenceHeading: "置信度",
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
+      `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
     analyticsEmptyState: "暂无分析数据——数据将随会话进行而出现。",
     analyticsFrozenNotice: "最终快照——本次会话已结束",
   },
@@ -873,6 +922,25 @@ const zh: Dictionary = {
     jumpToLatest: "跳到最新",
     chatTab: "聊天",
     captionsTab: "字幕",
+    confidenceLevelHigh: "高",
+    confidenceLevelMedium: "需关注",
+    confidenceLevelLow: "低",
+    confidenceScoreLabel: (percent) => `置信度 ${percent}%`,
+    confidenceBreakdownAudio: "音频质量",
+    confidenceBreakdownSpeechRecognition: "语音识别",
+    confidenceBreakdownTranslation: "翻译",
+    confidenceBreakdownTerminology: "术语",
+    confidenceReasonAudio: "我们没能听清楚你的声音。",
+    confidenceReasonSpeechRecognition: "部分词语未能被准确识别。",
+    confidenceReasonTranslation: "这句话未能可靠地翻译。",
+    confidenceReasonTerminology: "部分专业术语可能未能正确翻译。",
+    confidenceReasonNetwork: "网络问题可能影响了这条消息。",
+    confidenceReasonGeneric: "部分内容可能未能正确翻译。",
+    requestClarification: "请求澄清",
+    clarificationReasonCouldNotHear: "我没有听清楚",
+    clarificationReasonTranslationIncorrect: "翻译似乎不正确",
+    clarificationReasonPleaseRepeat: "可以再说一遍吗？",
+    clarificationReasonExplainDifferently: "可以换种方式解释吗？",
     requiredFieldMessage: "请填写此字段。",
   },
   notFound: {
@@ -1022,6 +1090,9 @@ const es: Dictionary = {
       `${raised} planteados · ${resolved} resueltos · ${open} abiertos`,
     analyticsLanguagesHeading: "Idiomas",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} traducciones`,
+    analyticsConfidenceHeading: "Puntuación de confianza",
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
+      `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
     analyticsEmptyState: "Aún no hay analítica — los datos aparecerán a medida que avance la sesión.",
     analyticsFrozenNotice: "Instantánea final — esta sesión ha terminado",
   },
@@ -1150,6 +1221,25 @@ const es: Dictionary = {
     jumpToLatest: "Ir a lo último",
     chatTab: "Chat",
     captionsTab: "Subtítulos",
+    confidenceLevelHigh: "Alta",
+    confidenceLevelMedium: "Requiere atención",
+    confidenceLevelLow: "Baja",
+    confidenceScoreLabel: (percent) => `Puntuación de confianza ${percent}%`,
+    confidenceBreakdownAudio: "Calidad de audio",
+    confidenceBreakdownSpeechRecognition: "Reconocimiento de voz",
+    confidenceBreakdownTranslation: "Traducción",
+    confidenceBreakdownTerminology: "Terminología",
+    confidenceReasonAudio: "No pudimos escucharte con claridad.",
+    confidenceReasonSpeechRecognition: "Algunas palabras no se reconocieron con precisión.",
+    confidenceReasonTranslation: "Esta frase no se pudo traducir de forma fiable.",
+    confidenceReasonTerminology: "Algunos términos técnicos podrían no haberse traducido correctamente.",
+    confidenceReasonNetwork: "Un problema de red pudo haber afectado este mensaje.",
+    confidenceReasonGeneric: "Parte del contenido podría no haberse traducido correctamente.",
+    requestClarification: "Solicitar aclaración",
+    clarificationReasonCouldNotHear: "No pude escuchar con claridad",
+    clarificationReasonTranslationIncorrect: "La traducción parece incorrecta",
+    clarificationReasonPleaseRepeat: "¿Podrías repetirlo?",
+    clarificationReasonExplainDifferently: "¿Podrías explicarlo de otra manera?",
     requiredFieldMessage: "Por favor completa este campo.",
   },
   notFound: {

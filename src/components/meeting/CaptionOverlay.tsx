@@ -3,8 +3,10 @@
 import { useMeetingShell } from "@/components/meeting/MeetingShellContext";
 import { resolveTranslatedText } from "@/lib/translation-view";
 import { getDictionary } from "@/lib/i18n";
+import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import type { RootCause } from "@/lib/confidence";
 
 const RECENT_SEGMENT_COUNT = 3;
 
@@ -33,6 +35,9 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
       <div className="pointer-events-auto flex max-h-40 w-full max-w-2xl flex-col gap-1.5 overflow-y-auto">
         {recent.map((segment) => {
           const resolved = resolveTranslatedText(segment, uiLang);
+          const translation = segment.translations.find((item) => item.targetLanguage === uiLang);
+          const showConfidence =
+            !resolved.isOriginal && translation?.confidence != null && translation.confidenceLevel && translation.confidenceLevel !== "high";
           return (
             <div
               key={segment.id}
@@ -46,6 +51,16 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
                 <p className="text-xs italic text-white/70" lang={segment.language}>
                   {segment.originalText}
                 </p>
+              )}
+              {showConfidence && translation && (
+                <div className="mt-0.5">
+                  <ConfidenceBadge
+                    score={translation.confidence!}
+                    level={translation.confidenceLevel as "high" | "medium" | "low"}
+                    rootCause={translation.rootCause as RootCause | null}
+                    uiLang={uiLang}
+                  />
+                </div>
               )}
             </div>
           );

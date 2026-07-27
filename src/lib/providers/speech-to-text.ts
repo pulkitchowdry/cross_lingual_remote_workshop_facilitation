@@ -10,11 +10,15 @@ export interface TranscriptSegmentDraft {
   startedAt: Date;
   endedAt: Date;
   isFinal: boolean;
+  /** 0-100 speech-recognition confidence, when the tier reports one (Deepgram does; local-inference/mock don't) — see src/lib/confidence.ts. */
+  confidence?: number;
 }
 
 export interface StreamingTranscriptEvent {
   text: string;
   isFinal: boolean;
+  /** 0-100 speech-recognition confidence, when the tier reports one — see TranscriptSegmentDraft.confidence. */
+  confidence?: number;
 }
 
 /** A live transcription session: push audio in, get transcript events out. */
@@ -107,9 +111,19 @@ const DEEPGRAM_MODEL = "nova-3";
 interface DeepgramListenResponse {
   results?: {
     channels?: Array<{
-      alternatives?: Array<{ transcript?: string }>;
+      alternatives?: Array<{ transcript?: string; confidence?: number }>;
     }>;
   };
+}
+
+/** Deepgram reports confidence as a 0-1 float; the rest of the pipeline (and
+ * the Prisma columns) work in 0-100 ints — see src/lib/confidence.ts. */
+function toConfidencePercent(value: number | undefined): number | undefined {
+  return typeof value === "number" ? Math.round(clamp01(value) * 100) : undefined;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 async function transcribeChunkWithDeepgram(input: TranscribeChunkInput): Promise<TranscriptSegmentDraft> {
@@ -142,7 +156,8 @@ async function transcribeChunkWithDeepgram(input: TranscribeChunkInput): Promise
   }
 
   const payload = (await response.json()) as DeepgramListenResponse;
-  const transcript = payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
+  const alternative = payload.results?.channels?.[0]?.alternatives?.[0];
+  const transcript = alternative?.transcript?.trim() ?? "";
   const endedAt = new Date();
 
   return {
@@ -152,6 +167,7 @@ async function transcribeChunkWithDeepgram(input: TranscribeChunkInput): Promise
     startedAt,
     endedAt,
     isFinal: true,
+    confidence: toConfidencePercent(alternative?.confidence),
   };
 }
 
@@ -221,7 +237,7 @@ interface DeepgramStreamingMessage {
   type?: string;
   is_final?: boolean;
   channel?: {
-    alternatives?: Array<{ transcript?: string }>;
+    alternatives?: Array<{ transcript?: string; confidence?: number }>;
   };
 }
 
@@ -240,10 +256,11 @@ export function parseDeepgramStreamingMessage(raw: string): StreamingTranscriptE
   }
   if (message.type !== "Results") return null;
 
-  const text = message.channel?.alternatives?.[0]?.transcript?.trim();
+  const alternative = message.channel?.alternatives?.[0];
+  const text = alternative?.transcript?.trim();
   if (!text) return null;
 
-  return { text, isFinal: Boolean(message.is_final) };
+  return { text, isFinal: Boolean(message.is_final), confidence: toConfidencePercent(alternative?.confidence) };
 }
 
 /** How long to wait for Deepgram's TCP+TLS+WS handshake before giving up and

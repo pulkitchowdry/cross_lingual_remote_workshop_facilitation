@@ -1,10 +1,13 @@
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { isLocalInferenceConfigured, localTranslate } from "@/lib/providers/local-inference-client";
+import { estimateTranslationConfidence } from "@/lib/confidence";
 
 export interface TranslationResult {
   text: string;
   provider: string;
   qualitySignal: "provider-confirmed";
+  /** 0-100 heuristic translation-confidence signal — see estimateTranslationConfidence's doc comment. */
+  confidence: number;
 }
 
 const languageName: Record<SupportedLanguage, string> = {
@@ -110,7 +113,12 @@ async function translateWithClaude(
         );
       }
 
-      return { text: translated, provider: "claude", qualitySignal: "provider-confirmed" };
+      return {
+        text: translated,
+        provider: "claude",
+        qualitySignal: "provider-confirmed",
+        confidence: estimateTranslationConfidence("claude", payload.stop_reason === "max_tokens"),
+      };
     } catch (error) {
       // Every failure here degrades silently to "Translation unavailable." for the
       // learner (see learn/page.tsx) with no other signal — without this log, a
@@ -157,7 +165,14 @@ export async function translateText(
     for (let attempt = 1; attempt <= LOCAL_TRANSLATE_ATTEMPTS; attempt++) {
       try {
         const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
-        if (translated) return { text: translated, provider: "nllb", qualitySignal: "provider-confirmed" };
+        if (translated) {
+          return {
+            text: translated,
+            provider: "nllb",
+            qualitySignal: "provider-confirmed",
+            confidence: estimateTranslationConfidence("nllb", false),
+          };
+        }
         // localTranslate only throws when payload.text isn't a string (handled in the catch
         // below) — an empty string passes that check and lands here instead. Without this
         // log, a local-inference tier that responds 200 with a blank body is indistinguishable

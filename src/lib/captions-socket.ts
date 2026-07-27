@@ -101,6 +101,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session) {
             language: current.sourceLanguage as SupportedLanguage,
             startedAt,
             endedAt,
+            sttConfidence: event.confidence,
             instrumentation: {
               source: "browser-ws",
               audioSubmittedAtMs,

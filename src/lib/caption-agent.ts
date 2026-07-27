@@ -107,6 +107,7 @@ async function streamFacilitatorAudio(
             language: session.sourceLanguage as SupportedLanguage,
             startedAt,
             endedAt,
+            sttConfidence: event.confidence,
             instrumentation: {
               source: "caption-agent",
               audioSubmittedAtMs,

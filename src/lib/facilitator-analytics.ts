@@ -26,11 +26,21 @@ export interface LanguageStat {
   translationCount: number;
 }
 
+export interface ConfidenceStats {
+  /** 0-100, rounded — omits translations with no confidence recorded (e.g. pre-migration rows). */
+  averagePercent: number;
+  mediumCount: number;
+  lowCount: number;
+  /** Counts by root cause, only for Medium/Low translations that have one. */
+  byRootCause: Record<string, number>;
+}
+
 export interface FacilitatorAnalytics {
   confusionTrend: ConfusionTrendPoint[];
   participation: ParticipationEntry[];
   blockers: BlockerStats;
   languages: LanguageStat[];
+  confidence: ConfidenceStats;
 }
 
 function levelForCount(count: number): "CALM" | "SOME" | "HIGH" {
@@ -124,6 +134,27 @@ export function computeBlockerStats(
   const resolved = blockerInsights.filter((item) => item.status === "RESOLVED").length;
   const raised = blockerInsights.length;
   return { raised, resolved, open: raised - resolved, avgResolutionMs: null };
+}
+
+/** Post-meeting Confidence Score metrics (issue #130's "Post-Meeting Metrics") —
+ * average score plus how many translations needed attention and why, so a
+ * facilitator can see e.g. "audio issues were the biggest problem this
+ * session" without re-reading the whole transcript. */
+export function computeConfidenceStats(
+  translations: { confidence: number | null; confidenceLevel: string | null; rootCause: string | null }[],
+): ConfidenceStats {
+  const scored = translations.filter((t): t is { confidence: number; confidenceLevel: string | null; rootCause: string | null } => t.confidence != null);
+  const averagePercent =
+    scored.length === 0 ? 0 : Math.round(scored.reduce((sum, t) => sum + t.confidence, 0) / scored.length);
+  const byRootCause: Record<string, number> = {};
+  let mediumCount = 0;
+  let lowCount = 0;
+  for (const translation of scored) {
+    if (translation.confidenceLevel === "medium") mediumCount += 1;
+    if (translation.confidenceLevel === "low") lowCount += 1;
+    if (translation.rootCause) byRootCause[translation.rootCause] = (byRootCause[translation.rootCause] ?? 0) + 1;
+  }
+  return { averagePercent, mediumCount, lowCount, byRootCause };
 }
 
 export function computeLanguageStats(translations: { targetLanguage: string }[]): LanguageStat[] {

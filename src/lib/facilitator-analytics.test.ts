@@ -5,6 +5,7 @@ import {
   computeParticipationFromGroups,
   computeBlockerStats,
   computeLanguageStats,
+  computeConfidenceStats,
 } from "@/lib/facilitator-analytics";
 
 const NOW = new Date("2026-07-26T12:00:00.000Z");
@@ -164,5 +165,33 @@ describe("computeLanguageStats", () => {
       { language: "zh", translationCount: 3 },
       { language: "es", translationCount: 1 },
     ]);
+  });
+});
+
+describe("computeConfidenceStats", () => {
+  it("returns zeroed stats for no scored translations", () => {
+    expect(computeConfidenceStats([])).toEqual({ averagePercent: 0, mediumCount: 0, lowCount: 0, byRootCause: {} });
+  });
+
+  it("averages confidence and counts levels/root causes", () => {
+    const translations = [
+      { confidence: 96, confidenceLevel: "high", rootCause: null },
+      { confidence: 48, confidenceLevel: "low", rootCause: "audio" },
+      { confidence: 80, confidenceLevel: "medium", rootCause: "terminology" },
+    ];
+    expect(computeConfidenceStats(translations)).toEqual({
+      averagePercent: 75,
+      mediumCount: 1,
+      lowCount: 1,
+      byRootCause: { audio: 1, terminology: 1 },
+    });
+  });
+
+  it("ignores translations with no recorded confidence", () => {
+    const translations = [
+      { confidence: null, confidenceLevel: null, rootCause: null },
+      { confidence: 90, confidenceLevel: "high", rootCause: null },
+    ];
+    expect(computeConfidenceStats(translations)).toEqual({ averagePercent: 90, mediumCount: 0, lowCount: 0, byRootCause: {} });
   });
 });
