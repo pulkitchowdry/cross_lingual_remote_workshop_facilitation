@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
+import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { cookies, headers } from "next/headers";
@@ -84,17 +85,23 @@ export default async function FacilitatorRoomPage({
       }}
     />
   );
-  const captionsHeader = textToSpeechProvider.isConfigured && (
-    <TranslatedAudioPlayer
-      segments={session.transcript.map((segment) => ({
-        id: segment.id,
-        hasTranslation:
-          segment.language === session.sourceLanguage ||
-          segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
-        isTyped: segment.isTyped,
-      }))}
-      preferredLanguage={session.sourceLanguage}
-    />
+  const captionsHeader = (
+    <>
+      <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={session.captionAgentActive} />
+      {textToSpeechProvider.isConfigured && (
+        <TranslatedAudioPlayer
+          segments={session.transcript.map((segment) => ({
+            id: segment.id,
+            hasTranslation:
+              segment.language === session.sourceLanguage ||
+              segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
+            isTyped: segment.isTyped,
+            language: segment.language,
+          }))}
+          preferredLanguage={session.sourceLanguage}
+        />
+      )}
+    </>
   );
 
   const appUrl = resolveAppUrl(await headers());
@@ -120,6 +127,7 @@ export default async function FacilitatorRoomPage({
           viewerUserId={session.facilitatorId}
           privateRecipientOptions={privateRecipientOptions}
           currentLanguage={lang}
+          facilitatorSourceLanguage={lang}
           onChangeLanguage={changeLanguageAction}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}

@@ -483,6 +483,7 @@ export default async function FacilitatorSessionPage({
                       segment.language === session.sourceLanguage ||
                       segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
                     isTyped: segment.isTyped,
+                    language: segment.language,
                   }))}
                   preferredLanguage={session.sourceLanguage}
                 />
