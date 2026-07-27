@@ -21,6 +21,10 @@ export function visibleSessionMessageWhere(sessionId: string, viewerUserId: stri
   };
 }
 
+export function publicSessionMessageWhere(sessionId: string) {
+  return { sessionId, recipientId: null };
+}
+
 export function isMessageVisibleToUser(message: MessageVisibilityTarget, viewerUserId: string) {
   return message.recipientId === null || message.senderId === viewerUserId || message.recipientId === viewerUserId;
 }

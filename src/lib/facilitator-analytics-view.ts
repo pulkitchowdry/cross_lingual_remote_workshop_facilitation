@@ -10,6 +10,7 @@ import {
   computeConfidenceStats,
   type FacilitatorAnalytics,
 } from "@/lib/facilitator-analytics";
+import { publicSessionMessageWhere } from "@/lib/message-visibility";
 
 export interface FacilitatorAnalyticsLabels {
   analyticsDrawerLabel: string;
@@ -76,7 +77,7 @@ export async function buildFacilitatorAnalyticsView(
     }),
     prisma.message.groupBy({
       by: ["senderId", "kind", "isAnonymous"],
-      where: { sessionId },
+      where: publicSessionMessageWhere(sessionId),
       _count: true,
     }),
     prisma.insight.findMany({

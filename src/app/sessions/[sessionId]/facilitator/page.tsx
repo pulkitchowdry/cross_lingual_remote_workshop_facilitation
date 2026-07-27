@@ -26,7 +26,7 @@ import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { RootCause } from "@/lib/confidence";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
-import { visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { publicSessionMessageWhere, visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   endSession,
@@ -141,14 +141,14 @@ export default async function FacilitatorSessionPage({
     // other participants could otherwise push a learner's genuinely recent QUESTION
     // messages out of that window, silently hiding or downgrading their badge.
     prisma.message.findMany({
-      where: { sessionId, kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
+      where: { ...publicSessionMessageWhere(sessionId), kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
       select: { senderId: true, sentAt: true },
     }),
     // Plain totals (not the MESSAGE_HISTORY_LIMIT-capped `session.messages` array above) so
     // the post-session participation stats reflect the session's real counts, not just
     // whatever fits in the chat panel's most-recent page.
-    prisma.message.count({ where: { sessionId } }),
-    prisma.message.count({ where: { sessionId, kind: "QUESTION" } }),
+    prisma.message.count({ where: publicSessionMessageWhere(sessionId) }),
+    prisma.message.count({ where: { ...publicSessionMessageWhere(sessionId), kind: "QUESTION" } }),
     // Post-meeting glossary recommendations (issue #131) — unknown technical terms
     // detected during this session's captions, not yet in the shared glossary.
     prisma.glossarySuggestion.findMany({
@@ -380,6 +380,12 @@ export default async function FacilitatorSessionPage({
         <section className="flex flex-col gap-3">
           <h2 className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.sessionEndedHeading}</h2>
           <p className="text-sm text-muted-foreground">{dict.sessionEndedSummary}</p>
+          <Link
+            href={`/sessions/${sessionId}/facilitator/results`}
+            className="font-data inline-flex w-fit rounded-md bg-accent px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+          >
+            {dict.viewResults}
+          </Link>
           <Card eyebrow={dict.sessionSummaryHeading}>
             {/* Deterministic — renders immediately from data already fetched above, unlike
                 the async narrative below it (session.summary), which only exists once
