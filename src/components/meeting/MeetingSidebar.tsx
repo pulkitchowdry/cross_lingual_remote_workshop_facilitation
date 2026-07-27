@@ -154,9 +154,9 @@ export function MeetingSidebar({
           type="button"
           onClick={() => setSidebarOpen(false)}
           aria-label={dict.collapseSidebar}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
         >
-          <CloseIcon className="h-3.5 w-3.5" />
+          <CloseIcon className="h-4 w-4" />
         </button>
       </div>
       <div className="min-h-0 flex-1">

@@ -34,7 +34,6 @@ describe("buildFacilitatorAnalyticsView", () => {
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
         participants: [{ userId: "learner-a", user: { displayName: "Learner A" } }],
-        transcript: [],
       },
       "en",
     );
@@ -55,7 +54,6 @@ describe("buildFacilitatorAnalyticsView", () => {
         status: SessionStatus.LIVE,
         endedAt: null,
         participants: [],
-        transcript: [],
       },
       "en",
     );
@@ -94,7 +92,6 @@ describe("buildFacilitatorAnalyticsView", () => {
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
         participants: [],
-        transcript: [],
       },
       "en",
     );
@@ -122,7 +119,6 @@ describe("buildFacilitatorAnalyticsView", () => {
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
         participants: [{ userId: "learner-a", user: { displayName: "Learner A" } }],
-        transcript: [],
       },
       "en",
     );

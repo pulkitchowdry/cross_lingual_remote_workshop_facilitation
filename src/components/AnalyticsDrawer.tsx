@@ -57,7 +57,7 @@ export function AnalyticsPanelContent({
         <>
           <Card eyebrow={labels.analyticsConfusionTrendHeading}>
             <p className="sr-only">{labels.analyticsConfusionTrendSummary}</p>
-            <div className="flex items-end gap-1" aria-hidden="true">
+            <div className="flex items-end gap-1 overflow-x-auto" aria-hidden="true">
               {analytics.confusionTrend.map((point) => (
                 <div
                   key={point.bucketStart.toISOString()}
@@ -78,7 +78,7 @@ export function AnalyticsPanelContent({
           <Card eyebrow={labels.analyticsParticipationHeading}>
             <ul className="flex flex-col gap-1">
               {analytics.participation.map((entry, index) => (
-                <li key={entry.userId} className="text-xs">
+                <li key={entry.userId} className="break-words text-xs">
                   {participationRows[index]}
                 </li>
               ))}

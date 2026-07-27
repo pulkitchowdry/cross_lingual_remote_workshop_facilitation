@@ -64,8 +64,13 @@ export function NewSessionLink({
               onClick={() => {
                 dialogRef.current?.close();
                 router.push("/setup");
+                // <dialog>.close() restores focus to this button, but router.push then
+                // unmounts it (AppShell swaps NewSessionLink out once the pathname is
+                // /setup — see facilitatorSessionId above) — same failure mode
+                // ConfirmSubmitButton.tsx documents and works around.
+                document.getElementById("main-content")?.focus();
               }}
-              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white"
+              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
               style={{ backgroundColor: "var(--accent-fill)" }}
             >
               {confirmLabel}

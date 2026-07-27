@@ -53,7 +53,7 @@ const ENV_SPEC: EnvSpec[] = [
     key: "NEXT_PUBLIC_APP_URL",
     required: false,
     description:
-      "Public base URL used to build the learner invite link/QR code (facilitator page). Silently falls back to http://localhost:3000 if unset — must be set to the real deployed URL in any non-local deployment, or the invite link/QR handed to learners points at localhost.",
+      "Public base URL used to build the learner invite link/QR code (facilitator page). If unset, falls back to the incoming request's own Host header (see resolveAppUrl in this file) — correct for most deployments, but set this explicitly if the app sits behind a proxy/CDN that rewrites Host to something learners can't reach.",
   },
   {
     key: "CAPTION_LATENCY_LOGS",
@@ -102,6 +102,25 @@ export function assertRequiredEnv(source: Record<string, string | undefined> = p
     );
   }
   return result;
+}
+
+/**
+ * Resolves the public base URL used to build the learner invite link/QR code.
+ * Prefers `NEXT_PUBLIC_APP_URL` (the deploy-time override every non-local
+ * deployment should set — see `ENV_SPEC` above), and otherwise derives the
+ * origin from the incoming request's own headers instead of a hardcoded
+ * `localhost:3000` — so invite links come out correct on whatever host/port
+ * actually served the request (a different local dev port, a preview
+ * deployment, etc.) instead of silently pointing at the wrong place.
+ */
+export function resolveAppUrl(
+  requestHeaders: Headers,
+  source: Record<string, string | undefined> = process.env,
+): string {
+  if (source.NEXT_PUBLIC_APP_URL) return source.NEXT_PUBLIC_APP_URL;
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const host = requestHeaders.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
 }
 
 /** Feature flags derived from which optional provider keys are configured. */

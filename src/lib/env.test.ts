@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertRequiredEnv, providerAvailability, validateEnv } from "./env";
+import { assertRequiredEnv, providerAvailability, resolveAppUrl, validateEnv } from "./env";
 
 describe("validateEnv", () => {
   it("reports the required variable as missing when unset", () => {
@@ -72,5 +72,29 @@ describe("providerAvailability", () => {
     expect(
       providerAvailability({ LOCAL_INFERENCE_URL: "https://x", LOCAL_INFERENCE_SECRET: "s" }).localInference,
     ).toBe(true);
+  });
+});
+
+describe("resolveAppUrl", () => {
+  it("prefers NEXT_PUBLIC_APP_URL when it's set, ignoring the request entirely", () => {
+    const headers = new Headers({ host: "example.com", "x-forwarded-proto": "https" });
+    expect(resolveAppUrl(headers, { NEXT_PUBLIC_APP_URL: "https://prod.example" })).toBe("https://prod.example");
+  });
+
+  it("derives the origin from the request's Host header when unset — not a hardcoded port", () => {
+    // The exact bug this guards against: a local dev server running on a
+    // non-default port (e.g. because 3000 is already taken by another
+    // project) must not hand out invite links pointing at localhost:3000.
+    const headers = new Headers({ host: "localhost:3010" });
+    expect(resolveAppUrl(headers, {})).toBe("http://localhost:3010");
+  });
+
+  it("uses x-forwarded-proto when present, defaulting to http", () => {
+    const headers = new Headers({ host: "app.example.com", "x-forwarded-proto": "https" });
+    expect(resolveAppUrl(headers, {})).toBe("https://app.example.com");
+  });
+
+  it("falls back to localhost:3000 only when the request has no Host header at all", () => {
+    expect(resolveAppUrl(new Headers(), {})).toBe("http://localhost:3000");
   });
 });

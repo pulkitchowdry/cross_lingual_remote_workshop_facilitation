@@ -39,16 +39,24 @@ export function ConfidenceBadge({
 
   if (level === "high") {
     return (
-      <span className="font-data inline-flex items-center gap-1 text-[0.6875rem] font-medium uppercase tracking-wider" style={{ color }} title={dict.confidenceScoreLabel(score)}>
-        {levelLabel}
-      </span>
+      <details className="inline-block align-middle">
+        <summary
+          className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wider"
+          style={{ color }}
+        >
+          {levelLabel}
+        </summary>
+        <p className="mt-1 max-w-xs text-xs font-normal normal-case text-muted-foreground">
+          {dict.confidenceScoreLabel(score)}
+        </p>
+      </details>
     );
   }
 
   return (
     <details className="inline-block align-middle">
       <summary
-        className="font-data inline-flex cursor-pointer list-none items-center gap-1 text-[0.6875rem] font-medium uppercase tracking-wider"
+        className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wider"
         style={{ color }}
       >
         {levelLabel} · {dict.confidenceScoreLabel(score)}

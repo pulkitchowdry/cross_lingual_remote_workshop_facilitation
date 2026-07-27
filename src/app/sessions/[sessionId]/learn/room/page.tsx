@@ -30,7 +30,11 @@ export default async function LearnerRoomPage({
 }) {
   const { sessionId } = await params;
   const participantId = await learnerParticipantId(sessionId);
-  if (!participantId) redirect("/setup");
+  // Not `redirect("/setup")` — see the matching comment in learn/page.tsx. This page
+  // also polls via SessionAutoRefresh every 2s while LIVE, so a cookie that evaporates
+  // mid-call (device switch, storage eviction) would otherwise bounce a learner straight
+  // out of the live meeting into the facilitator's session-creation form.
+  if (!participantId) notFound();
   const accessParticipant = await prisma.sessionParticipant.findFirst({
     where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
     select: { userId: true },

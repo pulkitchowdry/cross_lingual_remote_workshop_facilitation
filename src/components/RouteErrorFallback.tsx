@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useUiLanguage } from "@/lib/use-ui-language";
 import { getDictionary } from "@/lib/i18n";
 
@@ -30,9 +30,15 @@ export function RouteErrorFallback({
 }) {
   const lang = useUiLanguage();
   const dict = getDictionary(lang).error;
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     console.error(error);
+    // The crashed subtree (whatever held focus before this boundary tripped) is
+    // unmounted and replaced by this fallback — without moving focus here, it
+    // silently drops to <body> and a screen-reader user gets no announcement
+    // that an error occurred or that a heading/retry button now exists.
+    headingRef.current?.focus();
   }, [error]);
 
   // Next redacts a production Server Component error's real message for security, but
@@ -50,7 +56,9 @@ export function RouteErrorFallback({
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
-      <h1 className="font-heading text-xl font-semibold">{dict.title}</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="font-heading text-xl font-semibold">
+        {dict.title}
+      </h1>
       <p className="text-sm text-muted-foreground">{displayMessage}</p>
       <button
         type="button"

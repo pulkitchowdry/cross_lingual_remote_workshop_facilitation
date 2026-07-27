@@ -85,7 +85,7 @@ export function AccessibilityPanel() {
         type="button"
         onClick={cycleFontSize}
         aria-label={dict.textSizeAriaLabel(dict.fontSizeLabel[fontSize])}
-        className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+        className="font-data flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
       >
         Aa
       </button>
@@ -94,7 +94,7 @@ export function AccessibilityPanel() {
         onClick={toggleContrast}
         aria-pressed={contrast === "high"}
         aria-label={dict.contrastAriaLabel(contrast)}
-        className="font-data flex items-center gap-[6px] rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+        className="font-data flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
       >
         <span
           className="h-[6px] w-[6px] rounded-full"
