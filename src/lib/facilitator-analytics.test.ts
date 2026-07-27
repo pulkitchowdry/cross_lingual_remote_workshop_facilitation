@@ -4,6 +4,7 @@ import {
   computeParticipation,
   computeParticipationFromGroups,
   computeBlockerStats,
+  computeActiveActionItems,
   computeLanguageStats,
   computeConfidenceStats,
 } from "@/lib/facilitator-analytics";
@@ -194,6 +195,65 @@ describe("computeBlockerStats", () => {
   it("avgResolutionMs is always null (no resolvedAt column exists yet)", () => {
     const insights = [{ type: "BLOCKER", status: "RESOLVED", createdAt: NOW, resolvedAt: NOW }];
     expect(computeBlockerStats(insights).avgResolutionMs).toBeNull();
+  });
+});
+
+describe("computeActiveActionItems", () => {
+  it("uses the original text unchanged when the evidence was already spoken in the source language", () => {
+    const insights = [
+      {
+        id: "i1",
+        type: "BLOCKER",
+        summary: "Learners can't reach the shared doc",
+        evidence: [{ transcriptSegment: { originalText: "I can't open the link", language: "en", translations: [] } }],
+      },
+    ];
+    expect(computeActiveActionItems(insights, "en", "en", "Translation unavailable")).toEqual([
+      { id: "i1", type: "BLOCKER", summary: "Learners can't reach the shared doc", evidenceText: "I can't open the link", evidenceLang: "en" },
+    ]);
+  });
+
+  it("uses the matching translation when the evidence was spoken in another language", () => {
+    const insights = [
+      {
+        id: "i1",
+        type: "CONFUSION",
+        summary: "Several learners seem lost on this step",
+        evidence: [
+          {
+            transcriptSegment: {
+              originalText: "我听不懂",
+              language: "zh",
+              translations: [{ targetLanguage: "en", text: "I don't understand" }],
+            },
+          },
+        ],
+      },
+    ];
+    expect(computeActiveActionItems(insights, "en", "en", "Translation unavailable")).toEqual([
+      { id: "i1", type: "CONFUSION", summary: "Several learners seem lost on this step", evidenceText: "I don't understand", evidenceLang: "en" },
+    ]);
+  });
+
+  it("falls back to the fallback text/lang when no matching translation exists yet", () => {
+    const insights = [
+      {
+        id: "i1",
+        type: "BLOCKER",
+        summary: "Blocked on setup",
+        evidence: [{ transcriptSegment: { originalText: "我听不懂", language: "zh", translations: [] } }],
+      },
+    ];
+    expect(computeActiveActionItems(insights, "en", "es", "Translation unavailable")).toEqual([
+      { id: "i1", type: "BLOCKER", summary: "Blocked on setup", evidenceText: "Translation unavailable", evidenceLang: "es" },
+    ]);
+  });
+
+  it("returns null evidence fields when an insight has no evidence at all", () => {
+    const insights = [{ id: "i1", type: "BLOCKER", summary: "No evidence attached", evidence: [] }];
+    expect(computeActiveActionItems(insights, "en", "en", "Translation unavailable")).toEqual([
+      { id: "i1", type: "BLOCKER", summary: "No evidence attached", evidenceText: null, evidenceLang: null },
+    ]);
   });
 });
 

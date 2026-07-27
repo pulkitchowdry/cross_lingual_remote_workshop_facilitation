@@ -138,6 +138,55 @@ export function computeBlockerStats(
   return { raised, resolved, open: raised - resolved, avgResolutionMs: null };
 }
 
+export interface ActiveActionItem {
+  id: string;
+  type: "BLOCKER" | "CONFUSION";
+  summary: string;
+  evidenceText: string | null;
+  evidenceLang: string | null;
+}
+
+/**
+ * Resolves each active BLOCKER/CONFUSION insight's evidence quote into the language it
+ * should actually render in: the session's source language if the transcript segment
+ * was already spoken in it, a translation into that language if one exists, or a
+ * caller-supplied fallback string (tagged with `fallbackLang`, not `sourceLanguage`,
+ * since it's the fallback text's own language, not the missing translation's).
+ * Previously this logic lived inline in facilitator/page.tsx's JSX only — extracted so
+ * the "Act now" queue can render identically wherever it's shown (dashboard, live
+ * room) instead of the two silently drifting apart.
+ */
+export function computeActiveActionItems(
+  insights: {
+    id: string;
+    type: string;
+    summary: string;
+    evidence: {
+      transcriptSegment: { originalText: string; language: string; translations: { targetLanguage: string; text: string }[] };
+    }[];
+  }[],
+  sourceLanguage: string,
+  fallbackLang: string,
+  translationUnavailableText: string,
+): ActiveActionItem[] {
+  return insights.map((item) => {
+    const evidence = item.evidence[0]?.transcriptSegment;
+    const type = item.type as "BLOCKER" | "CONFUSION";
+    if (!evidence) {
+      return { id: item.id, type, summary: item.summary, evidenceText: null, evidenceLang: null };
+    }
+    const evidenceIsSourceLanguage = evidence.language === sourceLanguage;
+    const translation = evidence.translations.find((t) => t.targetLanguage === sourceLanguage);
+    return {
+      id: item.id,
+      type,
+      summary: item.summary,
+      evidenceText: evidenceIsSourceLanguage ? evidence.originalText : (translation?.text ?? translationUnavailableText),
+      evidenceLang: evidenceIsSourceLanguage ? evidence.language : translation ? sourceLanguage : fallbackLang,
+    };
+  });
+}
+
 /** Post-meeting Confidence Score metrics (issue #130's "Post-Meeting Metrics") —
  * average score plus how many translations needed attention and why, so a
  * facilitator can see e.g. "audio issues were the biggest problem this
