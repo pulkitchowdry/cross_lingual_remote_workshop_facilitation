@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ParticipantRole } from "@/generated/prisma/client";
 import {
   isMessageVisibleToUser,
+  publicSessionMessageWhere,
   validateFacilitatorPrivateRecipient,
   visibleSessionMessageWhere,
 } from "@/lib/message-visibility";
@@ -11,6 +12,13 @@ describe("message visibility", () => {
     expect(visibleSessionMessageWhere("session-1", "viewer-user")).toEqual({
       sessionId: "session-1",
       OR: [{ recipientId: null }, { senderId: "viewer-user" }, { recipientId: "viewer-user" }],
+    });
+  });
+
+  it("builds a server-side filter for public-only group summaries and analytics", () => {
+    expect(publicSessionMessageWhere("session-1")).toEqual({
+      sessionId: "session-1",
+      recipientId: null,
     });
   });
 
