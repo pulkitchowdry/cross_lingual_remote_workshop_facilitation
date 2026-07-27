@@ -14,13 +14,14 @@ import type { ThemeName } from "@/lib/theme-preferences";
 export interface Dictionary {
   shell: {
     newSession: string;
+    sessions: string;
     skipToContent: string;
     interfaceLanguage: string;
     language: string;
-    // Shown when "New session" is clicked from an existing facilitator dashboard — there
-    // is no session list anywhere in the app, so navigating away from a still-LIVE
-    // session without bookmarking its dashboard link first means losing the only way
-    // back into it while learners could still be connected.
+    // Shown when "New session" is clicked from an existing live facilitator
+    // dashboard. The session overview can get the facilitator back to sessions
+    // available in this browser, but starting another workshop while one is LIVE can
+    // still leave learners without an active facilitator.
     confirmNewSessionTitle: string;
     confirmNewSessionBody: string;
   };
@@ -54,6 +55,30 @@ export interface Dictionary {
     strictPrivacyLabel: string;
     strictPrivacyHint: string;
     submit: string;
+  };
+  sessionsOverview: {
+    heading: string;
+    subtitle: string;
+    newSession: string;
+    activeHeading: string;
+    activeHint: string;
+    completedHeading: string;
+    completedHint: string;
+    noActiveHeading: string;
+    noActiveBody: string;
+    noCompletedHeading: string;
+    noCompletedBody: string;
+    emptyHeading: string;
+    emptyBody: string;
+    manageSession: string;
+    joinLiveRoom: string;
+    viewResults: string;
+    learnerCount: (count: number) => string;
+    dateLabels: {
+      created: string;
+      started: string;
+      ended: string;
+    };
   };
   join: {
     invitedTo: string;
@@ -130,10 +155,9 @@ export interface Dictionary {
     activity: string;
     decision: string;
     noRecentActivity: string;
-    // There's no session list anywhere in the app and facilitator auth is a per-session
-    // cookie (not an account you can log back into) — this URL, once lost, is the only
-    // way back into a still-LIVE session. Surfaced with the same copy-link affordance as
-    // the learner invite link below, so a facilitator can actually bookmark/save it.
+    // Facilitator auth is a per-session cookie, and the overview can only list sessions
+    // available in this browser — this direct URL is still worth surfacing with the same
+    // copy-link affordance as the learner invite link below.
     dashboardLinkCard: string;
     dashboardLinkHeading: string;
     dashboardLinkHint: string;
@@ -437,12 +461,13 @@ export interface Dictionary {
 const en: Dictionary = {
   shell: {
     newSession: "New session",
+    sessions: "Sessions",
     skipToContent: "Skip to main content",
     interfaceLanguage: "Interface language",
     language: "Language",
     confirmNewSessionTitle: "Leave this dashboard?",
     confirmNewSessionBody:
-      "If this session is still live, its learners will be left without a facilitator and there's no session list to find your way back — bookmark or copy this page's link first if you want to return to it.",
+      "If this session is still live, its learners may be left without a facilitator. Open the Sessions page in another tab if you want to keep this workshop available.",
   },
   a11y: {
     fontSizeLabel: { normal: "Normal text", large: "Large text", "x-large": "Extra-large text" },
@@ -476,6 +501,30 @@ const en: Dictionary = {
     strictPrivacyHint:
       "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
+  },
+  sessionsOverview: {
+    heading: "Sessions",
+    subtitle: "Continue active workshops and review completed sessions available in this browser.",
+    newSession: "New session",
+    activeHeading: "Active sessions",
+    activeHint: "Draft and live sessions you can still manage.",
+    completedHeading: "Completed sessions",
+    completedHint: "Ended sessions with post-session results still inside their retention window.",
+    noActiveHeading: "No active sessions",
+    noActiveBody: "Create a new session when you are ready to facilitate another workshop.",
+    noCompletedHeading: "No completed sessions",
+    noCompletedBody: "Ended sessions will appear here after you finish a workshop.",
+    emptyHeading: "No facilitator sessions found",
+    emptyBody: "This page only shows sessions for which this browser has facilitator access.",
+    manageSession: "Manage session",
+    joinLiveRoom: "Join live room",
+    viewResults: "View results",
+    learnerCount: (count) => (count === 1 ? "1 learner" : `${count} learners`),
+    dateLabels: {
+      created: "Created",
+      started: "Started",
+      ended: "Ended",
+    },
   },
   join: {
     invitedTo: "You're invited to learn",
@@ -534,7 +583,7 @@ const en: Dictionary = {
     noRecentActivity: "No activity or decisions noted yet.",
     dashboardLinkCard: "Your facilitator dashboard",
     dashboardLinkHeading: "Bookmark this link to get back in",
-    dashboardLinkHint: "There's no session list — this is the only way back into this session if you close the tab. Unlike the learner link below, this one only works from a browser already signed in as this session's facilitator, so sharing it alone doesn't grant access.",
+    dashboardLinkHint: "This direct dashboard link only works from a browser already signed in as this session's facilitator, so sharing it alone doesn't grant access. The Sessions page can also bring you back to sessions available in this browser.",
     dashboardLinkAriaLabel: "Facilitator dashboard link",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
@@ -797,11 +846,12 @@ const en: Dictionary = {
 const zh: Dictionary = {
   shell: {
     newSession: "新建场次",
+    sessions: "场次",
     skipToContent: "跳转到主要内容",
     interfaceLanguage: "界面语言",
     language: "语言",
     confirmNewSessionTitle: "离开此控制台？",
-    confirmNewSessionBody: "如果此场次仍在进行中，学员将没有主持人陪伴，且本应用没有场次列表可供你找回——如需之后返回，请先收藏或复制此页面的链接。",
+    confirmNewSessionBody: "如果此场次仍在进行中，学员可能会暂时没有主持人陪伴。如需保留当前工作坊，请在新标签页打开“场次”页面。",
   },
   a11y: {
     fontSizeLabel: { normal: "标准字号", large: "大字号", "x-large": "特大字号" },
@@ -834,6 +884,30 @@ const zh: Dictionary = {
     strictPrivacyHint:
       "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
+  },
+  sessionsOverview: {
+    heading: "场次",
+    subtitle: "继续管理进行中的工作坊，并查看此浏览器可访问的已完成场次。",
+    newSession: "新建场次",
+    activeHeading: "活动场次",
+    activeHint: "你仍可管理的草稿和进行中场次。",
+    completedHeading: "已完成场次",
+    completedHint: "仍在保留期限内、已结束且可查看结果的场次。",
+    noActiveHeading: "暂无活动场次",
+    noActiveBody: "准备主持新的工作坊时，可以创建一个新场次。",
+    noCompletedHeading: "暂无已完成场次",
+    noCompletedBody: "结束工作坊后，已完成场次会显示在这里。",
+    emptyHeading: "未找到主持人场次",
+    emptyBody: "此页面只显示本浏览器拥有主持人访问权限的场次。",
+    manageSession: "管理场次",
+    joinLiveRoom: "进入实时教室",
+    viewResults: "查看结果",
+    learnerCount: (count) => `学员：${count}`,
+    dateLabels: {
+      created: "创建时间",
+      started: "开始时间",
+      ended: "结束时间",
+    },
   },
   join: {
     invitedTo: "你被邀请加入学习",
@@ -894,7 +968,7 @@ const zh: Dictionary = {
     noRecentActivity: "暂无记录的动态或决定。",
     dashboardLinkCard: "你的主持人控制台",
     dashboardLinkHeading: "收藏此链接以便返回",
-    dashboardLinkHint: "本应用没有场次列表——关闭标签页后，这是返回此场次的唯一方式。与下方的学员链接不同，此链接仅在已登录为该场次主持人的浏览器中有效，因此仅分享此链接本身并不会授予访问权限。",
+    dashboardLinkHint: "此控制台直达链接仅在已登录为该场次主持人的浏览器中有效，因此仅分享此链接本身并不会授予访问权限。“场次”页面也可以带你返回此浏览器可访问的场次。",
     dashboardLinkAriaLabel: "主持人控制台链接",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
@@ -1157,12 +1231,13 @@ const zh: Dictionary = {
 const es: Dictionary = {
   shell: {
     newSession: "Nueva sesión",
+    sessions: "Sesiones",
     skipToContent: "Saltar al contenido principal",
     interfaceLanguage: "Idioma de la interfaz",
     language: "Idioma",
     confirmNewSessionTitle: "¿Salir de este panel?",
     confirmNewSessionBody:
-      "Si esta sesión sigue en vivo, sus alumnos se quedarán sin facilitador y no hay una lista de sesiones para volver a encontrarla — guarda o copia el enlace de esta página primero si quieres volver a ella.",
+      "Si esta sesión sigue en vivo, sus alumnos pueden quedarse sin facilitador. Abre la página Sesiones en otra pestaña si quieres mantener este taller disponible.",
   },
   a11y: {
     fontSizeLabel: { normal: "Texto normal", large: "Texto grande", "x-large": "Texto extra grande" },
@@ -1196,6 +1271,30 @@ const es: Dictionary = {
     strictPrivacyHint:
       "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
+  },
+  sessionsOverview: {
+    heading: "Sesiones",
+    subtitle: "Continúa talleres activos y revisa sesiones completadas disponibles en este navegador.",
+    newSession: "Nueva sesión",
+    activeHeading: "Sesiones activas",
+    activeHint: "Sesiones en borrador y en vivo que todavía puedes gestionar.",
+    completedHeading: "Sesiones completadas",
+    completedHint: "Sesiones finalizadas con resultados aún dentro de su período de retención.",
+    noActiveHeading: "No hay sesiones activas",
+    noActiveBody: "Crea una nueva sesión cuando estés listo/a para facilitar otro taller.",
+    noCompletedHeading: "No hay sesiones completadas",
+    noCompletedBody: "Las sesiones finalizadas aparecerán aquí después de terminar un taller.",
+    emptyHeading: "No se encontraron sesiones de facilitador",
+    emptyBody: "Esta página solo muestra sesiones para las que este navegador tiene acceso de facilitador.",
+    manageSession: "Gestionar sesión",
+    joinLiveRoom: "Entrar a la sala en vivo",
+    viewResults: "Ver resultados",
+    learnerCount: (count) => (count === 1 ? "1 alumno" : `${count} alumnos`),
+    dateLabels: {
+      created: "Creada",
+      started: "Iniciada",
+      ended: "Finalizada",
+    },
   },
   join: {
     invitedTo: "Estás invitado a aprender",
@@ -1254,7 +1353,7 @@ const es: Dictionary = {
     noRecentActivity: "Aún no se ha registrado actividad ni decisiones.",
     dashboardLinkCard: "Tu panel de facilitador",
     dashboardLinkHeading: "Guarda este enlace para volver a entrar",
-    dashboardLinkHint: "No hay una lista de sesiones — esta es la única forma de volver a esta sesión si cierras la pestaña. A diferencia del enlace para alumnos de abajo, este solo funciona desde un navegador que ya inició sesión como el facilitador de esta sesión, así que compartirlo por sí solo no da acceso.",
+    dashboardLinkHint: "Este enlace directo al panel solo funciona desde un navegador que ya inició sesión como facilitador de esta sesión, así que compartirlo por sí solo no da acceso. La página Sesiones también puede llevarte a sesiones disponibles en este navegador.",
     dashboardLinkAriaLabel: "Enlace del panel de facilitador",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
