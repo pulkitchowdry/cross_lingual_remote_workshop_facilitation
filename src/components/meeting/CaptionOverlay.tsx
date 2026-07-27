@@ -20,12 +20,22 @@ const EXPIRY_TICK_MS = 500;
 
 /** Pure: which segment ids are still within their display window right now.
  * Shared by both effects below so "recompute on new data" and "recompute on
- * the tick" can't drift into two different notions of "still visible". */
+ * the tick" can't drift into two different notions of "still visible".
+ *
+ * The single most-recent segment is always kept visible regardless of elapsed
+ * time — a flat per-segment timer applied uniformly (the original behavior)
+ * blanks the overlay entirely during any ordinary conversational pause longer
+ * than CAPTION_DISPLAY_MS, which is common, leaving nothing on screen even
+ * though captioning itself is working. Older segments within the
+ * RECENT_SEGMENT_COUNT window still expire on their own timer, so this only
+ * changes "the last line disappears with nothing new to replace it", not the
+ * original "captions don't pile up forever" goal the timer exists for. */
 function computeVisibleIds(transcript: MeetingTranscriptSegment[], firstSeenAt: Map<string, number>, now: number): Set<string> {
   const visible = new Set<string>();
+  const latestId = transcript[transcript.length - 1]?.id;
   for (const segment of transcript) {
     const firstSeen = firstSeenAt.get(segment.id) ?? now;
-    if (now - firstSeen < CAPTION_DISPLAY_MS) visible.add(segment.id);
+    if (segment.id === latestId || now - firstSeen < CAPTION_DISPLAY_MS) visible.add(segment.id);
   }
   return visible;
 }
@@ -83,7 +93,11 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
         captionPosition === "bottom" ? "bottom-4" : "top-4"
       }`}
     >
-      <div className="pointer-events-auto flex max-h-40 w-full max-w-2xl flex-col gap-1.5 overflow-y-auto">
+      <div
+        className="pointer-events-auto flex max-h-40 w-full max-w-2xl flex-col gap-1.5 overflow-y-auto"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {recent.map((segment) => {
           const resolved = resolveTranslatedText(segment, uiLang);
           const translation = segment.translations.find((item) => item.targetLanguage === uiLang);

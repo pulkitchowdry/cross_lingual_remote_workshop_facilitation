@@ -10,7 +10,7 @@ import {
   computeConfidenceStats,
   type FacilitatorAnalytics,
 } from "@/lib/facilitator-analytics";
-import { publicSessionMessageWhere } from "@/lib/message-visibility";
+import { facilitatorVisibleSessionMessageWhere } from "@/lib/message-visibility";
 
 export interface FacilitatorAnalyticsLabels {
   analyticsDrawerLabel: string;
@@ -53,6 +53,7 @@ export async function buildFacilitatorAnalyticsView(
     createdAt: Date;
     status: SessionStatus;
     endedAt: Date | null;
+    facilitatorId: string;
     participants: { userId: string; user: { displayName: string } }[];
   },
   lang: SupportedLanguage,
@@ -70,7 +71,13 @@ export async function buildFacilitatorAnalyticsView(
     }),
     prisma.message.groupBy({
       by: ["senderId", "kind", "isAnonymous"],
-      where: publicSessionMessageWhere(sessionId),
+      // Facilitator-visible, not public-only: a learner who also checks "message
+      // facilitator privately" alongside "flag as question" produces a message with a
+      // non-null recipientId that publicSessionMessageWhere would silently drop from
+      // this facilitator-only participation view, even though the facilitator already
+      // sees it in their own chat panel. See facilitatorVisibleSessionMessageWhere's
+      // own doc comment.
+      where: facilitatorVisibleSessionMessageWhere(sessionId, session.facilitatorId),
       _count: true,
     }),
     prisma.insight.findMany({
@@ -88,6 +95,7 @@ export async function buildFacilitatorAnalyticsView(
       allConfusionInsights.map((item) => item.createdAt),
       session.startedAt ?? session.createdAt,
       session.status === SessionStatus.ENDED ? (session.endedAt ?? new Date()) : new Date(),
+      session.participants.length,
     ),
     participation: computeParticipationFromGroups(
       allMessagesForParticipation,

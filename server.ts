@@ -96,6 +96,23 @@ async function main() {
   const nextUpgradeHandler = app.getUpgradeHandler();
 
   /**
+   * Guards against two concurrent `/api/captions/stream` connections for the SAME
+   * speaker identity (e.g. the same facilitator or learner with two tabs/devices open,
+   * mic unmuted in both) — without this, both sockets would run independent STT
+   * pipelines against the same speech and duplicate every caption line, the same bug
+   * class the `captionAgentActive` check below guards against for the LiveKit
+   * caption-agent worker vs. a browser-mic socket (that check has nothing to say about
+   * two browser-mic sockets racing each other). In-memory only, matching this app's
+   * single-persistent-process architecture (same as `captionAgentActive`'s own
+   * duplicate-guard state) — entries are added and removed synchronously around each
+   * socket's lifetime, no DB table needed.
+   */
+  const activeCaptionStreamSpeakers = new Set<string>();
+  function captionStreamSpeakerKey(sessionId: string, speaker: CaptionSpeaker): string {
+    return speaker.role === "facilitator" ? `${sessionId}:facilitator` : `${sessionId}:learner:${speaker.participantId}`;
+  }
+
+  /**
    * Runs every auth/session check for a caption stream and wires it up on success.
    * Deliberately runs *after* the WebSocket handshake is already complete (see the
    * `wss.handleUpgrade` call below for why) — a throw here closes the already-open
@@ -141,6 +158,19 @@ async function main() {
       speaker.role === "facilitator"
         ? (found.sourceLanguage as SupportedLanguage)
         : ((await resolveLearnerSpeaker(found.id, speaker.participantId))?.language ?? (found.sourceLanguage as SupportedLanguage));
+
+    // Everything above this point is async (DB lookups, dynamic imports); everything
+    // from here down is synchronous, so this check-then-add is atomic against a second
+    // connection attempt for the same speaker racing this one — no `await` runs between
+    // the `.has()` check and the `.add()` below.
+    const speakerKey = captionStreamSpeakerKey(sessionId, speaker);
+    if (activeCaptionStreamSpeakers.has(speakerKey)) {
+      throw new Error("Another caption stream is already active for this speaker.");
+    }
+    activeCaptionStreamSpeakers.add(speakerKey);
+    const releaseSpeakerKey = () => activeCaptionStreamSpeakers.delete(speakerKey);
+    ws.on("close", releaseSpeakerKey);
+    ws.on("error", releaseSpeakerKey);
 
     attachCaptionSocket(ws, found, speaker, initialLanguage);
   }

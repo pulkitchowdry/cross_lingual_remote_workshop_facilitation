@@ -70,8 +70,8 @@ export function ParticipantChip({
           <VideoTrack trackRef={liveCamTrack} className="h-full w-full object-cover" />
         ) : (
           <div
-            className="font-data flex h-full w-full items-center justify-center text-lg font-semibold text-white sm:text-2xl"
-            style={{ background: speakerColor(participant.identity) }}
+            className="font-data flex h-full w-full items-center justify-center text-lg font-semibold sm:text-2xl"
+            style={{ background: speakerColor(participant.identity), color: "var(--speaker-avatar-fg)" }}
           >
             {initials(name)}
           </div>
@@ -79,9 +79,11 @@ export function ParticipantChip({
         {raisedHand && (
           <span
             className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            role="img"
+            aria-label={dict.raisedHandTitle(name)}
             title={dict.raisedHandTitle(name)}
           >
-            <HandIcon className="h-3.5 w-3.5" />
+            <HandIcon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         )}
         <span
@@ -116,8 +118,8 @@ export function ParticipantChip({
           </div>
         ) : (
           <div
-            className={`font-data flex items-center justify-center rounded-full text-sm font-semibold text-white ${avatarSize}`}
-            style={{ background: speakerColor(participant.identity) }}
+            className={`font-data flex items-center justify-center rounded-full text-sm font-semibold ${avatarSize}`}
+            style={{ background: speakerColor(participant.identity), color: "var(--speaker-avatar-fg)" }}
           >
             {initials(name)}
           </div>
@@ -125,9 +127,11 @@ export function ParticipantChip({
         {raisedHand && (
           <span
             className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            role="img"
+            aria-label={dict.raisedHandTitle(name)}
             title={dict.raisedHandTitle(name)}
           >
-            <HandIcon className="h-3 w-3" />
+            <HandIcon className="h-3 w-3" aria-hidden="true" />
           </span>
         )}
         <span

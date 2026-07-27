@@ -14,13 +14,14 @@ import type { ThemeName } from "@/lib/theme-preferences";
 export interface Dictionary {
   shell: {
     newSession: string;
+    sessions: string;
     skipToContent: string;
     interfaceLanguage: string;
     language: string;
-    // Shown when "New session" is clicked from an existing facilitator dashboard — there
-    // is no session list anywhere in the app, so navigating away from a still-LIVE
-    // session without bookmarking its dashboard link first means losing the only way
-    // back into it while learners could still be connected.
+    // Shown when "New session" is clicked from an existing live facilitator
+    // dashboard. The session overview can get the facilitator back to sessions
+    // available in this browser, but starting another workshop while one is LIVE can
+    // still leave learners without an active facilitator.
     confirmNewSessionTitle: string;
     confirmNewSessionBody: string;
   };
@@ -55,6 +56,30 @@ export interface Dictionary {
     strictPrivacyHint: string;
     submit: string;
   };
+  sessionsOverview: {
+    heading: string;
+    subtitle: string;
+    newSession: string;
+    activeHeading: string;
+    activeHint: string;
+    completedHeading: string;
+    completedHint: string;
+    noActiveHeading: string;
+    noActiveBody: string;
+    noCompletedHeading: string;
+    noCompletedBody: string;
+    emptyHeading: string;
+    emptyBody: string;
+    manageSession: string;
+    joinLiveRoom: string;
+    viewResults: string;
+    learnerCount: (count: number) => string;
+    dateLabels: {
+      created: string;
+      started: string;
+      ended: string;
+    };
+  };
   join: {
     invitedTo: string;
     subtitle: string;
@@ -74,6 +99,10 @@ export interface Dictionary {
     statusLive: string;
     statusEnded: string;
     startSession: string;
+    // Pending-state label for the "Start session" button (StartSessionButton) — mirrors
+    // ChatSendButton/JoinSubmitButton's own pending label, so a rapid double-click
+    // disables the button instead of submitting `startSession` twice.
+    startingSession: string;
     endSession: string;
     confirmEndSessionTitle: string;
     confirmEndSessionBody: string;
@@ -123,6 +152,12 @@ export interface Dictionary {
     waitingToStart: string;
     noInterventionHintWaiting: string;
     insightsNotConfigured: string;
+    // Distinct from insightsNotConfigured — shown instead of it when insight detection
+    // didn't run because the session itself is in Strict Privacy Mode (translationMode
+    // LOCAL_ONLY, see insights.ts), not because INSIGHT_MODEL_API_KEY is missing. Without
+    // this distinction, a facilitator who deliberately chose Strict Privacy Mode sees
+    // copy that reads as a misconfiguration to fix, when nothing is actually wrong.
+    insightsDisabledPrivacyMode: string;
     languageChangeLiveWarning: string;
     liveTranscript: string;
     transcriptEmpty: string;
@@ -130,10 +165,9 @@ export interface Dictionary {
     activity: string;
     decision: string;
     noRecentActivity: string;
-    // There's no session list anywhere in the app and facilitator auth is a per-session
-    // cookie (not an account you can log back into) — this URL, once lost, is the only
-    // way back into a still-LIVE session. Surfaced with the same copy-link affordance as
-    // the learner invite link below, so a facilitator can actually bookmark/save it.
+    // Facilitator auth is a per-session cookie, and the overview can only list sessions
+    // available in this browser — this direct URL is still worth surfacing with the same
+    // copy-link affordance as the learner invite link below.
     dashboardLinkCard: string;
     dashboardLinkHeading: string;
     dashboardLinkHint: string;
@@ -141,6 +175,11 @@ export interface Dictionary {
     learnerInvitation: string;
     shareLink: string;
     linkRevokedMsg: string;
+    // Shown instead of linkRevokedMsg/the active QR+link+revoke UI once the session has
+    // ENDED — the join page itself rejects an ENDED session's token outright (see
+    // join/[token]/page.tsx), so this card can't be left looking active/shareable once
+    // that's true, even if the link was never separately revoked.
+    linkEndedMsg: string;
     learnerLinkAriaLabel: string;
     copyLink: string;
     linkCopied: string;
@@ -214,6 +253,7 @@ export interface Dictionary {
     audioBlocked: string;
     playBlockedAudio: string;
     audioSkipped: string;
+    audioUnavailable: string;
     captionComposerLabel: string;
     captionComposerPlaceholder: string;
     captionAudioHint: string;
@@ -316,6 +356,7 @@ export interface Dictionary {
     captionPositionBottom: string;
     captionPositionTop: string;
     allowLearnerPresenting: string;
+    allowLearnerPresentingFailed: string;
     leave: string;
     expandSidebar: string;
     resizeSidebar: string;
@@ -377,6 +418,20 @@ export interface Dictionary {
     title: string;
     message: string;
     retry: string;
+    /**
+     * createSession/joinSession (setup/actions.ts, join/[token]/actions.ts) model their
+     * *expected* validation/lifecycle failures as thrown `Error`s with hardcoded English
+     * text, not a translated `FormActionResult` — with no boundary between them and this
+     * error page, that raw English string reached RouteErrorFallback verbatim regardless
+     * of the page's resolved language. Keyed by the exact English message thrown, so
+     * RouteErrorFallback can look up a localized replacement for the ones a learner/
+     * facilitator can realistically hit (rate limiting, a revoked/expired invite, a
+     * session that just ended) instead of showing them in English on an otherwise fully
+     * localized page. Not exhaustive — the client-HTML-validated field-level messages
+     * (missing/too-long name, title, goal) are excluded since normal browser form
+     * validation already blocks those before they ever reach the server action.
+     */
+    knownMessages: Record<string, string>;
   };
   /** Centralised Technical Glossary management page (issue #131) — shared across every
    * facilitator/session, so this page's copy isn't tied to any one session's language. */
@@ -423,12 +478,13 @@ export interface Dictionary {
 const en: Dictionary = {
   shell: {
     newSession: "New session",
+    sessions: "Sessions",
     skipToContent: "Skip to main content",
     interfaceLanguage: "Interface language",
     language: "Language",
     confirmNewSessionTitle: "Leave this dashboard?",
     confirmNewSessionBody:
-      "If this session is still live, its learners will be left without a facilitator and there's no session list to find your way back — bookmark or copy this page's link first if you want to return to it.",
+      "If this session is still live, its learners may be left without a facilitator. Open the Sessions page in another tab if you want to keep this workshop available.",
   },
   a11y: {
     fontSizeLabel: { normal: "Normal text", large: "Large text", "x-large": "Extra-large text" },
@@ -463,6 +519,30 @@ const en: Dictionary = {
       "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
   },
+  sessionsOverview: {
+    heading: "Sessions",
+    subtitle: "Continue active workshops and review completed sessions available in this browser.",
+    newSession: "New session",
+    activeHeading: "Active sessions",
+    activeHint: "Draft and live sessions you can still manage.",
+    completedHeading: "Completed sessions",
+    completedHint: "Ended sessions with post-session results still inside their retention window.",
+    noActiveHeading: "No active sessions",
+    noActiveBody: "Create a new session when you are ready to facilitate another workshop.",
+    noCompletedHeading: "No completed sessions",
+    noCompletedBody: "Ended sessions will appear here after you finish a workshop.",
+    emptyHeading: "No facilitator sessions found",
+    emptyBody: "This page only shows sessions for which this browser has facilitator access.",
+    manageSession: "Manage session",
+    joinLiveRoom: "Join live room",
+    viewResults: "View results",
+    learnerCount: (count) => (count === 1 ? "1 learner" : `${count} learners`),
+    dateLabels: {
+      created: "Created",
+      started: "Started",
+      ended: "Ended",
+    },
+  },
   join: {
     invitedTo: "You're invited to learn",
     subtitle: "Choose how you'd like to follow the session. Your preferred language controls translated captions and replies.",
@@ -478,6 +558,7 @@ const en: Dictionary = {
     statusLive: "live",
     statusEnded: "ended",
     startSession: "Start session",
+    startingSession: "Starting…",
     endSession: "End session",
     confirmEndSessionTitle: "End this session?",
     confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
@@ -511,6 +592,7 @@ const en: Dictionary = {
     waitingToStart: "Waiting to begin",
     noInterventionHintWaiting: "Nothing to analyze yet — this updates once the discussion starts.",
     insightsNotConfigured: "Automatic insight detection isn't configured for this session — nothing here is analyzed. Use the typed caption/chat tools to follow along manually.",
+    insightsDisabledPrivacyMode: "This session uses Strict Privacy Mode, which never sends the transcript to Claude — automatic insight detection is intentionally disabled. Use the typed caption/chat tools to follow along manually.",
     languageChangeLiveWarning: "Changing language while captions are running won't restart the live speech recognition — stop and restart captions to fully apply it.",
     liveTranscript: "Live transcript",
     transcriptEmpty: "Captions will arrive here when the session is live.",
@@ -520,11 +602,12 @@ const en: Dictionary = {
     noRecentActivity: "No activity or decisions noted yet.",
     dashboardLinkCard: "Your facilitator dashboard",
     dashboardLinkHeading: "Bookmark this link to get back in",
-    dashboardLinkHint: "There's no session list — this is the only way back into this session if you close the tab. Unlike the learner link below, this one only works from a browser already signed in as this session's facilitator, so sharing it alone doesn't grant access.",
+    dashboardLinkHint: "This direct dashboard link only works from a browser already signed in as this session's facilitator, so sharing it alone doesn't grant access. The Sessions page can also bring you back to sessions available in this browser.",
     dashboardLinkAriaLabel: "Facilitator dashboard link",
     learnerInvitation: "Learner invitation",
     shareLink: "Share this private link",
     linkRevokedMsg: "This invite link has been revoked and no longer works. Create a new session to invite learners again.",
+    linkEndedMsg: "This session has ended — this link no longer works. Create a new session to invite learners again.",
     learnerLinkAriaLabel: "Learner invitation link",
     copyLink: "Copy link",
     linkCopied: "Copied!",
@@ -592,6 +675,7 @@ const en: Dictionary = {
     audioBlocked: "Translated audio playback was blocked by the browser.",
     playBlockedAudio: "Play translated audio",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
+    audioUnavailable: "Translated audio isn't set up for this deployment (no text-to-speech provider configured) — captions still translate as text.",
     captionComposerLabel: "Type a caption for everyone",
     captionComposerPlaceholder: "Type something to be read aloud to everyone…",
     captionAudioHint: "Read aloud to everyone in their language, even if they haven't turned on translated audio — useful if you can't speak.",
@@ -682,6 +766,7 @@ const en: Dictionary = {
     captionPositionBottom: "Bottom",
     captionPositionTop: "Top",
     allowLearnerPresenting: "Allow participants to share screen & use whiteboard",
+    allowLearnerPresentingFailed: "Couldn't update — try again",
     leave: "Leave meeting",
     expandSidebar: "Show chat",
     resizeSidebar: "Resize chat panel",
@@ -735,6 +820,15 @@ const en: Dictionary = {
     title: "Something went wrong",
     message: "An unexpected error occurred. You can try again, or reload the page.",
     retry: "Try again",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "Choose a retention period between 5 minutes and 30 days.",
+      "Your session details are incomplete.": "Your session details are incomplete.",
+      "Enter a name and supported preferred language.": "Enter a name and supported preferred language.",
+      "Consent is required before joining a live session.": "Consent is required before joining a live session.",
+      "Too many join attempts. Please wait a moment and try again.": "Too many join attempts. Please wait a moment and try again.",
+      "This learner invitation is no longer available.": "This learner invitation is no longer available.",
+      "This session is no longer available.": "This session is no longer available.",
+    },
   },
   glossary: {
     pageHeading: "Technical glossary",
@@ -774,11 +868,12 @@ const en: Dictionary = {
 const zh: Dictionary = {
   shell: {
     newSession: "新建场次",
+    sessions: "场次",
     skipToContent: "跳转到主要内容",
     interfaceLanguage: "界面语言",
     language: "语言",
     confirmNewSessionTitle: "离开此控制台？",
-    confirmNewSessionBody: "如果此场次仍在进行中，学员将没有主持人陪伴，且本应用没有场次列表可供你找回——如需之后返回，请先收藏或复制此页面的链接。",
+    confirmNewSessionBody: "如果此场次仍在进行中，学员可能会暂时没有主持人陪伴。如需保留当前工作坊，请在新标签页打开“场次”页面。",
   },
   a11y: {
     fontSizeLabel: { normal: "标准字号", large: "大字号", "x-large": "特大字号" },
@@ -812,6 +907,30 @@ const zh: Dictionary = {
       "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
   },
+  sessionsOverview: {
+    heading: "场次",
+    subtitle: "继续管理进行中的工作坊，并查看此浏览器可访问的已完成场次。",
+    newSession: "新建场次",
+    activeHeading: "活动场次",
+    activeHint: "你仍可管理的草稿和进行中场次。",
+    completedHeading: "已完成场次",
+    completedHint: "仍在保留期限内、已结束且可查看结果的场次。",
+    noActiveHeading: "暂无活动场次",
+    noActiveBody: "准备主持新的工作坊时，可以创建一个新场次。",
+    noCompletedHeading: "暂无已完成场次",
+    noCompletedBody: "结束工作坊后，已完成场次会显示在这里。",
+    emptyHeading: "未找到主持人场次",
+    emptyBody: "此页面只显示本浏览器拥有主持人访问权限的场次。",
+    manageSession: "管理场次",
+    joinLiveRoom: "进入实时教室",
+    viewResults: "查看结果",
+    learnerCount: (count) => `学员：${count}`,
+    dateLabels: {
+      created: "创建时间",
+      started: "开始时间",
+      ended: "结束时间",
+    },
+  },
   join: {
     invitedTo: "你被邀请加入学习",
     subtitle: "选择你想如何跟随这场活动。你偏好的语言将决定翻译字幕和回复所使用的语言。",
@@ -827,6 +946,7 @@ const zh: Dictionary = {
     statusLive: "进行中",
     statusEnded: "已结束",
     startSession: "开始场次",
+    startingSession: "正在开始……",
     endSession: "结束场次",
     confirmEndSessionTitle: "确定要结束此场次吗？",
     confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
@@ -862,6 +982,7 @@ const zh: Dictionary = {
     waitingToStart: "等待开始",
     noInterventionHintWaiting: "暂无可分析内容——讨论开始后将自动更新。",
     insightsNotConfigured: "此场次未配置自动洞察检测——此处内容不会被分析。请改用手动输入字幕/聊天工具跟进。",
+    insightsDisabledPrivacyMode: "此场次已启用严格隐私模式，转录内容不会发送给 Claude——自动洞察检测因此被有意禁用。请改用手动输入字幕/聊天工具跟进。",
     languageChangeLiveWarning: "在字幕运行时切换语言不会重启实时语音识别——请先停止再重新开始字幕以完全生效。",
     liveTranscript: "实时转录",
     transcriptEmpty: "场次开始后，字幕会显示在这里。",
@@ -871,11 +992,12 @@ const zh: Dictionary = {
     noRecentActivity: "暂无记录的动态或决定。",
     dashboardLinkCard: "你的主持人控制台",
     dashboardLinkHeading: "收藏此链接以便返回",
-    dashboardLinkHint: "本应用没有场次列表——关闭标签页后，这是返回此场次的唯一方式。与下方的学员链接不同，此链接仅在已登录为该场次主持人的浏览器中有效，因此仅分享此链接本身并不会授予访问权限。",
+    dashboardLinkHint: "此控制台直达链接仅在已登录为该场次主持人的浏览器中有效，因此仅分享此链接本身并不会授予访问权限。“场次”页面也可以带你返回此浏览器可访问的场次。",
     dashboardLinkAriaLabel: "主持人控制台链接",
     learnerInvitation: "学员邀请",
     shareLink: "分享此专属链接",
     linkRevokedMsg: "该邀请链接已被撤销，无法再使用。请创建新场次以重新邀请学员。",
+    linkEndedMsg: "此场次已结束——该链接已失效。请创建新场次以重新邀请学员。",
     learnerLinkAriaLabel: "学员邀请链接",
     copyLink: "复制链接",
     linkCopied: "已复制！",
@@ -943,6 +1065,7 @@ const zh: Dictionary = {
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     playBlockedAudio: "播放翻译语音",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
+    audioUnavailable: "此部署未启用翻译语音（未配置文本转语音服务）——字幕文字翻译仍正常可用。",
     captionComposerLabel: "为所有人输入字幕",
     captionComposerPlaceholder: "输入内容，将朗读给所有人听……",
     captionAudioHint: "会以每个人的语言朗读给他们听，即使他们未开启翻译语音——适合无法说话时使用。",
@@ -1033,6 +1156,7 @@ const zh: Dictionary = {
     captionPositionBottom: "底部",
     captionPositionTop: "顶部",
     allowLearnerPresenting: "允许参与者共享屏幕和使用白板",
+    allowLearnerPresentingFailed: "更新失败——请重试",
     leave: "离开会议",
     expandSidebar: "显示聊天",
     resizeSidebar: "调整聊天面板大小",
@@ -1086,6 +1210,15 @@ const zh: Dictionary = {
     title: "出了点问题",
     message: "发生了意外错误。你可以重试，或刷新页面。",
     retry: "重试",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "请选择 5 分钟到 30 天之间的保留时长。",
+      "Your session details are incomplete.": "您的场次信息不完整。",
+      "Enter a name and supported preferred language.": "请输入姓名并选择受支持的首选语言。",
+      "Consent is required before joining a live session.": "加入实时场次前需要同意授权。",
+      "Too many join attempts. Please wait a moment and try again.": "加入尝试次数过多，请稍等片刻后重试。",
+      "This learner invitation is no longer available.": "此学习者邀请链接已失效。",
+      "This session is no longer available.": "此场次已不可用。",
+    },
   },
   glossary: {
     pageHeading: "技术术语表",
@@ -1125,12 +1258,13 @@ const zh: Dictionary = {
 const es: Dictionary = {
   shell: {
     newSession: "Nueva sesión",
+    sessions: "Sesiones",
     skipToContent: "Saltar al contenido principal",
     interfaceLanguage: "Idioma de la interfaz",
     language: "Idioma",
     confirmNewSessionTitle: "¿Salir de este panel?",
     confirmNewSessionBody:
-      "Si esta sesión sigue en vivo, sus alumnos se quedarán sin facilitador y no hay una lista de sesiones para volver a encontrarla — guarda o copia el enlace de esta página primero si quieres volver a ella.",
+      "Si esta sesión sigue en vivo, sus alumnos pueden quedarse sin facilitador. Abre la página Sesiones en otra pestaña si quieres mantener este taller disponible.",
   },
   a11y: {
     fontSizeLabel: { normal: "Texto normal", large: "Texto grande", "x-large": "Texto extra grande" },
@@ -1165,6 +1299,30 @@ const es: Dictionary = {
       "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
   },
+  sessionsOverview: {
+    heading: "Sesiones",
+    subtitle: "Continúa talleres activos y revisa sesiones completadas disponibles en este navegador.",
+    newSession: "Nueva sesión",
+    activeHeading: "Sesiones activas",
+    activeHint: "Sesiones en borrador y en vivo que todavía puedes gestionar.",
+    completedHeading: "Sesiones completadas",
+    completedHint: "Sesiones finalizadas con resultados aún dentro de su período de retención.",
+    noActiveHeading: "No hay sesiones activas",
+    noActiveBody: "Crea una nueva sesión cuando estés listo/a para facilitar otro taller.",
+    noCompletedHeading: "No hay sesiones completadas",
+    noCompletedBody: "Las sesiones finalizadas aparecerán aquí después de terminar un taller.",
+    emptyHeading: "No se encontraron sesiones de facilitador",
+    emptyBody: "Esta página solo muestra sesiones para las que este navegador tiene acceso de facilitador.",
+    manageSession: "Gestionar sesión",
+    joinLiveRoom: "Entrar a la sala en vivo",
+    viewResults: "Ver resultados",
+    learnerCount: (count) => (count === 1 ? "1 alumno" : `${count} alumnos`),
+    dateLabels: {
+      created: "Creada",
+      started: "Iniciada",
+      ended: "Finalizada",
+    },
+  },
   join: {
     invitedTo: "Estás invitado a aprender",
     subtitle: "Elige cómo quieres seguir la sesión. Tu idioma preferido controla los subtítulos y las respuestas traducidas.",
@@ -1180,6 +1338,7 @@ const es: Dictionary = {
     statusLive: "en vivo",
     statusEnded: "finalizada",
     startSession: "Iniciar sesión",
+    startingSession: "Iniciando…",
     endSession: "Finalizar sesión",
     confirmEndSessionTitle: "¿Finalizar esta sesión?",
     confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
@@ -1213,6 +1372,7 @@ const es: Dictionary = {
     waitingToStart: "Esperando para comenzar",
     noInterventionHintWaiting: "Aún no hay nada que analizar — esto se actualizará cuando comience la conversación.",
     insightsNotConfigured: "La detección automática de información no está configurada para esta sesión — nada aquí se analiza. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
+    insightsDisabledPrivacyMode: "Esta sesión usa el Modo de privacidad estricta, que nunca envía la transcripción a Claude — la detección automática de información está deshabilitada a propósito. Usa las herramientas de subtítulos/chat manuales para seguir la sesión.",
     languageChangeLiveWarning: "Cambiar el idioma mientras los subtítulos están activos no reinicia el reconocimiento de voz en vivo — detén y vuelve a iniciar los subtítulos para aplicarlo por completo.",
     liveTranscript: "Transcripción en vivo",
     transcriptEmpty: "Los subtítulos aparecerán aquí cuando la sesión esté en vivo.",
@@ -1222,11 +1382,12 @@ const es: Dictionary = {
     noRecentActivity: "Aún no se ha registrado actividad ni decisiones.",
     dashboardLinkCard: "Tu panel de facilitador",
     dashboardLinkHeading: "Guarda este enlace para volver a entrar",
-    dashboardLinkHint: "No hay una lista de sesiones — esta es la única forma de volver a esta sesión si cierras la pestaña. A diferencia del enlace para alumnos de abajo, este solo funciona desde un navegador que ya inició sesión como el facilitador de esta sesión, así que compartirlo por sí solo no da acceso.",
+    dashboardLinkHint: "Este enlace directo al panel solo funciona desde un navegador que ya inició sesión como facilitador de esta sesión, así que compartirlo por sí solo no da acceso. La página Sesiones también puede llevarte a sesiones disponibles en este navegador.",
     dashboardLinkAriaLabel: "Enlace del panel de facilitador",
     learnerInvitation: "Invitación para alumnos",
     shareLink: "Comparte este enlace privado",
     linkRevokedMsg: "Este enlace de invitación fue revocado y ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
+    linkEndedMsg: "Esta sesión ha finalizado — este enlace ya no funciona. Crea una nueva sesión para volver a invitar alumnos.",
     learnerLinkAriaLabel: "Enlace de invitación para alumnos",
     copyLink: "Copiar enlace",
     linkCopied: "¡Copiado!",
@@ -1294,6 +1455,7 @@ const es: Dictionary = {
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     playBlockedAudio: "Reproducir audio traducido",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
+    audioUnavailable: "El audio traducido no está habilitado en este despliegue (no hay un proveedor de texto a voz configurado) — los subtítulos de texto se siguen traduciendo con normalidad.",
     captionComposerLabel: "Escribe un subtítulo para todos",
     captionComposerPlaceholder: "Escribe algo para que se lea en voz alta a todos…",
     captionAudioHint: "Se leerá en voz alta a todos en su idioma, aunque no hayan activado el audio traducido — útil si no puedes hablar.",
@@ -1384,6 +1546,7 @@ const es: Dictionary = {
     captionPositionBottom: "Abajo",
     captionPositionTop: "Arriba",
     allowLearnerPresenting: "Permitir que los participantes compartan pantalla y usen la pizarra",
+    allowLearnerPresentingFailed: "No se pudo actualizar — inténtalo de nuevo",
     leave: "Salir de la reunión",
     expandSidebar: "Mostrar chat",
     resizeSidebar: "Cambiar tamaño del panel de chat",
@@ -1437,6 +1600,15 @@ const es: Dictionary = {
     title: "Algo salió mal",
     message: "Ocurrió un error inesperado. Puedes intentarlo de nuevo o recargar la página.",
     retry: "Intentar de nuevo",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "Elige un período de retención entre 5 minutos y 30 días.",
+      "Your session details are incomplete.": "Los datos de tu sesión están incompletos.",
+      "Enter a name and supported preferred language.": "Ingresa un nombre y un idioma preferido admitido.",
+      "Consent is required before joining a live session.": "Se requiere tu consentimiento antes de unirte a una sesión en vivo.",
+      "Too many join attempts. Please wait a moment and try again.": "Demasiados intentos de unión. Espera un momento e inténtalo de nuevo.",
+      "This learner invitation is no longer available.": "Esta invitación de aprendiz ya no está disponible.",
+      "This session is no longer available.": "Esta sesión ya no está disponible.",
+    },
   },
   glossary: {
     pageHeading: "Glosario técnico",

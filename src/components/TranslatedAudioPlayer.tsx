@@ -21,6 +21,12 @@ interface CaptionForPlayback {
 interface QueueEntry {
   id: string;
   alwaysPlay: boolean;
+  /** The segment's own typed-flag/language, kept alongside `alwaysPlay` so the
+   * preferredLanguage-reconciliation effect below can recompute whether this entry is
+   * still alwaysPlay-worthy under a NEW preferred language without re-fetching the
+   * segment from `segments`. */
+  isTyped: boolean;
+  language: string;
 }
 
 /**
@@ -149,7 +155,12 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     if (toQueue.length === 0) return;
 
     queueRef.current.push(
-      ...toQueue.map((segment) => ({ id: segment.id, alwaysPlay: segment.isTyped || segment.language !== preferredLanguage })),
+      ...toQueue.map((segment) => ({
+        id: segment.id,
+        alwaysPlay: segment.isTyped || segment.language !== preferredLanguage,
+        isTyped: segment.isTyped,
+        language: segment.language,
+      })),
     );
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,6 +180,11 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       audioRef.current?.pause();
       playingRef.current = false;
       currentRef.current = null;
+      // If `current` was sitting in an autoplay-blocked state (errorKind === "blocked"),
+      // it's the segment the "Play blocked audio" retry button would resurrect — clear
+      // the error along with it so a learner who opts back out doesn't leave a stale
+      // button around that replays the exact dub they just declined.
+      setErrorKind(null);
     }
     queueRef.current = queueRef.current.filter((entry) => entry.alwaysPlay);
     // If we just cut off a non-always-play current item (or nothing was
@@ -178,6 +194,43 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     if (!playingRef.current && queueRef.current.length > 0) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
+
+  const preferredLanguageRef = useRef(preferredLanguage);
+  useEffect(() => {
+    const previousLanguage = preferredLanguageRef.current;
+    preferredLanguageRef.current = preferredLanguage;
+    if (previousLanguage === preferredLanguage) return;
+
+    // A caption already sitting in the queue (or mid-playback) was marked `alwaysPlay`
+    // against the OLD preferredLanguage — e.g. it was cross-language relative to that
+    // old language, so it queued regardless of the opt-in. After the switch, that same
+    // segment may now be same-language, and a stale queued/playing dub for it would talk
+    // over the (now un-ducked) live mic audio for that speaker instead of standing in for
+    // it. Recompute `alwaysPlay` under the NEW preferredLanguage — typed captions always
+    // stay; anything still cross-language stays; anything that's now same-language is
+    // dropped unless the opt-in checkbox is on (mirrors the `[enabled]` effect above,
+    // which keeps a non-alwaysPlay entry only while the opt-in is checked).
+    const recompute = (entry: QueueEntry): QueueEntry => ({
+      ...entry,
+      alwaysPlay: entry.isTyped || entry.language !== preferredLanguage,
+    });
+
+    if (currentRef.current) {
+      const current = recompute(currentRef.current);
+      currentRef.current = current;
+      if (!current.alwaysPlay && !enabled) {
+        audioRef.current?.pause();
+        playingRef.current = false;
+        currentRef.current = null;
+        setErrorKind(null);
+      }
+    }
+
+    queueRef.current = queueRef.current.map(recompute).filter((entry) => entry.alwaysPlay || enabled);
+
+    if (!playingRef.current && queueRef.current.length > 0) playNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferredLanguage]);
 
   return (
     <div className="flex flex-col gap-1">
@@ -211,7 +264,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           <button
             type="button"
             onClick={playBlockedSegment}
-            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground"
+            className="font-data flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground"
           >
             {dict.playBlockedAudio}
           </button>

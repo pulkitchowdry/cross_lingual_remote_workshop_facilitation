@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   sessionFindUnique: vi.fn(),
   participantFindFirst: vi.fn(),
   messageCreate: vi.fn(),
+  centralGlossaryEntryFindMany: vi.fn(),
   hasFacilitatorAccess: vi.fn(),
   learnerParticipantId: vi.fn(),
   translateText: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/lib/db", () => ({
     session: { findUnique: mocks.sessionFindUnique },
     sessionParticipant: { findFirst: mocks.participantFindFirst },
     message: { create: mocks.messageCreate },
+    centralGlossaryEntry: { findMany: mocks.centralGlossaryEntryFindMany },
   },
 }));
 vi.mock("@/lib/session-access", () => ({
@@ -54,6 +56,7 @@ describe("sendChatMessage private message authorization", () => {
     mocks.participantFindFirst.mockReset();
     mocks.messageCreate.mockResolvedValue({});
     mocks.translateText.mockResolvedValue(null);
+    mocks.centralGlossaryEntryFindMany.mockResolvedValue([]);
     mocks.isRateLimited.mockReturnValue(false);
     mocks.hasFacilitatorAccess.mockResolvedValue(true);
     mocks.learnerParticipantId.mockResolvedValue("learner-participant-a");

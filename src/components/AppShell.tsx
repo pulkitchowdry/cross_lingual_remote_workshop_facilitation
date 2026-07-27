@@ -17,7 +17,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Learners land on /join (before joining) and /sessions/:id/learn (after) — they
   // never create sessions, so the facilitator-only "New session" entry point is hidden there.
   const isLearnerRoute = pathname?.startsWith("/join") || /^\/sessions\/[^/]+\/learn/.test(pathname ?? "");
-  const navLinks = isLearnerRoute ? [] : ([{ href: "/setup", label: dict.shell.newSession }] as const);
+  const navLinks = isLearnerRoute
+    ? []
+    : ([
+        { href: "/sessions", label: dict.shell.sessions, confirmBeforeLeavingSession: false },
+        { href: "/setup", label: dict.shell.newSession, confirmBeforeLeavingSession: true },
+      ] as const);
   const facilitatorSessionId = pathname?.match(/^\/sessions\/([^/]+)\/facilitator/)?.[1];
   // The live workshop room (video/screen-share + chat) is the one view where the
   // 1600px cap actively wastes space — a facilitator or learner running this on a
@@ -58,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               // dashboard risks orphaning a still-LIVE session (see NewSessionLink's own
               // doc comment) — confirm first there; everywhere else this link appears
               // (e.g. the setup page's own header), there's no existing session to lose.
-              if (facilitatorSessionId) {
+              if (facilitatorSessionId && link.confirmBeforeLeavingSession) {
                 return (
                   <li key={link.href}>
                     <NewSessionLink

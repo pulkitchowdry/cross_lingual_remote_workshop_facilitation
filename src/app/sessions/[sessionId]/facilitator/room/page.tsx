@@ -88,7 +88,7 @@ export default async function FacilitatorRoomPage({
   const captionsHeader = (
     <>
       <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={session.captionAgentActive} />
-      {textToSpeechProvider.isConfigured && (
+      {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
           segments={session.transcript.map((segment) => ({
             id: segment.id,
@@ -100,6 +100,8 @@ export default async function FacilitatorRoomPage({
           }))}
           preferredLanguage={session.sourceLanguage}
         />
+      ) : (
+        <p className="text-xs text-muted-foreground">{getDictionary(lang).learner.audioUnavailable}</p>
       )}
     </>
   );

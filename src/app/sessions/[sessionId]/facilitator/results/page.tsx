@@ -11,7 +11,7 @@ import { buildFacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view"
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
-import { publicSessionMessageWhere } from "@/lib/message-visibility";
+import { facilitatorVisibleSessionMessageWhere } from "@/lib/message-visibility";
 import { insightProvider } from "@/lib/providers/insight";
 
 export const metadata: Metadata = { title: "Session results" };
@@ -26,22 +26,28 @@ export default async function FacilitatorSessionResultsPage({
   const { sessionId } = await params;
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const [session, messageCount, questionCount] = await Promise.all([
-    prisma.session.findUnique({
-      where: { id: sessionId },
-      include: {
-        participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
-        insights: {
-          orderBy: { createdAt: "desc" },
-        },
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
+      insights: {
+        orderBy: { createdAt: "desc" },
       },
-    }),
-    prisma.message.count({ where: publicSessionMessageWhere(sessionId) }),
-    prisma.message.count({ where: { ...publicSessionMessageWhere(sessionId), kind: "QUESTION" } }),
-  ]);
+    },
+  });
 
   if (!session) notFound();
   if (isSessionRetentionExpired(session)) notFound();
+
+  // Facilitator-visible, not public-only — a learner who also checks "message
+  // facilitator privately" alongside "flag as question" produces a message the
+  // facilitator already sees in their own chat panel; these summary counts shouldn't
+  // silently undercount it. Depends on `session.facilitatorId`, so this can't run in
+  // the same Promise.all as the session fetch above.
+  const [messageCount, questionCount] = await Promise.all([
+    prisma.message.count({ where: facilitatorVisibleSessionMessageWhere(sessionId, session.facilitatorId) }),
+    prisma.message.count({ where: { ...facilitatorVisibleSessionMessageWhere(sessionId, session.facilitatorId), kind: "QUESTION" } }),
+  ]);
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;

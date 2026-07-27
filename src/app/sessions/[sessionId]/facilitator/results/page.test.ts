@@ -157,10 +157,10 @@ describe("FacilitatorSessionResultsPage", () => {
       }),
     );
     expect(mocks.messageCount).toHaveBeenNthCalledWith(1, {
-      where: { sessionId: "session-1", recipientId: null },
+      where: { sessionId: "session-1", OR: [{ recipientId: null }, { recipientId: "facilitator-user" }] },
     });
     expect(mocks.messageCount).toHaveBeenNthCalledWith(2, {
-      where: { sessionId: "session-1", recipientId: null, kind: "QUESTION" },
+      where: { sessionId: "session-1", OR: [{ recipientId: null }, { recipientId: "facilitator-user" }], kind: "QUESTION" },
     });
     expect(mocks.buildFacilitatorAnalyticsView).toHaveBeenCalledWith(
       "session-1",

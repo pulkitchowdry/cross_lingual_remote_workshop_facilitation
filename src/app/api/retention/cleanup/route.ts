@@ -48,48 +48,66 @@ export async function POST(request: NextRequest) {
 
   const expiredIds = sessions.filter((session) => isSessionRetentionExpired(session, now)).map((session) => session.id);
 
-  if (expiredIds.length > 0) {
-    // Every content table (TranscriptSegment, Message, Insight, GlossaryTerm,
-    // SessionParticipant, JoinLink) cascades from Session in schema.prisma, so
-    // deleting the session row reclaims those. But the facilitator's and every
-    // learner's `User` row (their real display name + language) is only ever
-    // pointed to *from* SessionParticipant/Session — deleting the session
-    // leaves those User rows orphaned in the database forever unless they're
-    // swept too. `{ none: {} }` only matches a User with zero remaining
-    // sessions/participations, so a User who (in some future flow) is shared
-    // across sessions is never deleted out from under a still-live one.
-    const [facilitators, participants] = await Promise.all([
-      prisma.session.findMany({ where: { id: { in: expiredIds } }, select: { facilitatorId: true } }),
-      prisma.sessionParticipant.findMany({ where: { sessionId: { in: expiredIds } }, select: { userId: true } }),
-    ]);
-    const candidateUserIds = Array.from(
-      new Set([...facilitators.map((f) => f.facilitatorId), ...participants.map((p) => p.userId)]),
-    );
+  // Chunked, not one all-or-nothing transaction across every expired session: a
+  // single chunk's failure (an unusually large chunk exceeding the timeout, a
+  // Postgres deadlock from two overlapping cron invocations, any transient DB
+  // error) previously rolled back the *entire* batch, leaving every other,
+  // unrelated session that was otherwise cleanly expired undeleted too — and since
+  // the backlog never shrank, the same failure was likely to recur on the next run.
+  // Each chunk still deletes its sessions and sweeps their now-orphaned Users in one
+  // atomic transaction (see the comment below for why that pairing must stay atomic);
+  // only the blast radius of a single chunk's failure changed.
+  const CHUNK_SIZE = 25;
+  const deletedSessionIds: string[] = [];
+  const failedSessionIds: string[] = [];
 
-    // Atomic: without this, a crash/restart between the two deletes (Railway
-    // redeploy, OOM, a scheduler with a short HTTP timeout) leaves sessions
-    // gone but their Users un-swept — and permanently un-purgeable, since the
-    // next run can only find orphan-User candidates via *currently expired*
-    // sessions, which no longer exist for this batch.
-    await prisma.$transaction(async (tx) => {
-      await tx.session.deleteMany({ where: { id: { in: expiredIds } } });
+  for (let i = 0; i < expiredIds.length; i += CHUNK_SIZE) {
+    const chunk = expiredIds.slice(i, i + CHUNK_SIZE);
+    try {
+      // Every content table (TranscriptSegment, Message, Insight, GlossaryTerm,
+      // SessionParticipant, JoinLink) cascades from Session in schema.prisma, so
+      // deleting the session row reclaims those. But the facilitator's and every
+      // learner's `User` row (their real display name + language) is only ever
+      // pointed to *from* SessionParticipant/Session — deleting the session
+      // leaves those User rows orphaned in the database forever unless they're
+      // swept too. `{ none: {} }` only matches a User with zero remaining
+      // sessions/participations, so a User who (in some future flow) is shared
+      // across sessions is never deleted out from under a still-live one.
+      const [facilitators, participants] = await Promise.all([
+        prisma.session.findMany({ where: { id: { in: chunk } }, select: { facilitatorId: true } }),
+        prisma.sessionParticipant.findMany({ where: { sessionId: { in: chunk } }, select: { userId: true } }),
+      ]);
+      const candidateUserIds = Array.from(
+        new Set([...facilitators.map((f) => f.facilitatorId), ...participants.map((p) => p.userId)]),
+      );
 
-      if (candidateUserIds.length > 0) {
-        await tx.user.deleteMany({
-          where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
-        });
-      }
-      // Prisma's default 5s interactive-transaction timeout is tuned for a single
-      // small write; a backlog of many expired sessions (each cascading across
-      // TranscriptSegment/Message/Insight/GlossaryTerm/SessionParticipant/JoinLink)
-      // can take longer, and a timed-out transaction rolls back entirely — so a
-      // large-enough backlog would make every cron run fail the exact same way
-      // forever, permanently stalling retention purging. Matches the timeout
-      // insights.ts's own transaction already uses for the same reason.
-    }, { timeout: 20_000 });
+      // Atomic within a chunk: without this, a crash/restart between the two deletes
+      // (Railway redeploy, OOM, a scheduler with a short HTTP timeout) leaves this
+      // chunk's sessions gone but their Users un-swept — and permanently
+      // un-purgeable, since the next run can only find orphan-User candidates via
+      // *currently expired* sessions, which no longer exist for this chunk.
+      await prisma.$transaction(async (tx) => {
+        await tx.session.deleteMany({ where: { id: { in: chunk } } });
+
+        if (candidateUserIds.length > 0) {
+          await tx.user.deleteMany({
+            where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
+          });
+        }
+        // Prisma's default 5s interactive-transaction timeout is tuned for a single
+        // small write; a chunk of expired sessions (each cascading across
+        // TranscriptSegment/Message/Insight/GlossaryTerm/SessionParticipant/JoinLink)
+        // can take longer. Matches the timeout insights.ts's own transaction already
+        // uses for the same reason.
+      }, { timeout: 20_000 });
+      deletedSessionIds.push(...chunk);
+    } catch (error) {
+      console.error(`[retention/cleanup] failed to purge a chunk of ${chunk.length} session(s):`, error);
+      failedSessionIds.push(...chunk);
+    }
   }
 
-  return Response.json({ deletedSessionIds: expiredIds });
+  return Response.json({ deletedSessionIds, failedSessionIds });
 }
 
 // Some schedulers default to GET rather than POST; support both so any

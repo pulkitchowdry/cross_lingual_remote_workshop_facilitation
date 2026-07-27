@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
@@ -11,7 +11,12 @@ import { isSupportedLanguage } from "@/lib/i18n";
 
 export async function updateLearnerLanguage(sessionId: string, lang: SupportedLanguage) {
   const participantId = await learnerParticipantId(sessionId);
-  if (!participantId) redirect("/setup");
+  // Not `redirect("/setup")` — that's a facilitator-only "create a new workshop" form
+  // with nothing productive for a learner to click. A missing/expired learner cookie
+  // here is the same ordinary situation the learner PAGES already handle this way (see
+  // learn/page.tsx and learn/room/page.tsx's own doc comments) — this action was the
+  // one place on the learner side still sending them to that dead end instead.
+  if (!participantId) notFound();
   if (!isSupportedLanguage(lang)) return;
 
   const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { learnerLanguages: true } });
@@ -34,7 +39,9 @@ export async function publishLearnerCaption(
   formData: FormData,
 ): Promise<FormActionResult> {
   const participantId = await learnerParticipantId(sessionId);
-  if (!participantId) redirect("/setup");
+  // Not `redirect("/setup")` — see updateLearnerLanguage's matching comment above and
+  // the learner pages' own notFound() pattern (learn/page.tsx, learn/room/page.tsx).
+  if (!participantId) notFound();
 
   const captionText = formData.get("captionText");
   if (typeof captionText !== "string" || !captionText.trim() || captionText.trim().length > 3_000) {
@@ -45,7 +52,7 @@ export async function publishLearnerCaption(
     where: { id: participantId },
     include: { session: true, user: true },
   });
-  if (!participant || participant.sessionId !== sessionId) redirect("/setup");
+  if (!participant || participant.sessionId !== sessionId) notFound();
   if (participant.session.status !== SessionStatus.LIVE) {
     return { error: "The session must be live before publishing captions." };
   }

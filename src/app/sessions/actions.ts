@@ -9,6 +9,8 @@ import { CHAT_MESSAGE_MAX_LENGTH, SUPPORTED_LANGUAGES, type FormActionResult, ty
 import { translateText } from "@/lib/providers/translation";
 import { isRateLimited } from "@/lib/rate-limit";
 import { isPrivateMessageRequest, validateFacilitatorPrivateRecipient } from "@/lib/message-visibility";
+import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 
 type ChatRole = "facilitator" | "learner";
 
@@ -89,9 +91,24 @@ export async function sendChatMessage(
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const targetLanguages = SUPPORTED_LANGUAGES.map((language) => language.value);
+  // Central Technical Glossary lookup (issue #131) — mirrors publishTranslatedCaption's
+  // own glossary pass in src/lib/captions.ts. Without this, a facilitator's curated
+  // glossary entries (e.g. a term marked "keep verbatim", or one with a specific
+  // preferred zh/es rendering) were honored when spoken/typed as a caption but silently
+  // ignored the moment the same term appeared in a chat/Q&A message.
+  const centralGlossary = await prisma.centralGlossaryEntry.findMany({
+    select: { sourceTerm: true, translate: true, translations: true },
+  });
+  const centralGlossaryEntries: CentralGlossaryEntryLike[] = centralGlossary.map((entry) => ({
+    sourceTerm: entry.sourceTerm,
+    translate: entry.translate,
+    translations: (entry.translations as Record<string, string>) ?? {},
+  }));
+  const glossaryMatches = findGlossaryMatches(text.trim(), centralGlossaryEntries);
   const translations = await Promise.all(
     targetLanguages.map(async (targetLanguage) => {
-      const result = await translateText(text.trim(), sourceLanguage, targetLanguage, { allowCloudFallback });
+      const glossaryHint = buildGlossaryPromptHint(glossaryMatches, targetLanguage);
+      const result = await translateText(text.trim(), sourceLanguage, targetLanguage, { allowCloudFallback, glossaryHint });
       return result
         ? {
             targetLanguage,
@@ -145,6 +162,20 @@ export async function saveWhiteboardSnapshot(sessionId: string, elements: unknow
   const isFacilitator = await hasFacilitatorAccess(sessionId);
   const isLearner = Boolean(await learnerParticipantId(sessionId));
   if (!isFacilitator && !isLearner) redirect("/setup");
+
+  // Matches the SessionStatus.LIVE + retention check the sibling whiteboard API routes
+  // already apply (src/app/api/whiteboard/[sessionId]/route.ts and .../translate/route.ts)
+  // — without it, a still-valid facilitator/learner cookie could keep auto-saving whiteboard
+  // edits (every debounced edit calls this) into a session that has already ended or is past
+  // its own configured retention deadline. No-op rather than redirect: this is called
+  // fire-and-forget from a client-side debounce timer with no navigation to redirect.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { status: true, createdAt: true, startedAt: true, endedAt: true, retentionDays: true },
+  });
+  if (!session || session.status !== SessionStatus.LIVE || isSessionRetentionExpired(session)) {
+    return;
+  }
 
   await prisma.whiteboardSnapshot.upsert({
     where: { sessionId },

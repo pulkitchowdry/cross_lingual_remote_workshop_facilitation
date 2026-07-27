@@ -28,6 +28,15 @@ export interface TranscriptFeedEntry {
 
 const BOTTOM_THRESHOLD_PX = 48;
 
+export function dedupeById(entries: TranscriptFeedEntry[]): TranscriptFeedEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
+}
+
 /**
  * YouTube-live-chat-style transcript: a fixed-height, auto-scrolling feed
  * (newest at the bottom) instead of a stacked list of cards. Auto-scroll
@@ -97,7 +106,14 @@ export function LiveTranscriptFeed({
           aria-live="polite"
         >
           {entries.length > 0 ? (
-            entries.map((entry) => {
+            // Two independent, uncoordinated triggers can refresh this feed's `transcript`
+            // prop concurrently — SessionAutoRefresh's 2s poll and CaptionChannelRefresher's
+            // DataChannel-push refresh (see LiveSessionRoom.tsx) — and Next can commit a
+            // render where a segment appears in both a stale and a fresh copy of the array
+            // for one frame. Deduping by `id` here (keeping the first, i.e. latest-known)
+            // occurrence keeps `key={entry.id}` always unique regardless of that race,
+            // instead of relying on every upstream caller never handing this a torn list.
+            dedupeById(entries).map((entry) => {
               const hasSecondary = Boolean(entry.secondaryText);
               // With `actions`, every line is expandable — a learner may want to ask
               // about a caption spoken in their own preferred language too, where

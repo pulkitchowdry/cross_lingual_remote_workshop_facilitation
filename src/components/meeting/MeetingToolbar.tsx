@@ -50,7 +50,7 @@ function ToolbarButton({
           disabled={disabled}
           aria-label={label}
           aria-pressed={active}
-          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             background: active ? "var(--accent)" : "var(--surface-raised)",
             color: active ? "var(--accent-foreground)" : "var(--foreground)",
@@ -155,17 +155,21 @@ export function MeetingToolbar({
     });
   }
 
+  const [presenterAccessError, setPresenterAccessError] = useState(false);
+
   async function togglePresenterAccess(next: boolean) {
+    setPresenterAccessError(false);
     try {
       await setPresenterAccess(sessionId, next);
     } catch (error) {
       console.error("[meeting] failed to update presenter access:", error);
+      setPresenterAccessError(true);
     }
   }
 
-  const latest = useRef({ mic, camera, toggleRaiseHand, setCaptionsVisible });
+  const latest = useRef({ mic, camera, toggleRaiseHand, setCaptionsVisible, workspaceMode });
   useEffect(() => {
-    latest.current = { mic, camera, toggleRaiseHand, setCaptionsVisible };
+    latest.current = { mic, camera, toggleRaiseHand, setCaptionsVisible, workspaceMode };
   });
 
   // Scoped to the room container, not `window`, so it doesn't hijack shortcuts elsewhere on the page.
@@ -175,7 +179,12 @@ export function MeetingToolbar({
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
-      const { mic, camera, toggleRaiseHand, setCaptionsVisible } = latest.current;
+      const { mic, camera, toggleRaiseHand, setCaptionsVisible, workspaceMode } = latest.current;
+      // The whiteboard (Excalidraw) has its own built-in tool shortcuts on these same
+      // keys ('v' = selection tool, 'h' = hand/pan tool) — while it's the active
+      // workspace, let it own the keyboard instead of also toggling camera/raise-hand
+      // underneath it.
+      if (workspaceMode === "whiteboard") return;
       // Errors here already reach the user via the room's own onMediaDeviceFailure
       // banner (see LiveSessionRoom) — caught here only to avoid an unhandled
       // rejection, not to show anything a second time.
@@ -220,9 +229,14 @@ export function MeetingToolbar({
           <HandIcon />
         </ToolbarButton>
         <ToolbarButton
-          label={!canPresent ? dict.presentingLocked : screenShare.enabled ? dict.stopShareScreen : dict.shareScreen}
+          label={screenShare.enabled ? dict.stopShareScreen : !canPresent ? dict.presentingLocked : dict.shareScreen}
           active={screenShare.enabled}
-          disabled={!canPresent}
+          // `screenShare.enabled` reflects the LOCAL participant's own screen-share
+          // publication (see useTrackToggle) — i.e. whether this participant is the
+          // one currently sharing. Presenter access can be revoked mid-share; if that
+          // alone disabled this button, a participant who just lost presenter rights
+          // would have no in-app way left to stop their own still-live share.
+          disabled={!canPresent && !screenShare.enabled}
           onClick={() => screenShare.toggle().catch(() => {})}
         >
           <ScreenShareIcon />
@@ -240,7 +254,7 @@ export function MeetingToolbar({
             <button
               type="button"
               aria-label={dict.settings}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground"
             >
               <SettingsIcon />
             </button>
@@ -284,14 +298,21 @@ export function MeetingToolbar({
               </fieldset>
 
               {role === "facilitator" && (
-                <label className="flex items-center justify-between gap-2 border-t border-border-subtle pt-3 text-foreground">
-                  <span>{dict.allowLearnerPresenting}</span>
-                  <input
-                    type="checkbox"
-                    checked={allowLearnerPresenting}
-                    onChange={(event) => void togglePresenterAccess(event.target.checked)}
-                  />
-                </label>
+                <div className="flex flex-col gap-1 border-t border-border-subtle pt-3">
+                  <label className="flex items-center justify-between gap-2 text-foreground">
+                    <span>{dict.allowLearnerPresenting}</span>
+                    <input
+                      type="checkbox"
+                      checked={allowLearnerPresenting}
+                      onChange={(event) => void togglePresenterAccess(event.target.checked)}
+                    />
+                  </label>
+                  {presenterAccessError && (
+                    <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+                      {dict.allowLearnerPresentingFailed}
+                    </p>
+                  )}
+                </div>
               )}
 
               {pipSupported && (
@@ -316,7 +337,7 @@ export function MeetingToolbar({
               onClick={handleLeave}
               disabled={leaveButtonProps.disabled}
               aria-label={dict.leave}
-              className="flex h-10 w-10 items-center justify-center rounded-full"
+              className="flex h-11 w-11 items-center justify-center rounded-full"
               style={{ background: "var(--tick-low)", color: "#fff" }}
             >
               <LeaveIcon />

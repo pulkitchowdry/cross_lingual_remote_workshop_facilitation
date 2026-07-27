@@ -1,0 +1,187 @@
+{
+  "sessionId": "cms37f5z000019cwol59qhrik",
+  "consoleErrors": [
+    {
+      "who": "facilitator",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML ta"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML ta"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "who": "facilitator",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML ta"
+    },
+    {
+      "who": "facilitator",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML ta"
+    },
+    {
+      "who": "facilitator",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML ta"
+    }
+  ],
+  "networkFailures": [],
+  "notes": [
+    "[2026-07-27T12:29:34.594Z] START: facilitator creates session",
+    "screenshot ok: 01-setup-form.png",
+    "[2026-07-27T12:29:39.611Z] session id = cms37f5z000019cwol59qhrik",
+    "screenshot ok: 02-facilitator-dashboard-draft.png",
+    "[2026-07-27T12:29:39.684Z] OK: facilitator creates session",
+    "[2026-07-27T12:29:39.684Z] START: facilitator accessibility panel (font size + high contrast)",
+    "screenshot ok: 03-facilitator-accessibility-highcontrast-largetext.png",
+    "[2026-07-27T12:29:39.884Z] OK: facilitator accessibility panel (font size + high contrast)",
+    "[2026-07-27T12:29:39.884Z] START: read learner invite link",
+    "[2026-07-27T12:29:39.886Z] learner link = http://localhost:3010/join/JBLV2luERtqHV-Rv8mHQ5mc7jbkopRVdfuBCBlXe-4E",
+    "[2026-07-27T12:29:39.886Z] OK: read learner invite link",
+    "[2026-07-27T12:29:39.886Z] START: facilitator starts session (redirects straight into the live room)",
+    "screenshot ok: 04-facilitator-desktop-room-solo.png",
+    "screenshot ok: 04b-facilitator-mobile-room-solo.png",
+    "[2026-07-27T12:29:44.833Z] OK: facilitator starts session (redirects straight into the live room)",
+    "[2026-07-27T12:29:44.885Z] START: 8 concurrent learners join via the same link",
+    "[2026-07-27T12:29:47.337Z] Joined 8/8 in 2452ms total. Per-learner ms: min=2375 max=2452 avg=2436",
+    "[2026-07-27T12:29:47.337Z] OK: 8 concurrent learners join via the same link",
+    "screenshot ok: 05-learner-mobile-dashboard.png",
+    "[2026-07-27T12:29:47.388Z] START: facilitator dashboard reflects many learners",
+    "screenshot ok: 06-facilitator-dashboard-many-learners.png",
+    "[2026-07-27T12:29:47.588Z] OK: facilitator dashboard reflects many learners",
+    "[2026-07-27T12:29:47.588Z] START: 8 learners join the live LiveKit room concurrently (deterministic nav — see note on the join step above)",
+    "[2026-07-27T12:29:51.297Z] 8/8 learners entered the LiveKit room",
+    "screenshot ok: 07-learner-mobile-room.png",
+    "[2026-07-27T12:29:51.315Z] OK: 8 learners join the live LiveKit room concurrently (deterministic nav — see note on the join step above)",
+    "[2026-07-27T12:29:51.315Z] START: 5 learners open the chat drawer and send concurrent messages from inside the room",
+    "[2026-07-27T12:29:52.270Z] OK: 5 learners open the chat drawer and send concurrent messages from inside the room",
+    "[2026-07-27T12:29:52.270Z] START: facilitator dashboard reflects the chat/questions",
+    "screenshot ok: 06b-facilitator-dashboard-with-chat.png",
+    "[2026-07-27T12:29:52.462Z] OK: facilitator dashboard reflects the chat/questions",
+    "[2026-07-27T12:29:52.462Z] START: facilitator sees the full participant grid (desktop + mobile)",
+    "screenshot ok: 08-facilitator-desktop-room-participant-grid.png",
+    "screenshot ok: 09-facilitator-mobile-room.png",
+    "[2026-07-27T12:29:56.672Z] OK: facilitator sees the full participant grid (desktop + mobile)",
+    "[2026-07-27T12:29:56.672Z] START: facilitator glossary page",
+    "screenshot ok: 10-facilitator-glossary.png",
+    "[2026-07-27T12:29:57.572Z] OK: facilitator glossary page",
+    "[2026-07-27T12:29:57.572Z] START: facilitator ends session",
+    "screenshot ok: 11-facilitator-dashboard-ended.png",
+    "[2026-07-27T12:29:59.092Z] OK: facilitator ends session",
+    "[2026-07-27T12:29:59.092Z] START: facilitator views results",
+    "screenshot ok: 12-facilitator-results.png",
+    "[2026-07-27T12:29:59.991Z] OK: facilitator views results",
+    "[2026-07-27T12:29:59.991Z] START: learner sees session-ended state (mobile)",
+    "screenshot ok: 13-learner-mobile-session-ended.png",
+    "[2026-07-27T12:30:00.159Z] OK: learner sees session-ended state (mobile)"
+  ]
+}
