@@ -259,7 +259,30 @@ export default defineAgent({
       return;
     }
 
-    await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
+    try {
+      await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
+    } catch (error) {
+      // Diagnostic-only: `ctx.connect()` failing shows up elsewhere (e.g. Railway) as a
+      // generic `TypeError: fetch failed` / `ECONNREFUSED` with a truncated
+      // `AggregateError` — Node's default error printing doesn't expand nested causes,
+      // so the actual unreachable host/port (almost always present on the underlying
+      // `Error`s inside `AggregateError.errors`) never surfaces. `util.inspect` with
+      // `depth: null` prints the whole thing, including `.cause`/`.errors`/`.address`/
+      // `.port` when present. Remove once the connectivity issue this is chasing is
+      // root-caused — this is not meant to be permanent logging.
+      const { inspect } = await import("node:util");
+      console.error(
+        `[caption-agent] ctx.connect() failed for session ${sessionId} (wsURL host: ${(() => {
+          try {
+            return new URL(process.env.LIVEKIT_AGENT_URL || process.env.LIVEKIT_URL || "").host;
+          } catch {
+            return "<unparseable>";
+          }
+        })()}):`,
+        inspect(error, { depth: null, showHidden: false }),
+      );
+      throw error;
+    }
 
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
