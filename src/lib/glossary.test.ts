@@ -6,7 +6,6 @@ import {
   parseCsv,
   parseGlossaryRows,
   preferredTranslation,
-  translationUsesPreferredTerm,
   type CentralGlossaryEntryLike,
 } from "@/lib/glossary";
 
@@ -63,13 +62,6 @@ describe("buildGlossaryPromptHint", () => {
     );
     expect(hint).toContain('"Webhook" -> "Webhook"');
     expect(hint).toContain('"Feature Flag" -> "功能开关"');
-  });
-});
-
-describe("translationUsesPreferredTerm", () => {
-  it("is case-insensitive and substring-based", () => {
-    expect(translationUsesPreferredTerm("请检查 Webhook 配置", "Webhook")).toBe(true);
-    expect(translationUsesPreferredTerm("请检查网络钩子配置", "Webhook")).toBe(false);
   });
 });
 

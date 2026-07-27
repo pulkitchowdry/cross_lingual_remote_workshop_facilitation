@@ -69,9 +69,9 @@ export function TranslationHistoryTab({
             level={translation.confidenceLevel as "high" | "medium" | "low"}
             rootCause={translation.rootCause as RootCause | null}
             uiLang={uiLang}
+            isTyped={segment.isTyped}
             translationScore={translation.translationConfidence}
-            terminologyScore={translation.terminologyConfidence}
-            speechRecognitionScore={segment.sttConfidence}
+            networkScore={segment.networkQuality}
           />
         ) : undefined,
       // Same restriction as the dashboard's CaptionComprehensionActions (learn/page.tsx):

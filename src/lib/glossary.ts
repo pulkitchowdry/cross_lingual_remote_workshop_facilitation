@@ -89,17 +89,6 @@ export function buildGlossaryPromptHint(matches: GlossaryMatch[], targetLanguage
 }
 
 /**
- * Whether the translation output actually used the glossary's preferred
- * rendering for a matched term — a simple substring check, not exact-match,
- * since the term may appear inflected/with surrounding punctuation in a full
- * sentence. Used by estimateTerminologyConfidence (confidence.ts) to
- * distinguish a genuine mismatch from a term the glossary has no opinion on.
- */
-export function translationUsesPreferredTerm(translatedText: string, preferred: string): boolean {
-  return translatedText.toLowerCase().includes(preferred.toLowerCase());
-}
-
-/**
  * Minimal RFC4180-style CSV parser (quoted fields, escaped `""`, embedded commas
  * and newlines) — small enough to hand-roll rather than add a dependency for a
  * format this simple; Excel uploads (issue #131 also wants .xlsx) go through the

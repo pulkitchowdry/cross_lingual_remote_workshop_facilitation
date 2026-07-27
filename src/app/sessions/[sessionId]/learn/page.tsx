@@ -172,9 +172,9 @@ export default async function LearnerSessionPage({
             level={translation.confidenceLevel as "high" | "medium" | "low"}
             rootCause={translation.rootCause as RootCause | null}
             uiLang={lang}
+            isTyped={segment.isTyped}
             translationScore={translation.translationConfidence}
-            terminologyScore={translation.terminologyConfidence}
-            speechRecognitionScore={segment.sttConfidence}
+            networkScore={segment.networkQuality}
           />
         ) : undefined,
       // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'
