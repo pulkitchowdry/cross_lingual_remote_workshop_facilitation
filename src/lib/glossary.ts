@@ -27,11 +27,23 @@ export interface GlossaryMatch {
  */
 export function findGlossaryMatches(text: string, glossary: CentralGlossaryEntryLike[]): GlossaryMatch[] {
   if (glossary.length === 0) return [];
+  // `CentralGlossaryEntry.sourceTerm` is only unique case-sensitively (a plain
+  // `String @unique` column, see prisma/schema.prisma) — a facilitator can create
+  // both "Webhook" and "webhook" as distinct rows with different translate/override
+  // settings. This regex match is already case-insensitive, so without deduping here
+  // both entries would match the same literal occurrence and buildGlossaryPromptHint
+  // would emit two conflicting "use exactly this translation" lines for one word. Keep
+  // at most one match per case-insensitive sourceTerm (first one found, in whatever
+  // order the caller's glossary array is in) instead.
+  const seenTerms = new Set<string>();
   const matches: GlossaryMatch[] = [];
   for (const entry of glossary) {
+    const key = entry.sourceTerm.toLowerCase();
+    if (seenTerms.has(key)) continue;
     const pattern = new RegExp(`\\b${escapeRegExp(entry.sourceTerm)}\\b`, "i");
     const found = pattern.exec(text);
     if (found) {
+      seenTerms.add(key);
       matches.push({ entry, matchedText: found[0] });
     }
   }

@@ -14,13 +14,11 @@ import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
-import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 const WORKSHOP_ROOM_PREFIX = "workshop-";
 const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
-const LEARNER_IDENTITY_PREFIX = "learner:";
 /**
  * Rate the agent asks LiveKit to resample a participant's track to before
  * handing frames to Deepgram — matches the `linear16` PCM framing passed to
@@ -35,15 +33,12 @@ function sessionIdFromRoomName(roomName: string | undefined): string | null {
 }
 
 /**
- * Resolves what language a speaking participant's audio should be attributed
- * to, and what `speakerId` to persist on their segments — the facilitator
- * speaks the session's own `sourceLanguage` (no `SessionParticipant` row
- * exists for them); a learner speaks whatever `preferredLanguage` their own
- * row currently holds (matching the same field the typed-caption path in
- * `learn/actions.ts` already uses). Returns `null` for an identity that
- * doesn't match either known scheme, or a learner id that no longer resolves
- * to a participant in this session — callers should skip publishing rather
- * than guess.
+ * Resolves what language the facilitator's audio should be attributed to —
+ * always the session's own `sourceLanguage` (no `SessionParticipant` row
+ * exists for the facilitator). Facilitator-only, deliberately: see this
+ * file's own top-level doc comment for why learner tracks are never
+ * subscribed to here in the first place. Returns `null` for an identity that
+ * isn't a recognized facilitator one.
  */
 async function resolveSpeakerContext(
   session: { id: string; sourceLanguage: string },
@@ -52,20 +47,15 @@ async function resolveSpeakerContext(
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
     return { language: session.sourceLanguage as SupportedLanguage, speakerId: null };
   }
-  if (identity.startsWith(LEARNER_IDENTITY_PREFIX)) {
-    const participantId = identity.slice(LEARNER_IDENTITY_PREFIX.length);
-    return resolveLearnerSpeaker(session.id, participantId);
-  }
   return null;
 }
 
 /**
- * Subscribes to one participant's (facilitator or learner) audio track,
- * streams it to Deepgram via the same `SpeechToTextProvider.openStream`
- * boundary the browser mic path uses (`LiveCaptionStream`/
- * `/api/captions/stream`), and publishes final transcripts through
- * `publishTranslatedCaption` directly — this worker runs in the same process
- * as the rest of the app now, so there's no HTTP hop.
+ * Subscribes to the facilitator's audio track, streams it to Deepgram via the
+ * same `SpeechToTextProvider.openStream` boundary the browser mic path uses
+ * (`LiveCaptionStream`/`/api/captions/stream`), and publishes final
+ * transcripts through `publishTranslatedCaption` directly — this worker runs
+ * in the same process as the rest of the app now, so there's no HTTP hop.
  */
 async function streamParticipantAudio(
   track: RemoteAudioTrack,
@@ -227,11 +217,26 @@ async function streamParticipantAudio(
 }
 
 /**
- * LiveKit Agents entrypoint — subscribes to every participant's (facilitator
- * or learner) audio track server-side so captions work without anyone
- * opening the mic control's manual fallback in their browser. See
- * `docs/TRANSLATION_ARCHITECTURE.md` Part 2. Registered from `server.ts` in
- * the same process as the rest of the app.
+ * LiveKit Agents entrypoint — subscribes to the facilitator's audio track
+ * server-side so their captions work without opening the mic control's
+ * manual fallback in their browser. See `docs/TRANSLATION_ARCHITECTURE.md`
+ * Part 2. Registered from `server.ts` in the same process as the rest of the
+ * app.
+ *
+ * Facilitator-only, not "every participant" — this worker used to also
+ * subscribe to learner mic tracks, but a learner's browser already runs its
+ * own always-on capture (`LiveCaptionStream`'s mic-toggle effect auto-starts
+ * whenever their mic is unmuted, same as the facilitator's browser fallback),
+ * and nothing de-duplicated the two: a learner speaking produced two
+ * independent STT pipelines transcribing and persisting the same utterance
+ * as two separate, differently-timed `TranscriptSegment` rows. The
+ * `captionAgentActive` guard this file also maintains is deliberately
+ * facilitator-only in the DB schema (a single per-session boolean, not
+ * per-participant) for the same reason — there's no way to represent "this
+ * specific learner is already being captured server-side" without a bigger
+ * schema change, so the simpler fix is to never contend for a learner's mic
+ * here at all and let the existing browser path be the sole source of truth
+ * for it.
  */
 export default defineAgent({
   entry: async (ctx: JobContext) => {
@@ -315,8 +320,14 @@ export default defineAgent({
         );
         return;
       }
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX) && !participant.identity.startsWith(LEARNER_IDENTITY_PREFIX)) {
-        console.log(`[caption-agent] skipping unrecognized identity "${participant.identity}" in session ${sessionId}.`);
+      // Facilitator-only, deliberately: see this file's own top-level doc comment.
+      // A learner's mic is captured by the browser-based fallback instead
+      // (LiveCaptionStream/`/api/captions/stream`) — subscribing to it here too
+      // used to run both pipelines at once for the same learner utterance,
+      // producing duplicate, independently-translated transcript segments with
+      // no de-duplication anywhere in the caption pipeline.
+      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
+        console.log(`[caption-agent] skipping non-facilitator identity "${participant.identity}" in session ${sessionId}.`);
         return;
       }
       const audioTrack = track as RemoteAudioTrack;
@@ -370,7 +381,7 @@ export default defineAgent({
       // the same way so a screen-share-audio unsubscribe never clears the mic's guard.
       if (publication.kind !== TrackKind.KIND_AUDIO) return;
       if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX) && !participant.identity.startsWith(LEARNER_IDENTITY_PREFIX)) return;
+      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });
     // Mirrors streamParticipantAudio's own `finally`-block cleanup, but for the case

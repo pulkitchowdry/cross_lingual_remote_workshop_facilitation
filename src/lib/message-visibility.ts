@@ -25,6 +25,23 @@ export function publicSessionMessageWhere(sessionId: string) {
   return { sessionId, recipientId: null };
 }
 
+/**
+ * Every message the facilitator can legitimately see on their own dashboard: public
+ * messages plus ones privately addressed to them. Distinct from `publicSessionMessageWhere`
+ * (which the facilitator-only confusion/participation/analytics aggregates used to use) —
+ * a learner who also checks "message facilitator privately" alongside "flag as question"
+ * produces a QUESTION message with a non-null recipientId, which `publicSessionMessageWhere`
+ * silently excludes even though the facilitator already sees its content in their own chat
+ * panel (`visibleSessionMessageWhere` includes it there). There is no privacy reason to
+ * exclude it from the facilitator's own aggregate signals about their own dashboard's data.
+ * Keep using `publicSessionMessageWhere` for genuinely public-facing aggregates (e.g. the
+ * whole-room AI session summary in src/lib/insights.ts), where a learner's private message
+ * must never leak in.
+ */
+export function facilitatorVisibleSessionMessageWhere(sessionId: string, facilitatorId: string) {
+  return { sessionId, OR: [{ recipientId: null }, { recipientId: facilitatorId }] };
+}
+
 export function isMessageVisibleToUser(message: MessageVisibilityTarget, viewerUserId: string) {
   return message.recipientId === null || message.senderId === viewerUserId || message.recipientId === viewerUserId;
 }

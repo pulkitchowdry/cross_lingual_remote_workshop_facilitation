@@ -27,7 +27,7 @@ import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { RootCause } from "@/lib/confidence";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
-import { publicSessionMessageWhere, visibleSessionMessageWhere } from "@/lib/message-visibility";
+import { facilitatorVisibleSessionMessageWhere, visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   endSession,
@@ -142,14 +142,14 @@ export default async function FacilitatorSessionPage({
     // other participants could otherwise push a learner's genuinely recent QUESTION
     // messages out of that window, silently hiding or downgrading their badge.
     prisma.message.findMany({
-      where: { ...publicSessionMessageWhere(sessionId), kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
+      where: { ...facilitatorVisibleSessionMessageWhere(sessionId, accessSession.facilitatorId), kind: "QUESTION", sentAt: { gte: confusionWindowStart } },
       select: { senderId: true, sentAt: true },
     }),
     // Plain totals (not the MESSAGE_HISTORY_LIMIT-capped `session.messages` array above) so
     // the post-session participation stats reflect the session's real counts, not just
     // whatever fits in the chat panel's most-recent page.
-    prisma.message.count({ where: publicSessionMessageWhere(sessionId) }),
-    prisma.message.count({ where: { ...publicSessionMessageWhere(sessionId), kind: "QUESTION" } }),
+    prisma.message.count({ where: facilitatorVisibleSessionMessageWhere(sessionId, accessSession.facilitatorId) }),
+    prisma.message.count({ where: { ...facilitatorVisibleSessionMessageWhere(sessionId, accessSession.facilitatorId), kind: "QUESTION" } }),
     // Post-meeting glossary recommendations (issue #131) — unknown technical terms
     // detected during this session's captions, not yet in the shared glossary.
     prisma.glossarySuggestion.findMany({
@@ -170,7 +170,7 @@ export default async function FacilitatorSessionPage({
   // DECISION/BLOCKER/CONFUSION combined) and could silently drop a genuinely recent
   // CONFUSION insight once enough other-typed insights accumulated.
   const confusionTimestamps = recentConfusionInsights.map((item) => item.createdAt);
-  const confusionLevel = computeConfusionLevel(confusionTimestamps, new Date());
+  const confusionLevel = computeConfusionLevel(confusionTimestamps, session.participants.length, new Date());
 
   // Derived from the dedicated, time-bounded query above — not from session.messages,
   // which is capped at MESSAGE_HISTORY_LIMIT across every sender and message kind and

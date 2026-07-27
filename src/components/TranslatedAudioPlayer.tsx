@@ -169,6 +169,11 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       audioRef.current?.pause();
       playingRef.current = false;
       currentRef.current = null;
+      // If `current` was sitting in an autoplay-blocked state (errorKind === "blocked"),
+      // it's the segment the "Play blocked audio" retry button would resurrect — clear
+      // the error along with it so a learner who opts back out doesn't leave a stale
+      // button around that replays the exact dub they just declined.
+      setErrorKind(null);
     }
     queueRef.current = queueRef.current.filter((entry) => entry.alwaysPlay);
     // If we just cut off a non-always-play current item (or nothing was
@@ -211,7 +216,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           <button
             type="button"
             onClick={playBlockedSegment}
-            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground"
+            className="font-data flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground"
           >
             {dict.playBlockedAudio}
           </button>

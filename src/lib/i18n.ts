@@ -377,6 +377,20 @@ export interface Dictionary {
     title: string;
     message: string;
     retry: string;
+    /**
+     * createSession/joinSession (setup/actions.ts, join/[token]/actions.ts) model their
+     * *expected* validation/lifecycle failures as thrown `Error`s with hardcoded English
+     * text, not a translated `FormActionResult` — with no boundary between them and this
+     * error page, that raw English string reached RouteErrorFallback verbatim regardless
+     * of the page's resolved language. Keyed by the exact English message thrown, so
+     * RouteErrorFallback can look up a localized replacement for the ones a learner/
+     * facilitator can realistically hit (rate limiting, a revoked/expired invite, a
+     * session that just ended) instead of showing them in English on an otherwise fully
+     * localized page. Not exhaustive — the client-HTML-validated field-level messages
+     * (missing/too-long name, title, goal) are excluded since normal browser form
+     * validation already blocks those before they ever reach the server action.
+     */
+    knownMessages: Record<string, string>;
   };
   /** Centralised Technical Glossary management page (issue #131) — shared across every
    * facilitator/session, so this page's copy isn't tied to any one session's language. */
@@ -735,6 +749,15 @@ const en: Dictionary = {
     title: "Something went wrong",
     message: "An unexpected error occurred. You can try again, or reload the page.",
     retry: "Try again",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "Choose a retention period between 5 minutes and 30 days.",
+      "Your session details are incomplete.": "Your session details are incomplete.",
+      "Enter a name and supported preferred language.": "Enter a name and supported preferred language.",
+      "Consent is required before joining a live session.": "Consent is required before joining a live session.",
+      "Too many join attempts. Please wait a moment and try again.": "Too many join attempts. Please wait a moment and try again.",
+      "This learner invitation is no longer available.": "This learner invitation is no longer available.",
+      "This session is no longer available.": "This session is no longer available.",
+    },
   },
   glossary: {
     pageHeading: "Technical glossary",
@@ -1086,6 +1109,15 @@ const zh: Dictionary = {
     title: "出了点问题",
     message: "发生了意外错误。你可以重试，或刷新页面。",
     retry: "重试",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "请选择 5 分钟到 30 天之间的保留时长。",
+      "Your session details are incomplete.": "您的场次信息不完整。",
+      "Enter a name and supported preferred language.": "请输入姓名并选择受支持的首选语言。",
+      "Consent is required before joining a live session.": "加入实时场次前需要同意授权。",
+      "Too many join attempts. Please wait a moment and try again.": "加入尝试次数过多，请稍等片刻后重试。",
+      "This learner invitation is no longer available.": "此学习者邀请链接已失效。",
+      "This session is no longer available.": "此场次已不可用。",
+    },
   },
   glossary: {
     pageHeading: "技术术语表",
@@ -1437,6 +1469,15 @@ const es: Dictionary = {
     title: "Algo salió mal",
     message: "Ocurrió un error inesperado. Puedes intentarlo de nuevo o recargar la página.",
     retry: "Intentar de nuevo",
+    knownMessages: {
+      "Choose a retention period between 5 minutes and 30 days.": "Elige un período de retención entre 5 minutos y 30 días.",
+      "Your session details are incomplete.": "Los datos de tu sesión están incompletos.",
+      "Enter a name and supported preferred language.": "Ingresa un nombre y un idioma preferido admitido.",
+      "Consent is required before joining a live session.": "Se requiere tu consentimiento antes de unirte a una sesión en vivo.",
+      "Too many join attempts. Please wait a moment and try again.": "Demasiados intentos de unión. Espera un momento e inténtalo de nuevo.",
+      "This learner invitation is no longer available.": "Esta invitación de aprendiz ya no está disponible.",
+      "This session is no longer available.": "Esta sesión ya no está disponible.",
+    },
   },
   glossary: {
     pageHeading: "Glosario técnico",

@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { SessionStatus } from "@/generated/prisma/client";
 
 function isSupportedLanguage(value: unknown): value is SupportedLanguage {
   return SUPPORTED_LANGUAGES.some((lang) => lang.value === value);
@@ -42,6 +44,15 @@ export async function POST(request: NextRequest) {
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) return Response.json({ error: "Session not found." }, { status: 404 });
+  // Mirrors publishTranslatedCaption's late re-check in src/lib/captions.ts (a
+  // translation call can take several seconds, long enough for the facilitator to end
+  // the session while it's in flight) and the retention check every other route
+  // serving session content applies — without both, a still-valid facilitator/learner
+  // cookie could trigger a paid translation call and a live room broadcast for a
+  // session that has already ended or is past its own retention deadline.
+  if (session.status !== SessionStatus.LIVE || isSessionRetentionExpired(session)) {
+    return Response.json({ error: "This session is no longer available." }, { status: 404 });
+  }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations: Partial<Record<SupportedLanguage, string>> = {};

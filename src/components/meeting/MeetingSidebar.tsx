@@ -131,17 +131,40 @@ export function MeetingSidebar({
   // LiveSessionRoom's doc comment on it).
   if (viewerIsFacilitator && analyticsView) tabs.push(["analytics", analyticsTabLabel]);
 
+  const tabId = (value: SidebarTab) => `meeting-sidebar-tab-${value}`;
+  const panelId = (value: SidebarTab) => `meeting-sidebar-panel-${value}`;
+
+  // ARIA Authoring Practices tabs pattern: Left/Right moves focus between tabs and
+  // activates the newly-focused one (roving tabindex — only the active tab is
+  // Tab-reachable), Home/End jump to the first/last tab.
+  function onTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextValue = tabs[nextIndex][0];
+    setTab(nextValue);
+    document.getElementById(tabId(nextValue))?.focus();
+  }
+
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 border-b border-border-subtle p-1.5">
         <div role="tablist" className="flex flex-1 gap-1 rounded-md bg-surface p-1">
-          {tabs.map(([value, label]) => (
+          {tabs.map(([value, label], index) => (
             <button
               key={value}
+              id={tabId(value)}
               type="button"
               role="tab"
               aria-selected={tab === value}
+              aria-controls={panelId(value)}
+              tabIndex={tab === value ? 0 : -1}
               onClick={() => setTab(value)}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
               className={`font-data flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide ${
                 tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -159,7 +182,13 @@ export function MeetingSidebar({
           <CloseIcon className="h-4 w-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
+      <div
+        className="min-h-0 flex-1"
+        id={panelId(tab)}
+        role="tabpanel"
+        aria-labelledby={tabId(tab)}
+        tabIndex={0}
+      >
         {tab === "chat" ? (
           <SessionChatPanel
             messages={messages}
