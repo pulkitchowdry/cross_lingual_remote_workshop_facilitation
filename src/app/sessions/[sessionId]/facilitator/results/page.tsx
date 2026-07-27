@@ -190,6 +190,7 @@ export default async function FacilitatorSessionResultsPage({
                 blockersSummary={analyticsView.blockersSummary}
                 languageRows={analyticsView.languageRows}
                 confidenceSummary={analyticsView.confidenceSummary}
+                activeActionItems={analyticsView.activeActionItems}
               />
             </section>
           )}

@@ -249,6 +249,8 @@ export function MeetingSidebar({
                 blockersSummary={analyticsView.blockersSummary}
                 languageRows={analyticsView.languageRows}
                 confidenceSummary={analyticsView.confidenceSummary}
+                activeActionItems={analyticsView.activeActionItems}
+                showActiveActionItems
               />
             </div>
           )
