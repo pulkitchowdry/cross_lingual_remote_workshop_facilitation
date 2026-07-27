@@ -5,11 +5,12 @@ import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { resolveAppUrl } from "@/lib/env";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
@@ -103,7 +104,7 @@ export default async function FacilitatorRoomPage({
     </>
   );
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(await headers());
   const learnerToken = (await cookies()).get(learnerInviteCookieName(sessionId))?.value;
   const inviteLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
 

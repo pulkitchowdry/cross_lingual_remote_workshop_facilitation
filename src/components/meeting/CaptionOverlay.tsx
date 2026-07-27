@@ -122,7 +122,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={shrinkCaptionFont}
           aria-label={dict.shrinkCaptionFont}
-          className="font-data flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
         >
           A-
         </button>
@@ -130,7 +130,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={growCaptionFont}
           aria-label={dict.growCaptionFont}
-          className="font-data flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
         >
           A+
         </button>

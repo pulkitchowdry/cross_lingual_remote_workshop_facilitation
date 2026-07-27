@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type ReactNode, type SetStateAction } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type ReactNode, type SetStateAction } from "react";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 export type WorkspaceMode = "video" | "whiteboard";
 export type CaptionMode = "both" | "translated-only";
@@ -51,6 +52,22 @@ const MeetingShellContext = createContext<MeetingShellState | null>(null);
 export function MeetingShellProvider({ children }: { children: ReactNode }) {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("video");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On mobile, MeetingSidebar renders the open sidebar as an 85vh-tall drawer over the
+  // *entire* workspace (see its own `isMobile` branch), not a slim side panel like
+  // desktop — defaulting it open there hid the video/toolbar behind that drawer the
+  // instant a phone joined the room, with only a sliver of video visible above it.
+  // `useMediaQuery`'s SSR snapshot is always `false` (see its own doc comment), so a
+  // plain `useState(!isMobile)` would just capture that always-false value; this
+  // corrects the default once, the first time the real (client-side) viewport is
+  // known to be mobile-width.
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const hasAppliedMobileSidebarDefaultRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !hasAppliedMobileSidebarDefaultRef.current) {
+      hasAppliedMobileSidebarDefaultRef.current = true;
+      setSidebarOpen(false);
+    }
+  }, [isMobile]);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [captionsVisible, setCaptionsVisible] = useState(true);
   const [captionMode, setCaptionMode] = useState<CaptionMode>("both");

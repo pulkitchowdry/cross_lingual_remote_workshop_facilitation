@@ -107,12 +107,12 @@ export function GlossaryManager({
                     <td className="py-2 pr-3">
                       <span className="font-medium">{entry.sourceTerm}</span>
                       {entry.isBuiltIn && (
-                        <span className="font-data ml-2 rounded-full border border-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        <span className="font-data ml-2 whitespace-nowrap rounded-full border border-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
                           {dict.builtInBadge}
                         </span>
                       )}
                       {!entry.translate && (
-                        <span className="font-data ml-2 rounded-full border border-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        <span className="font-data ml-2 whitespace-nowrap rounded-full border border-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
                           {dict.verbatimBadge}
                         </span>
                       )}

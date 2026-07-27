@@ -39,6 +39,16 @@ describe("computeConfusionTrend", () => {
     const result = computeConfusionTrend([], NOW, NOW, BUCKET_MS);
     expect(result).toEqual([{ bucketStart: NOW, groupLevel: "CALM", count: 0 }]);
   });
+
+  it("ignores future timestamps and invalid bucket sizes instead of producing invalid buckets", () => {
+    expect(computeConfusionTrend([new Date(NOW.getTime() + 60_000)], SESSION_START, NOW, BUCKET_MS)).toEqual([
+      { bucketStart: SESSION_START, groupLevel: "CALM", count: 0 },
+      { bucketStart: new Date(SESSION_START.getTime() + BUCKET_MS), groupLevel: "CALM", count: 0 },
+    ]);
+    expect(computeConfusionTrend([minutesAfterStart(1)], SESSION_START, NOW, 0)).toEqual([
+      { bucketStart: SESSION_START, groupLevel: "CALM", count: 0 },
+    ]);
+  });
 });
 
 describe("computeParticipation", () => {
@@ -126,6 +136,33 @@ describe("computeParticipationFromGroups", () => {
     const result = computeParticipationFromGroups(groups, participants);
     expect(result.every((r) => r.messageCount === 0)).toBe(true);
   });
+
+  it("keeps duplicate grouped records as duplicate stored data", () => {
+    const groups = [
+      { senderId: "u1", kind: "CHAT", isAnonymous: false, _count: 1 },
+      { senderId: "u1", kind: "CHAT", isAnonymous: false, _count: 1 },
+    ];
+
+    expect(computeParticipationFromGroups(groups, participants).find((r) => r.userId === "u1")).toEqual({
+      userId: "u1",
+      displayName: "Alice",
+      messageCount: 2,
+      questionCount: 0,
+      isAnonymousAny: false,
+    });
+  });
+
+  it("does not emit negative counts from invalid grouped input", () => {
+    const groups = [{ senderId: "u1", kind: "QUESTION", isAnonymous: true, _count: -3 }];
+
+    expect(computeParticipationFromGroups(groups, participants).find((r) => r.userId === "u1")).toEqual({
+      userId: "u1",
+      displayName: "Alice",
+      messageCount: 0,
+      questionCount: 0,
+      isAnonymousAny: false,
+    });
+  });
 });
 
 describe("computeBlockerStats", () => {
@@ -193,5 +230,35 @@ describe("computeConfidenceStats", () => {
       { confidence: 90, confidenceLevel: "high", rootCause: null },
     ];
     expect(computeConfidenceStats(translations)).toEqual({ averagePercent: 90, mediumCount: 0, lowCount: 0, byRootCause: {} });
+  });
+
+  it("clamps invalid confidence percentages and ignores non-finite values", () => {
+    const translations = [
+      { confidence: -10, confidenceLevel: "low", rootCause: "audio" },
+      { confidence: 120, confidenceLevel: "medium", rootCause: "terminology" },
+      { confidence: Number.NaN, confidenceLevel: "low", rootCause: "network" },
+      { confidence: Number.POSITIVE_INFINITY, confidenceLevel: "medium", rootCause: "translation" },
+    ];
+
+    expect(computeConfidenceStats(translations)).toEqual({
+      averagePercent: 50,
+      mediumCount: 1,
+      lowCount: 1,
+      byRootCause: { audio: 1, terminology: 1 },
+    });
+  });
+
+  it("counts root causes only for medium and low confidence levels", () => {
+    const translations = [
+      { confidence: 95, confidenceLevel: "high", rootCause: "audio" },
+      { confidence: 70, confidenceLevel: "medium", rootCause: "terminology" },
+    ];
+
+    expect(computeConfidenceStats(translations)).toEqual({
+      averagePercent: 83,
+      mediumCount: 1,
+      lowCount: 0,
+      byRootCause: { terminology: 1 },
+    });
   });
 });

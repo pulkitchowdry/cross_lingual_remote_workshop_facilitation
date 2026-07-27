@@ -56,8 +56,8 @@ export function MeetingHeader({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle bg-surface px-4 py-2.5">
-      <h1 className="font-heading truncate text-sm font-semibold text-foreground" title={title}>
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 gap-y-2 border-b border-border-subtle bg-surface px-4 py-2.5">
+      <h1 className="font-heading min-w-0 truncate text-sm font-semibold text-foreground" title={title}>
         {title}
       </h1>
       {inviteLink && (

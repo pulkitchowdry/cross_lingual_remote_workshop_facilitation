@@ -15,6 +15,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { resolveAppUrl } from "@/lib/env";
 import { insightProvider } from "@/lib/providers/insight";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
@@ -244,14 +245,12 @@ export default async function FacilitatorSessionPage({
     [SessionStatus.ENDED]: dict.statusEnded,
   }[session.status];
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(await headers());
   const learnerToken = cookieStore.get(learnerInviteCookieName(sessionId))?.value;
   const learnerLink = learnerToken ? `${appUrl}/join/${learnerToken}` : null;
   let learnerLinkQrCode: string | null = null;
   if (learnerLink) {
-    const headerList = await headers();
-    const origin = `${headerList.get("x-forwarded-proto") ?? "http"}://${headerList.get("host") ?? "localhost:3000"}`;
-    learnerLinkQrCode = await QRCode.toDataURL(`${origin}${learnerLink}`, { margin: 1, width: 176 });
+    learnerLinkQrCode = await QRCode.toDataURL(learnerLink, { margin: 1, width: 176 });
   }
   const startAction = startSession.bind(null, sessionId);
   const endAction = endSession.bind(null, sessionId);
@@ -271,14 +270,14 @@ export default async function FacilitatorSessionPage({
   const sessionSummary = {
     durationMinutes:
       session.startedAt && session.endedAt
-        ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000)
+        ? Math.max(0, Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000))
         : null,
     messageCount,
     questionCount,
     misunderstoodTopics: session.insights
       .filter((item) => item.type === "CONFUSION")
       .slice(0, 5)
-      .map((item) => item.summary),
+      .map((item) => ({ id: item.id, summary: item.summary })),
   };
 
   return (
@@ -402,7 +401,7 @@ export default async function FacilitatorSessionPage({
                 </p>
                 <ul className="mt-1 list-inside list-disc text-sm">
                   {sessionSummary.misunderstoodTopics.map((topic) => (
-                    <li key={topic}>{topic}</li>
+                    <li key={topic.id}>{topic.summary}</li>
                   ))}
                 </ul>
               </div>

@@ -11,7 +11,7 @@ import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import type { RootCause } from "@/lib/confidence";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerParticipantId } from "@/lib/session-access";
@@ -51,7 +51,13 @@ export default async function LearnerSessionPage({
 }) {
   const { sessionId } = await params;
   const participantId = await learnerParticipantId(sessionId);
-  if (!participantId) redirect("/setup");
+  // Not `redirect("/setup")` — that's a facilitator-only "create a new workshop" form
+  // with nothing productive for a learner to click (see join/[token]/page.tsx's own
+  // comment on why it avoids the same redirect for a dead invite link). A missing/
+  // expired learner cookie here is the same ordinary situation (new device, cleared
+  // cookies, private tab, 30-day cookie expiry) — notFound() surfaces the app's
+  // existing "link invalid/expired" messaging instead of stranding them on that form.
+  if (!participantId) notFound();
   const accessParticipant = await prisma.sessionParticipant.findFirst({
     where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
     select: { userId: true },

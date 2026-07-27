@@ -38,16 +38,6 @@ export function AnalyticsPanelContent({
   languageRows,
   confidenceSummary,
 }: AnalyticsPanelProps) {
-  // Plain-JS, composed entirely client-side from analytics.confusionTrend (already
-  // passed as a prop) — unlike the other dynamic strings in this component, this one
-  // doesn't need server-side precomputation since there's no RSC function-boundary to
-  // cross here.
-  const levelRank = { CALM: 0, SOME: 1, HIGH: 2 } as const;
-  const highestLevel = analytics.confusionTrend.reduce<"CALM" | "SOME" | "HIGH">(
-    (highest, point) => (levelRank[point.groupLevel] > levelRank[highest] ? point.groupLevel : highest),
-    "CALM",
-  );
-  const confusionTrendSummary = `Confusion trend: ${analytics.confusionTrend.length} time buckets, highest level: ${highestLevel}`;
   const isEmpty =
     analytics.confusionTrend.every((point) => point.count === 0) &&
     analytics.participation.every((entry) => entry.messageCount === 0) &&
@@ -66,8 +56,8 @@ export function AnalyticsPanelContent({
       ) : (
         <>
           <Card eyebrow={labels.analyticsConfusionTrendHeading}>
-            <p className="sr-only">{confusionTrendSummary}</p>
-            <div className="flex items-end gap-1" aria-hidden="true">
+            <p className="sr-only">{labels.analyticsConfusionTrendSummary}</p>
+            <div className="flex items-end gap-1 overflow-x-auto" aria-hidden="true">
               {analytics.confusionTrend.map((point) => (
                 <div
                   key={point.bucketStart.toISOString()}
@@ -88,7 +78,7 @@ export function AnalyticsPanelContent({
           <Card eyebrow={labels.analyticsParticipationHeading}>
             <ul className="flex flex-col gap-1">
               {analytics.participation.map((entry, index) => (
-                <li key={entry.userId} className="text-xs">
+                <li key={entry.userId} className="break-words text-xs">
                   {participationRows[index]}
                 </li>
               ))}
