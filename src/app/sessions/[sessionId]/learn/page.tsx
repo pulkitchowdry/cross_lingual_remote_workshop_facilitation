@@ -6,6 +6,9 @@ import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SessionSidePanel } from "@/components/SessionSidePanel";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
+import { ClarificationActions } from "@/components/ClarificationActions";
+import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
+import type { RootCause } from "@/lib/confidence";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { notFound, redirect } from "next/navigation";
@@ -97,6 +100,13 @@ export default async function LearnerSessionPage({
   // segments — reversed here to chronological order before mapping so LiveTranscriptFeed
   // (which renders top-to-bottom, newest at the bottom, per its own doc comment) reads
   // the array the right way round. See the matching fix/comment in facilitator/page.tsx.
+  // Precomputed once, not per-line — see ClarificationActions' reasonLabels prop.
+  const clarificationReasonLabels = {
+    "could-not-hear": dict.common.clarificationReasonCouldNotHear,
+    "translation-incorrect": dict.common.clarificationReasonTranslationIncorrect,
+    "please-repeat": dict.common.clarificationReasonPleaseRepeat,
+    "explain-differently": dict.common.clarificationReasonExplainDifferently,
+  } as const;
   const transcriptEntries: TranscriptFeedEntry[] = [...participant.session.transcript].reverse().map((segment) => {
     const isOwnLanguage = segment.language === participant.preferredLanguage;
     const translation = segment.translations.find((item) => item.targetLanguage === participant.preferredLanguage);
@@ -108,6 +118,10 @@ export default async function LearnerSessionPage({
     // "Translation unavailable" placeholder, which should never end up quoted
     // in the comprehension question below.
     const originalText = segment.originalText;
+    // Confidence Score (issue #130) only applies to translated lines — a learner's
+    // own-language original wasn't translated at all, so there's nothing to score.
+    const needsClarification =
+      !isOwnLanguage && translation?.confidenceLevel && translation.confidenceLevel !== "high";
     return {
       id: segment.id,
       time: timeFormatter.format(segment.startedAt),
@@ -117,17 +131,37 @@ export default async function LearnerSessionPage({
       primaryIsFallback: !isOwnLanguage && !translation,
       secondaryText: !isOwnLanguage ? segment.originalText : undefined,
       secondaryLang: !isOwnLanguage ? segment.language : undefined,
+      confidenceBadge:
+        !isOwnLanguage && translation?.confidence != null && translation.confidenceLevel ? (
+          <ConfidenceBadge
+            score={translation.confidence}
+            level={translation.confidenceLevel as "high" | "medium" | "low"}
+            rootCause={translation.rootCause as RootCause | null}
+            uiLang={lang}
+          />
+        ) : undefined,
       // A pre-built element, not a callback prop — see TranscriptFeedEntry.actions'
       // doc comment for why (this page is a Server Component; the feed isn't).
       actions: (
-        <CaptionComprehensionActions
-          sendAction={sendChatAction}
-          explainSimplyLabel={learnerDict.explainSimply}
-          giveExampleLabel={learnerDict.giveExample}
-          sendingLabel={dict.chat.sending}
-          explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
-          giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
-        />
+        <div className="flex flex-col gap-2">
+          <CaptionComprehensionActions
+            sendAction={sendChatAction}
+            explainSimplyLabel={learnerDict.explainSimply}
+            giveExampleLabel={learnerDict.giveExample}
+            sendingLabel={dict.chat.sending}
+            explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(originalText))}
+            giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(originalText))}
+          />
+          {needsClarification && (
+            <ClarificationActions
+              sendAction={sendChatAction}
+              originalText={originalText}
+              requestClarificationLabel={dict.common.requestClarification}
+              reasonLabels={clarificationReasonLabels}
+              sendingLabel={dict.chat.sending}
+            />
+          )}
+        </div>
       ),
     };
   });

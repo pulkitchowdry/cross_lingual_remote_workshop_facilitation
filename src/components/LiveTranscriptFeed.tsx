@@ -19,6 +19,11 @@ export interface TranscriptFeedEntry {
    * that boundary, not arbitrary functions. Omitted entirely on the facilitator's
    * read-only feed. */
   actions?: ReactNode;
+  /** Confidence Score badge (issue #130) for this line's translation — a pre-built
+   * element for the same server/client boundary reason as `actions`. Omitted for a
+   * learner's own-language lines (no translation involved) and on facilitator's
+   * read-only feed rows that don't carry one. */
+  confidenceBadge?: ReactNode;
 }
 
 const BOTTOM_THRESHOLD_PX = 48;
@@ -131,6 +136,11 @@ export function LiveTranscriptFeed({
                       )}
                     </div>
                   </button>
+                  {/* Rendered outside the row's own toggle `<button>` above, not nested inside
+                      it — a disabled `<button>` (a row with nothing else to expand) suppresses
+                      pointer events for its entire subtree in Chromium, which made the badge's
+                      own `<details>` disclosure completely unclickable when nested inside one. */}
+                  {entry.confidenceBadge && <div className="pb-1 pl-9 pr-2">{entry.confidenceBadge}</div>}
                   {revealed && entry.actions && <div className="pb-1 pl-9 pr-2">{entry.actions}</div>}
                 </div>
               );

@@ -11,6 +11,7 @@ export function AnalyticsDrawer({
   participationRows,
   blockersSummary,
   languageRows,
+  confidenceSummary,
 }: {
   analytics: FacilitatorAnalytics;
   isFrozen: boolean;
@@ -22,18 +23,20 @@ export function AnalyticsDrawer({
     analyticsParticipationHeading: string;
     analyticsBlockersHeading: string;
     analyticsLanguagesHeading: string;
+    analyticsConfidenceHeading: string;
     analyticsEmptyState: string;
     analyticsFrozenNotice: string;
   };
   // Precomputed server-side (dict.analyticsParticipationRow/analyticsLanguagesRow/
-  // analyticsBlockersSummary called in the RSC page, not passed here) — functions
-  // cannot cross the server->client prop boundary this component sits behind, so only
-  // their plain-string return values are passed in. Order matches
-  // analytics.participation / analytics.languages 1:1; the entries themselves are still
-  // used for React `key`s.
+  // analyticsBlockersSummary/analyticsConfidenceSummary called in the RSC page, not
+  // passed here) — functions cannot cross the server->client prop boundary this
+  // component sits behind, so only their plain-string return values are passed in.
+  // Order matches analytics.participation / analytics.languages 1:1; the entries
+  // themselves are still used for React `key`s.
   participationRows: string[];
   blockersSummary: string;
   languageRows: string[];
+  confidenceSummary: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   // Plain-JS, composed entirely client-side from analytics.confusionTrend (already
@@ -50,7 +53,9 @@ export function AnalyticsDrawer({
     analytics.confusionTrend.every((point) => point.count === 0) &&
     analytics.participation.every((entry) => entry.messageCount === 0) &&
     analytics.blockers.raised === 0 &&
-    analytics.languages.length === 0;
+    analytics.languages.length === 0 &&
+    analytics.confidence.mediumCount === 0 &&
+    analytics.confidence.lowCount === 0;
 
   return (
     <aside className="flex flex-col gap-2" aria-label={labels.analyticsDrawerLabel}>
@@ -103,6 +108,11 @@ export function AnalyticsDrawer({
               <Card eyebrow={labels.analyticsBlockersHeading}>
                 <p className="text-xs">{blockersSummary}</p>
               </Card>
+              {(analytics.confidence.mediumCount > 0 || analytics.confidence.lowCount > 0) && (
+                <Card eyebrow={labels.analyticsConfidenceHeading}>
+                  <p className="text-xs">{confidenceSummary}</p>
+                </Card>
+              )}
               {analytics.languages.length > 0 && (
                 <Card eyebrow={labels.analyticsLanguagesHeading}>
                   <ul className="flex flex-col gap-1">

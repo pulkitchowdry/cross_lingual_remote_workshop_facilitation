@@ -11,6 +11,7 @@ import {
   logCaptionLatency,
   type CaptionInstrumentationContext,
 } from "@/lib/caption-latency-log";
+import { computeOverallConfidence, estimateTerminologyConfidence } from "@/lib/confidence";
 
 /**
  * Translates `originalText` into every learner language, persists it as a
@@ -28,22 +29,39 @@ export async function publishTranslatedCaption(
     startedAt: Date;
     endedAt: Date;
     isTyped?: boolean;
+    /** 0-100 speech-recognition confidence from the STT tier, when it reported one — see src/lib/confidence.ts. Undefined for typed captions. */
+    sttConfidence?: number;
     instrumentation?: CaptionInstrumentationContext;
   },
 ) {
   const originalCaptionReadyAtMs = input.instrumentation?.originalCaptionReadyAtMs ?? captionLatencyNowMs();
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
+  // Confidence Score's terminology signal (issue #130) needs this session's glossary to
+  // check whether the caption uses a term with no approved translation yet — fetched once
+  // per segment rather than once per target language, since it's the same for all of them.
+  const glossaryTerms = await prisma.glossaryTerm.findMany({
+    where: { sessionId: session.id },
+    select: { sourceTerm: true, aliases: true, approvedTranslation: true },
+  });
+  const terminologyConfidence = estimateTerminologyConfidence(input.originalText, glossaryTerms);
   const translations = await Promise.all(
     SUPPORTED_LANGUAGES.map(async ({ value: target }) => {
       const result = await translateText(input.originalText, input.language, target, { allowCloudFallback });
-      return result
-        ? {
-            targetLanguage: target,
-            text: result.text,
-            provider: result.provider,
-            qualitySignal: result.qualitySignal,
-          }
-        : null;
+      if (!result) return null;
+      const confidence = computeOverallConfidence({
+        speechRecognition: input.sttConfidence,
+        translation: result.confidence,
+        terminology: terminologyConfidence,
+      });
+      return {
+        targetLanguage: target,
+        text: result.text,
+        provider: result.provider,
+        qualitySignal: result.qualitySignal,
+        confidence: confidence.overall,
+        confidenceLevel: confidence.level,
+        rootCause: confidence.rootCause,
+      };
     }),
   );
   const translationsCompleteAtMs = captionLatencyNowMs();
@@ -77,6 +95,7 @@ export async function publishTranslatedCaption(
       startedAt: input.startedAt,
       endedAt: input.endedAt,
       isTyped: input.isTyped ?? false,
+      sttConfidence: input.sttConfidence,
       translations: {
         create: successfulTranslations,
       },

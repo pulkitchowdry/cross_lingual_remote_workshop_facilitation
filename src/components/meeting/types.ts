@@ -16,5 +16,12 @@ export type MeetingTranscriptSegment = {
   originalText: string;
   language: string;
   startedAt: string | Date;
-  translations: Array<{ targetLanguage: string; text: string }>;
+  sttConfidence?: number | null;
+  translations: Array<{
+    targetLanguage: string;
+    text: string;
+    confidence?: number | null;
+    confidenceLevel?: string | null;
+    rootCause?: string | null;
+  }>;
 };

@@ -26,9 +26,12 @@ import {
   computeParticipationFromGroups,
   computeBlockerStats,
   computeLanguageStats,
+  computeConfidenceStats,
   type FacilitatorAnalytics,
 } from "@/lib/facilitator-analytics";
 import { AnalyticsDrawer } from "@/components/AnalyticsDrawer";
+import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
+import type { RootCause } from "@/lib/confidence";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -217,6 +220,11 @@ export default async function FacilitatorSessionPage({
     languages: computeLanguageStats(
       session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
     ),
+    confidence: computeConfidenceStats(
+      session.transcript.flatMap((segment) =>
+        segment.translations.map((t) => ({ confidence: t.confidence, confidenceLevel: t.confidenceLevel, rootCause: t.rootCause })),
+      ),
+    ),
   };
 
   const lang = resolveLanguage(session.sourceLanguage);
@@ -235,6 +243,7 @@ export default async function FacilitatorSessionPage({
     analyticsParticipationHeading: dict.analyticsParticipationHeading,
     analyticsBlockersHeading: dict.analyticsBlockersHeading,
     analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
+    analyticsConfidenceHeading: dict.analyticsConfidenceHeading,
     analyticsEmptyState: dict.analyticsEmptyState,
     analyticsFrozenNotice: dict.analyticsFrozenNotice,
   };
@@ -248,6 +257,11 @@ export default async function FacilitatorSessionPage({
   );
   const analyticsLanguageRows = analytics.languages.map((entry) =>
     dict.analyticsLanguagesRow(entry.language, entry.translationCount),
+  );
+  const analyticsConfidenceSummary = dict.analyticsConfidenceSummary(
+    analytics.confidence.averagePercent,
+    analytics.confidence.mediumCount,
+    analytics.confidence.lowCount,
   );
   const timeFormatter = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" });
   // session.transcript is fetched newest-first (`orderBy: startedAt desc`, see the query
@@ -266,6 +280,19 @@ export default async function FacilitatorSessionPage({
     const translation = segment.translations.find((item) => item.targetLanguage === session.sourceLanguage);
     const primaryText = isSourceLanguage ? segment.originalText : (translation?.text ?? commonDict.translationUnavailable);
     const primaryLang = isSourceLanguage ? segment.language : translation ? session.sourceLanguage : "en";
+    // For the facilitator's own speech (isSourceLanguage), there's no single "the"
+    // translation to show a score for — this shows the *worst* of every language it
+    // went out in, so a facilitator sees at a glance if any audience got a low-
+    // confidence version (issue #130's "Speaker" UI section). For a learner-authored
+    // segment translated back to the facilitator's language, it's just that one
+    // translation's own score, same as the learner-facing feed.
+    const scoredTranslation = isSourceLanguage
+      ? segment.translations.reduce<(typeof segment.translations)[number] | null>((worst, item) => {
+          if (item.confidence == null) return worst;
+          if (!worst || item.confidence < worst.confidence!) return item;
+          return worst;
+        }, null)
+      : translation;
     return {
       id: segment.id,
       time: timeFormatter.format(segment.startedAt),
@@ -275,6 +302,15 @@ export default async function FacilitatorSessionPage({
       primaryIsFallback: !isSourceLanguage && !translation,
       secondaryText: !isSourceLanguage ? segment.originalText : undefined,
       secondaryLang: !isSourceLanguage ? segment.language : undefined,
+      confidenceBadge:
+        scoredTranslation?.confidence != null && scoredTranslation.confidenceLevel ? (
+          <ConfidenceBadge
+            score={scoredTranslation.confidence}
+            level={scoredTranslation.confidenceLevel as "high" | "medium" | "low"}
+            rootCause={scoredTranslation.rootCause as RootCause | null}
+            uiLang={lang}
+          />
+        ) : undefined,
     };
   });
   const statusLabel = {
@@ -400,6 +436,7 @@ export default async function FacilitatorSessionPage({
             participationRows={analyticsParticipationRows}
             blockersSummary={analyticsBlockersSummary}
             languageRows={analyticsLanguageRows}
+            confidenceSummary={analyticsConfidenceSummary}
           />
         </section>
       )}
@@ -454,6 +491,7 @@ export default async function FacilitatorSessionPage({
             participationRows={analyticsParticipationRows}
             blockersSummary={analyticsBlockersSummary}
             languageRows={analyticsLanguageRows}
+            confidenceSummary={analyticsConfidenceSummary}
           />
           <SessionSidePanel
             chat={{

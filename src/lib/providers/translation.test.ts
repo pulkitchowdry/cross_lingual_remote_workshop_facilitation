@@ -34,7 +34,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "hola", provider: "nllb", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "hola", provider: "nllb", qualitySignal: "provider-confirmed", confidence: 88 });
   });
 
   it("falls back to Claude when local-inference fails and cloud fallback is allowed", async () => {
@@ -53,7 +53,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed", confidence: 96 });
     // 2 local-inference attempts (translation.ts retries a transient local failure
     // once before giving up on that tier) + 1 Claude call.
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -91,7 +91,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "cut off mid-sen", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "cut off mid-sen", provider: "claude", qualitySignal: "provider-confirmed", confidence: 40 });
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("truncated"));
     errorSpy.mockRestore();
   });
@@ -122,7 +122,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed", confidence: 96 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -140,7 +140,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed", confidence: 96 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -186,6 +186,7 @@ describe("translateText", () => {
       text: "hola",
       provider: "claude",
       qualitySignal: "provider-confirmed",
+      confidence: 96,
     });
 
     vi.useRealTimers();
@@ -218,6 +219,7 @@ describe("translateText", () => {
       text: "hola",
       provider: "claude",
       qualitySignal: "provider-confirmed",
+      confidence: 96,
     });
 
     vi.useRealTimers();
@@ -240,7 +242,7 @@ describe("translateText", () => {
     const { translateText } = await import("./translation");
     const result = await translateText("hello", "en", "es");
 
-    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed" });
+    expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed", confidence: 96 });
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("empty translation"));
   });
 });
