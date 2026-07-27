@@ -70,7 +70,7 @@ export function TranslationHistoryTab({
             rootCause={translation.rootCause as RootCause | null}
             uiLang={uiLang}
             translationScore={translation.translationConfidence}
-            terminologyScore={translation.terminologyConfidence}
+            networkScore={segment.networkQuality}
             speechRecognitionScore={segment.sttConfidence}
           />
         ) : undefined,

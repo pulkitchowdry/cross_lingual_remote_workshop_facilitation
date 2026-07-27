@@ -17,6 +17,7 @@ export type MeetingTranscriptSegment = {
   language: string;
   startedAt: string | Date;
   sttConfidence?: number | null;
+  networkQuality?: number | null;
   translations: Array<{
     targetLanguage: string;
     text: string;

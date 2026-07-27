@@ -253,7 +253,7 @@ export default async function FacilitatorSessionPage({
             rootCause={scoredTranslation.rootCause as RootCause | null}
             uiLang={lang}
             translationScore={scoredTranslation.translationConfidence}
-            terminologyScore={scoredTranslation.terminologyConfidence}
+            networkScore={segment.networkQuality}
             speechRecognitionScore={segment.sttConfidence}
           />
         ) : undefined,

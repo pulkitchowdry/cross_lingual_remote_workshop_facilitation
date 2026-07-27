@@ -30,11 +30,14 @@ const LEVEL_SYMBOL: Record<Confidence, string> = {
  * may not have translated correctly" only when the level is Medium with no single
  * root cause (see computeOverallConfidence's doc comment for when that happens).
  *
- * The breakdown only lists signals this app actually measures (translation,
- * terminology, and speech recognition when the source segment reported one) —
- * audio quality and network aren't wired up to any real signal yet (see the
- * Translation model's own schema comment), so they're omitted entirely rather than
- * shown at a fake, unmeasured 100%.
+ * The breakdown only lists signals this app actually measures: translation (always),
+ * speech recognition (when the source segment reported one), and network (when the
+ * speaker's LiveKit connection quality was reported — see estimateNetworkConfidence).
+ * Terminology is deliberately left out: it only reflects unresolved glossary terms,
+ * which almost no real caption uses, so it read as a permanently-pinned, uninformative
+ * 100% rather than a useful signal. Audio quality isn't shown either — nothing in this
+ * app measures microphone/input-audio quality yet, and a fake, unmeasured 100% would
+ * misrepresent that as a confirmed "no problem" reading.
  */
 export function ConfidenceBadge({
   score,
@@ -42,7 +45,7 @@ export function ConfidenceBadge({
   rootCause,
   uiLang,
   translationScore,
-  terminologyScore,
+  networkScore,
   speechRecognitionScore,
 }: {
   score: number;
@@ -51,8 +54,10 @@ export function ConfidenceBadge({
   uiLang: SupportedLanguage;
   /** 0-100 translation-signal score (Translation.translationConfidence) — always measured. */
   translationScore?: number | null;
-  /** 0-100 terminology-signal score (Translation.terminologyConfidence) — always measured. */
-  terminologyScore?: number | null;
+  /** 0-100 network-signal score (TranscriptSegment.networkQuality), derived from the
+   * speaker's live LiveKit connection quality — null for typed captions and any live
+   * capture with no quality report yet, in which case this row is omitted. */
+  networkScore?: number | null;
   /** 0-100 STT confidence (TranscriptSegment.sttConfidence) — null for typed captions and
    * STT tiers that don't report one, in which case this row is omitted from the breakdown. */
   speechRecognitionScore?: number | null;
@@ -65,10 +70,10 @@ export function ConfidenceBadge({
   const breakdownRows: Array<[string, number]> = [
     [dict.confidenceBreakdownOverall, score],
     ...(translationScore != null ? ([[dict.confidenceBreakdownTranslation, translationScore]] as Array<[string, number]>) : []),
-    ...(terminologyScore != null ? ([[dict.confidenceBreakdownTerminology, terminologyScore]] as Array<[string, number]>) : []),
     ...(speechRecognitionScore != null
       ? ([[dict.confidenceBreakdownSpeechRecognition, speechRecognitionScore]] as Array<[string, number]>)
       : []),
+    ...(networkScore != null ? ([[dict.confidenceBreakdownNetwork, networkScore]] as Array<[string, number]>) : []),
   ];
 
   return (

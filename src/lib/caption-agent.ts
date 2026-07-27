@@ -1,10 +1,12 @@
 import { AutoSubscribe, defineAgent, type JobContext } from "@livekit/agents";
 import {
   AudioStream,
+  ConnectionQuality,
   type RemoteAudioTrack,
   RoomEvent,
   TrackKind,
   TrackSource,
+  type Participant,
   type RemoteParticipant,
   type RemoteTrackPublication,
   type RemoteTrack,
@@ -26,6 +28,17 @@ const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
  */
 const STREAM_SAMPLE_RATE = 16_000;
 const STREAM_CHANNELS = 1;
+
+/** Maps this SDK's numeric wire enum to the same string vocabulary the browser-mic path
+ * (livekit-client's own `ConnectionQuality`) sends over the WebSocket — both paths funnel
+ * into the one estimateNetworkConfidence in src/lib/confidence.ts, so they must agree on
+ * the label, not just the underlying quality level. */
+const CONNECTION_QUALITY_LABEL: Record<ConnectionQuality, string> = {
+  [ConnectionQuality.QUALITY_EXCELLENT]: "excellent",
+  [ConnectionQuality.QUALITY_GOOD]: "good",
+  [ConnectionQuality.QUALITY_POOR]: "poor",
+  [ConnectionQuality.QUALITY_LOST]: "lost",
+};
 
 function sessionIdFromRoomName(roomName: string | undefined): string | null {
   if (!roomName || !roomName.startsWith(WORKSHOP_ROOM_PREFIX)) return null;
@@ -64,6 +77,11 @@ async function streamParticipantAudio(
   translationMode: "AUTO" | "LOCAL_ONLY",
   activeTracks: Map<string, RemoteAudioTrack>,
   identity: string,
+  // Read fresh at publish time (below), not captured once at subscribe time — the
+  // facilitator's connection quality can change mid-session, same reasoning as
+  // resolveSpeakerContext being re-resolved per segment rather than reused from
+  // `initialSpeaker`.
+  connectionQualityByIdentity: Map<string, string>,
 ) {
   if (!speechToTextProvider.openStream) {
     console.warn(`[caption-agent] STT provider has no streaming support; not capturing session ${sessionId}.`);
@@ -152,6 +170,7 @@ async function streamParticipantAudio(
             startedAt,
             endedAt,
             sttConfidence: event.confidence,
+            networkQuality: connectionQualityByIdentity.get(identity),
             instrumentation: {
               source: "caption-agent",
               audioSubmittedAtMs,
@@ -295,6 +314,16 @@ export default defineAgent({
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
+    // Latest reported connection quality per identity — the Confidence Score's network
+    // signal (issue #130's "Future Enhancements") for whatever this facilitator is
+    // saying *right now*, read fresh at each segment's publish time rather than once at
+    // subscribe time (see streamParticipantAudio's own doc comment on the param).
+    const connectionQualityByIdentity = new Map<string, string>();
+    ctx.room.on(RoomEvent.ConnectionQualityChanged, (quality: ConnectionQuality, participant: Participant) => {
+      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      const label = CONNECTION_QUALITY_LABEL[quality];
+      if (label) connectionQualityByIdentity.set(participant.identity, label);
+    });
     const handleTrackSubscribed = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       // NOT `track instanceof RemoteAudioTrack` — confirmed live (2026-07-26) that it's
       // always `false` here despite `track` genuinely being one (`track.constructor.name
@@ -348,6 +377,7 @@ export default defineAgent({
         session.translationMode,
         activeTracks,
         participant.identity,
+        connectionQualityByIdentity,
       ).catch((error) => console.error(`[caption-agent] streamParticipantAudio failed for ${sessionId}:`, error));
     };
     ctx.room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);

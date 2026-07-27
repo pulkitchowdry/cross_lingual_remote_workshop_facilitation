@@ -173,7 +173,7 @@ export default async function LearnerSessionPage({
             rootCause={translation.rootCause as RootCause | null}
             uiLang={lang}
             translationScore={translation.translationConfidence}
-            terminologyScore={translation.terminologyConfidence}
+            networkScore={segment.networkQuality}
             speechRecognitionScore={segment.sttConfidence}
           />
         ) : undefined,

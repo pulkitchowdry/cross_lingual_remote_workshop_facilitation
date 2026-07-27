@@ -249,7 +249,6 @@ export interface Dictionary {
     preferredLanguageLabel: string;
     captionsWillAppear: string;
     playTranslatedAudio: string;
-    typedCaptionsAlwaysAudible: string;
     audioBlocked: string;
     playBlockedAudio: string;
     audioSkipped: string;
@@ -388,10 +387,9 @@ export interface Dictionary {
     confidenceLevelLow: string;
     confidenceScoreLabel: (percent: number) => string;
     confidenceBreakdownOverall: string;
-    confidenceBreakdownAudio: string;
     confidenceBreakdownSpeechRecognition: string;
     confidenceBreakdownTranslation: string;
-    confidenceBreakdownTerminology: string;
+    confidenceBreakdownNetwork: string;
     confidenceReasonAudio: string;
     confidenceReasonSpeechRecognition: string;
     confidenceReasonTranslation: string;
@@ -672,7 +670,6 @@ const en: Dictionary = {
     preferredLanguageLabel: "Preferred language:",
     captionsWillAppear: "Captions will appear here as soon as the facilitator starts speaking.",
     playTranslatedAudio: "Also play audio for captions in my own language",
-    typedCaptionsAlwaysAudible: "Captions in a different language, and the facilitator's typed captions, are always read aloud, even if this is off.",
     audioBlocked: "Translated audio playback was blocked by the browser.",
     playBlockedAudio: "Play translated audio",
     audioSkipped: "Some translated audio couldn't be loaded and was skipped.",
@@ -796,10 +793,9 @@ const en: Dictionary = {
     confidenceLevelLow: "Low",
     confidenceScoreLabel: (percent) => `Confidence Score ${percent}%`,
     confidenceBreakdownOverall: "Overall",
-    confidenceBreakdownAudio: "Audio quality",
     confidenceBreakdownSpeechRecognition: "Speech recognition",
     confidenceBreakdownTranslation: "Translation",
-    confidenceBreakdownTerminology: "Terminology",
+    confidenceBreakdownNetwork: "Network",
     confidenceReasonAudio: "We couldn't hear you clearly.",
     confidenceReasonSpeechRecognition: "Some words could not be recognised accurately.",
     confidenceReasonTranslation: "This sentence could not be translated reliably.",
@@ -1063,7 +1059,6 @@ const zh: Dictionary = {
     preferredLanguageLabel: "偏好语言：",
     captionsWillAppear: "主持人开始发言后，字幕会显示在这里。",
     playTranslatedAudio: "同一语言的字幕也播放语音",
-    typedCaptionsAlwaysAudible: "不同语言的字幕以及主持人输入的字幕，始终会朗读，即使此项关闭。",
     audioBlocked: "浏览器阻止了翻译语音的播放。",
     playBlockedAudio: "播放翻译语音",
     audioSkipped: "部分翻译语音无法加载，已跳过。",
@@ -1187,10 +1182,9 @@ const zh: Dictionary = {
     confidenceLevelLow: "低",
     confidenceScoreLabel: (percent) => `置信度 ${percent}%`,
     confidenceBreakdownOverall: "总体",
-    confidenceBreakdownAudio: "音频质量",
     confidenceBreakdownSpeechRecognition: "语音识别",
     confidenceBreakdownTranslation: "翻译",
-    confidenceBreakdownTerminology: "术语",
+    confidenceBreakdownNetwork: "网络",
     confidenceReasonAudio: "我们没能听清楚你的声音。",
     confidenceReasonSpeechRecognition: "部分词语未能被准确识别。",
     confidenceReasonTranslation: "这句话未能可靠地翻译。",
@@ -1454,7 +1448,6 @@ const es: Dictionary = {
     preferredLanguageLabel: "Idioma preferido:",
     captionsWillAppear: "Los subtítulos aparecerán aquí en cuanto el facilitador empiece a hablar.",
     playTranslatedAudio: "También reproducir audio para subtítulos en mi propio idioma",
-    typedCaptionsAlwaysAudible: "Los subtítulos en otro idioma, así como los subtítulos escritos por el facilitador, siempre se leen en voz alta, aunque esto esté desactivado.",
     audioBlocked: "El navegador bloqueó la reproducción del audio traducido.",
     playBlockedAudio: "Reproducir audio traducido",
     audioSkipped: "Algunos audios traducidos no se pudieron cargar y se omitieron.",
@@ -1578,10 +1571,9 @@ const es: Dictionary = {
     confidenceLevelLow: "Baja",
     confidenceScoreLabel: (percent) => `Puntuación de confianza ${percent}%`,
     confidenceBreakdownOverall: "General",
-    confidenceBreakdownAudio: "Calidad de audio",
     confidenceBreakdownSpeechRecognition: "Reconocimiento de voz",
     confidenceBreakdownTranslation: "Traducción",
-    confidenceBreakdownTerminology: "Terminología",
+    confidenceBreakdownNetwork: "Red",
     confidenceReasonAudio: "No pudimos escucharte con claridad.",
     confidenceReasonSpeechRecognition: "Algunas palabras no se reconocieron con precisión.",
     confidenceReasonTranslation: "Esta frase no se pudo traducir de forma fiable.",
