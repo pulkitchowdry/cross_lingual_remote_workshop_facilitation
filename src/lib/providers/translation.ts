@@ -168,7 +168,23 @@ export async function translateText(
   if (sourceLanguage === targetLanguage) return null;
   const allowCloudFallback = options?.allowCloudFallback ?? true;
 
-  if (isLocalInferenceConfigured()) {
+  // NLLB is a pure seq2seq translation model (see local-inference/app/models/nllb.py) —
+  // unlike Claude's chat-based translation, there's no prompt channel to inject a
+  // "use exactly this approved translation for this term" instruction into it, and
+  // local-inference's /translate endpoint (local-inference/app/routers/translate.py) has
+  // no glossary-hint field at all to carry one even if there were. Silently ignoring
+  // `glossaryHint` here (the previous behavior) meant the Central Glossary's approved
+  // translations were only ever honored when Claude happened to handle the call — i.e.
+  // never, whenever local-inference is configured (the default/primary tier). Skip the
+  // local tier for this call and go straight to Claude, which already applies
+  // `glossaryHint` via its system prompt, so a glossary-preferred translation always wins
+  // regardless of which tier would otherwise have handled it. Only do this when cloud
+  // fallback is actually allowed — a LOCAL_ONLY (strict-privacy) session must still get a
+  // plain NLLB translation (without the glossary hint applied) rather than no translation
+  // at all just because a glossary term happened to match.
+  const skipLocalForGlossary = Boolean(options?.glossaryHint) && allowCloudFallback;
+
+  if (isLocalInferenceConfigured() && !skipLocalForGlossary) {
     for (let attempt = 1; attempt <= LOCAL_TRANSLATE_ATTEMPTS; attempt++) {
       try {
         const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);

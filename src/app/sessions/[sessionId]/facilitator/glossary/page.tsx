@@ -28,7 +28,8 @@ export default async function GlossaryPage({ params }: { params: Promise<{ sessi
 
   const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { sourceLanguage: true } });
   const lang = resolveLanguage(session?.sourceLanguage ?? "en");
-  const dict = getDictionary(lang).glossary;
+  const dictionary = getDictionary(lang);
+  const dict = dictionary.glossary;
 
   const entries = await prisma.centralGlossaryEntry.findMany({
     orderBy: [{ isBuiltIn: "desc" }, { sourceTerm: "asc" }],
@@ -63,6 +64,7 @@ export default async function GlossaryPage({ params }: { params: Promise<{ sessi
           isBuiltIn: entry.isBuiltIn,
         }))}
         dict={dict}
+        requiredFieldMessage={dictionary.common.requiredFieldMessage}
         saveAction={saveAction}
         deleteAction={deleteAction}
         uploadAction={uploadAction}

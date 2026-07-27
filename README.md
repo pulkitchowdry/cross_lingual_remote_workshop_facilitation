@@ -110,6 +110,22 @@ The app needs four services configured before it runs end to end: **PostgreSQL**
    TTS_API_KEY="your-elevenlabs-key"
    ```
 
+   Running `local-inference` on its own isn't enough — this app only calls it once
+   `LOCAL_INFERENCE_URL`/`LOCAL_INFERENCE_SECRET` are *also* set in `.env.local` (matching
+   the secret the service was started with). Without both, `textToSpeechProvider.isConfigured`
+   is `false` and the whole "translated audio" feature (and, if `STT_API_KEY` is also unset,
+   live speech-to-text) silently doesn't appear anywhere in the UI — which reads as
+   "translation is broken" rather than "not configured yet":
+
+   ```env
+   LOCAL_INFERENCE_URL="http://localhost:8080"
+   LOCAL_INFERENCE_SECRET="devsecret"
+   ```
+
+   This also doubles as the self-hosted tier for speech-to-text and translation (Part 5 of
+   [`docs/TRANSLATION_ARCHITECTURE.md`](docs/TRANSLATION_ARCHITECTURE.md)) — the same two
+   variables turn all three on together.
+
 7. Apply migrations and generate the Prisma client:
 
    ```bash

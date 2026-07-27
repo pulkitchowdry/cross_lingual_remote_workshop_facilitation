@@ -24,7 +24,15 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 export function SyncParticipantLanguageAttribute({ lang }: { lang: SupportedLanguage }) {
   const { localParticipant } = useLocalParticipant();
   useEffect(() => {
-    void localParticipant.setAttributes({ preferredLanguage: lang });
+    localParticipant.setAttributes({ preferredLanguage: lang }).catch((error) => {
+      // Same rationale as the raisedHand attribute update this mirrors (see
+      // MeetingToolbar's toggleRaiseHand) — a disconnected/unstable room connection
+      // surfaces here as a timeout, not a bug in this effect. Logged so a failed
+      // language-sync doesn't fail completely silently instead of becoming an
+      // unhandled rejection; no user-facing error or retry here since the raisedHand
+      // precedent this mirrors doesn't have either.
+      console.error("[meeting] failed to sync preferred-language attribute:", error);
+    });
   }, [localParticipant, lang]);
   return null;
 }

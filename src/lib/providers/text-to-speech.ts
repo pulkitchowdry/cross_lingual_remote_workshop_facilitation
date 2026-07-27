@@ -54,6 +54,17 @@ async function synthesizeWithElevenLabs(text: string): Promise<SynthesizedSpeech
   return { audio, mimeType: "audio/mpeg", provider: "elevenlabs" };
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Matches translation.ts's LOCAL_TRANSLATE_ATTEMPTS/LOCAL_TRANSLATE_RETRY_DELAY_MS —
+// one retry of the local tier before falling back, since a single transient
+// timeout/network blip shouldn't immediately burn a paid ElevenLabs call the way an
+// un-retried local failure used to.
+const LOCAL_SYNTHESIZE_ATTEMPTS = 2;
+const LOCAL_SYNTHESIZE_RETRY_DELAY_MS = 400;
+
 /**
  * Tries the self-hosted Piper tier first, then falls back to ElevenLabs on
  * any local failure, unless the caller passes `allowCloudFallback: false`
@@ -70,14 +81,24 @@ async function synthesizeSpeech(
   const cloudConfigured = Boolean(process.env.TTS_API_KEY);
 
   if (isLocalInferenceConfigured()) {
-    try {
-      const { audio, mimeType } = await localSynthesize(text, language);
-      return { audio, mimeType, provider: "piper" };
-    } catch (error) {
-      if (!allowCloudFallback) {
-        throw error instanceof Error ? error : new Error(String(error));
+    for (let attempt = 1; attempt <= LOCAL_SYNTHESIZE_ATTEMPTS; attempt++) {
+      try {
+        const { audio, mimeType } = await localSynthesize(text, language);
+        return { audio, mimeType, provider: "piper" };
+      } catch (error) {
+        console.error(
+          `[text-to-speech] local-inference synthesize attempt ${attempt}/${LOCAL_SYNTHESIZE_ATTEMPTS} failed:`,
+          error,
+        );
+        if (attempt < LOCAL_SYNTHESIZE_ATTEMPTS) {
+          await delay(LOCAL_SYNTHESIZE_RETRY_DELAY_MS);
+          continue;
+        }
+        if (!allowCloudFallback) {
+          throw error instanceof Error ? error : new Error(String(error));
+        }
+        // Last attempt exhausted, cloud fallback allowed: fall through to the cloud tier below.
       }
-      // Fall through to the cloud tier below.
     }
   } else if (!allowCloudFallback) {
     if (cloudConfigured) {

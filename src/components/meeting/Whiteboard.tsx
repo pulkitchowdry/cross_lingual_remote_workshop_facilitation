@@ -37,8 +37,12 @@ function substituteForViewer(
     const customData = element.customData as WhiteboardCustomData | undefined;
     if (!customData?.sourceLanguage || customData.sourceLanguage === viewerLang) return element;
     const translated = customData.translations?.[viewerLang];
-    if (!translated) return element;
-    return { ...element, text: translated } as ExcalidrawElement;
+    // Same "Translation unavailable." fallback every other translated surface shows
+    // (captions/chat/session title — see resolveTranslatedText in src/lib/translation-view.ts)
+    // instead of silently rendering the original-language text as if it were already
+    // translated into the viewer's language.
+    const text = translated ?? getDictionary(viewerLang).common.translationUnavailable;
+    return { ...element, text } as ExcalidrawElement;
   });
 }
 
@@ -82,6 +86,23 @@ export function Whiteboard({
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textSettleTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const lastTranslatedTextRef = useRef(new Map<string, string>());
+  // Separate from lastTranslatedTextRef (which now only records a *successful* translation —
+  // see translateElement) — this tracks requests still in flight, so two settle-timers firing
+  // for the same element+text before the first request resolves don't both fire a request.
+  const inFlightTranslationRef = useRef(new Map<string, string>());
+
+  // Clears any still-pending debounced broadcast/snapshot/text-translation timers when this
+  // component unmounts (e.g. the facilitator switches workspace mode away from whiteboard
+  // mid-edit) — without this, a timer fires later against a torn-down excalidrawAPI closure.
+  useEffect(() => {
+    const textSettleTimers = textSettleTimersRef.current;
+    return () => {
+      if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current);
+      if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+      textSettleTimers.forEach((timer) => clearTimeout(timer));
+      textSettleTimers.clear();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,7 +199,8 @@ export function Whiteboard({
       const text = (element as unknown as { text?: string }).text ?? "";
       if (!text.trim()) return;
       if (lastTranslatedTextRef.current.get(element.id) === text) return;
-      lastTranslatedTextRef.current.set(element.id, text);
+      if (inFlightTranslationRef.current.get(element.id) === text) return;
+      inFlightTranslationRef.current.set(element.id, text);
       try {
         const response = await fetch("/api/whiteboard/translate", {
           method: "POST",
@@ -187,9 +209,17 @@ export function Whiteboard({
         });
         if (!response.ok) return;
         const result = (await response.json()) as { elementId: string; customData: WhiteboardCustomData };
+        // Only mark this text as translated once the request actually succeeded — marking it
+        // eagerly (before the fetch) meant a single failed/errored request permanently blocked
+        // any retry for that exact text, since nothing ever cleared the ref afterwards.
+        lastTranslatedTextRef.current.set(element.id, text);
         applyIncoming([{ id: result.elementId, customData: result.customData }]);
       } catch (error) {
         console.error("[whiteboard] translation request failed:", error);
+      } finally {
+        if (inFlightTranslationRef.current.get(element.id) === text) {
+          inFlightTranslationRef.current.delete(element.id);
+        }
       }
     },
     [sessionId, uiLang, applyIncoming],

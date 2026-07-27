@@ -70,8 +70,8 @@ export function ParticipantChip({
           <VideoTrack trackRef={liveCamTrack} className="h-full w-full object-cover" />
         ) : (
           <div
-            className="font-data flex h-full w-full items-center justify-center text-lg font-semibold text-white sm:text-2xl"
-            style={{ background: speakerColor(participant.identity) }}
+            className="font-data flex h-full w-full items-center justify-center text-lg font-semibold sm:text-2xl"
+            style={{ background: speakerColor(participant.identity), color: "var(--speaker-avatar-fg)" }}
           >
             {initials(name)}
           </div>
@@ -118,8 +118,8 @@ export function ParticipantChip({
           </div>
         ) : (
           <div
-            className={`font-data flex items-center justify-center rounded-full text-sm font-semibold text-white ${avatarSize}`}
-            style={{ background: speakerColor(participant.identity) }}
+            className={`font-data flex items-center justify-center rounded-full text-sm font-semibold ${avatarSize}`}
+            style={{ background: speakerColor(participant.identity), color: "var(--speaker-avatar-fg)" }}
           >
             {initials(name)}
           </div>
