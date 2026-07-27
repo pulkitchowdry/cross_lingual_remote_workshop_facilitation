@@ -271,7 +271,7 @@ export default async function FacilitatorSessionPage({
   const sessionSummary = {
     durationMinutes:
       session.startedAt && session.endedAt
-        ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000)
+        ? Math.max(0, Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000))
         : null,
     messageCount,
     questionCount,

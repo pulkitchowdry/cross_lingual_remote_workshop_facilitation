@@ -188,6 +188,7 @@ export interface Dictionary {
     analyticsLanguagesRow: (language: string, count: number) => string;
     analyticsConfidenceHeading: string;
     analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
+    analyticsConfusionTrendSummary: (bucketCount: number, highestLevel: string) => string;
     analyticsEmptyState: string;
     analyticsFrozenNotice: string;
     // Centralised Technical Glossary (issue #131) — link to the shared glossary
@@ -564,6 +565,8 @@ const en: Dictionary = {
     analyticsConfidenceHeading: "Confidence Score",
     analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
       `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
+    analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
+      `Confusion trend: ${bucketCount} time buckets, highest level: ${highestLevel}`,
     analyticsEmptyState: "No analytics yet — data will appear as the session progresses.",
     analyticsFrozenNotice: "Final snapshot — this session has ended",
     glossaryNavLabel: "Manage glossary",
@@ -912,6 +915,8 @@ const zh: Dictionary = {
     analyticsConfidenceHeading: "置信度",
     analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
       `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
+    analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
+      `困惑趋势：${bucketCount} 个时间区间，最高等级：${highestLevel}`,
     analyticsEmptyState: "暂无分析数据——数据将随会话进行而出现。",
     analyticsFrozenNotice: "最终快照——本次会话已结束",
     glossaryNavLabel: "管理术语表",
@@ -1260,6 +1265,8 @@ const es: Dictionary = {
     analyticsConfidenceHeading: "Puntuación de confianza",
     analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
       `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
+    analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
+      `Tendencia de confusión: ${bucketCount} intervalos de tiempo, nivel máximo: ${highestLevel}`,
     analyticsEmptyState: "Aún no hay analítica — los datos aparecerán a medida que avance la sesión.",
     analyticsFrozenNotice: "Instantánea final — esta sesión ha terminado",
     glossaryNavLabel: "Gestionar glosario",

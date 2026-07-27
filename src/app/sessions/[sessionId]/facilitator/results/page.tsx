@@ -67,7 +67,7 @@ export default async function FacilitatorSessionResultsPage({
     new Date().getTime() - session.endedAt.getTime() < POST_SESSION_SUMMARY_GRACE_MS;
   const durationMinutes =
     session.startedAt && session.endedAt
-      ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000)
+      ? Math.max(0, Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 60_000))
       : null;
   const misunderstoodTopics = session.insights
     .filter((item) => item.type === "CONFUSION")

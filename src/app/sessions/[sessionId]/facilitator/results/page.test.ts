@@ -76,6 +76,7 @@ describe("FacilitatorSessionResultsPage", () => {
         analyticsBlockersHeading: "Blockers",
         analyticsLanguagesHeading: "Languages",
         analyticsConfidenceHeading: "Confidence Score",
+        analyticsConfusionTrendSummary: "Confusion trend: 0 time buckets, highest level: CALM",
         analyticsEmptyState: "No analytics yet",
         analyticsFrozenNotice: "Final snapshot",
       },
@@ -86,7 +87,23 @@ describe("FacilitatorSessionResultsPage", () => {
     });
   });
 
-  it("redirects when the current browser is not the session facilitator", async () => {
+  it("lets the owning facilitator access the requested session results", async () => {
+    mocks.sessionFindUnique.mockResolvedValue(
+      session({
+        status: SessionStatus.ENDED,
+        summary: "Owner-visible summary",
+        endedAt: new Date("2026-07-26T10:00:00.000Z"),
+      }),
+    );
+
+    const element = await FacilitatorSessionResultsPage({ params: Promise.resolve({ sessionId: "session-1" }) });
+    const html = renderToStaticMarkup(element);
+
+    expect(mocks.hasFacilitatorAccess).toHaveBeenCalledWith("session-1");
+    expect(html).toContain("Owner-visible summary");
+  });
+
+  it("redirects a learner before fetching analytics", async () => {
     mocks.hasFacilitatorAccess.mockResolvedValue(false);
 
     await expect(
@@ -94,6 +111,19 @@ describe("FacilitatorSessionResultsPage", () => {
     ).rejects.toThrow("redirect:/setup");
 
     expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
+    expect(mocks.buildFacilitatorAnalyticsView).not.toHaveBeenCalled();
+  });
+
+  it("redirects an unrelated facilitator before fetching analytics", async () => {
+    mocks.hasFacilitatorAccess.mockResolvedValue(false);
+
+    await expect(
+      FacilitatorSessionResultsPage({ params: Promise.resolve({ sessionId: "other-session" }) }),
+    ).rejects.toThrow("redirect:/setup");
+
+    expect(mocks.hasFacilitatorAccess).toHaveBeenCalledWith("other-session");
+    expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
+    expect(mocks.buildFacilitatorAnalyticsView).not.toHaveBeenCalled();
   });
 
   it("renders an empty state before the session has ended", async () => {
@@ -142,5 +172,27 @@ describe("FacilitatorSessionResultsPage", () => {
     expect(html).toContain("3 messages");
     expect(html).toContain("1 questions");
     expect(html).toContain("Learners mixed up request validation.");
+  });
+
+  it("renders valid empty values for an ended session with no public data", async () => {
+    mocks.sessionFindUnique.mockResolvedValue(
+      session({
+        status: SessionStatus.ENDED,
+        startedAt: new Date("2026-07-26T10:00:00.000Z"),
+        endedAt: new Date("2026-07-26T09:55:00.000Z"),
+        summary: null,
+      }),
+    );
+    mocks.messageCount.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+
+    const element = await FacilitatorSessionResultsPage({ params: Promise.resolve({ sessionId: "session-1" }) });
+    const html = renderToStaticMarkup(element);
+
+    expect(html).toContain("0 min");
+    expect(html).toContain("0 messages");
+    expect(html).toContain("0 questions");
+    expect(html).not.toContain("-5 min");
+    expect(html).not.toContain("NaN");
+    expect(html).not.toContain("Infinity");
   });
 });

@@ -21,6 +21,7 @@ export interface FacilitatorAnalyticsLabels {
   analyticsBlockersHeading: string;
   analyticsLanguagesHeading: string;
   analyticsConfidenceHeading: string;
+  analyticsConfusionTrendSummary: string;
   analyticsEmptyState: string;
   analyticsFrozenNotice: string;
 }
@@ -70,7 +71,7 @@ export async function buildFacilitatorAnalyticsView(
   // drop an older-but-still-relevant row once enough newer ones of any type/sender
   // accumulated) — see the matching, more detailed comments in facilitator/page.tsx's
   // own historical version of these same three queries.
-  const [allBlockerInsights, allMessagesForParticipation, allConfusionInsights] = await Promise.all([
+  const [allBlockerInsights, allMessagesForParticipation, allConfusionInsights, allTranslations] = await Promise.all([
     prisma.insight.findMany({
       where: { sessionId, type: "BLOCKER" },
       select: { status: true, createdAt: true },
@@ -83,6 +84,10 @@ export async function buildFacilitatorAnalyticsView(
     prisma.insight.findMany({
       where: { sessionId, type: "CONFUSION" },
       select: { createdAt: true },
+    }),
+    prisma.translation.findMany({
+      where: { transcriptSegment: { sessionId } },
+      select: { targetLanguage: true, confidence: true, confidenceLevel: true, rootCause: true },
     }),
   ]);
 
@@ -97,15 +102,21 @@ export async function buildFacilitatorAnalyticsView(
       session.participants.map((p) => ({ userId: p.userId, displayName: p.user.displayName })),
     ),
     blockers: computeBlockerStats(allBlockerInsights.map((item) => ({ ...item, type: "BLOCKER", resolvedAt: null }))),
-    languages: computeLanguageStats(
-      session.transcript.flatMap((segment) => segment.translations.map((t) => ({ targetLanguage: t.targetLanguage }))),
-    ),
+    languages: computeLanguageStats(allTranslations.map((translation) => ({ targetLanguage: translation.targetLanguage }))),
     confidence: computeConfidenceStats(
-      session.transcript.flatMap((segment) =>
-        segment.translations.map((t) => ({ confidence: t.confidence, confidenceLevel: t.confidenceLevel, rootCause: t.rootCause })),
-      ),
+      allTranslations.map((translation) => ({
+        confidence: translation.confidence,
+        confidenceLevel: translation.confidenceLevel,
+        rootCause: translation.rootCause,
+      })),
     ),
   };
+
+  const levelRank = { CALM: 0, SOME: 1, HIGH: 2 } as const;
+  const highestLevel = analytics.confusionTrend.reduce<"CALM" | "SOME" | "HIGH">(
+    (highest, point) => (levelRank[point.groupLevel] > levelRank[highest] ? point.groupLevel : highest),
+    "CALM",
+  );
 
   return {
     analytics,
@@ -118,6 +129,7 @@ export async function buildFacilitatorAnalyticsView(
       analyticsBlockersHeading: dict.analyticsBlockersHeading,
       analyticsLanguagesHeading: dict.analyticsLanguagesHeading,
       analyticsConfidenceHeading: dict.analyticsConfidenceHeading,
+      analyticsConfusionTrendSummary: dict.analyticsConfusionTrendSummary(analytics.confusionTrend.length, highestLevel),
       analyticsEmptyState: dict.analyticsEmptyState,
       analyticsFrozenNotice: dict.analyticsFrozenNotice,
     },
