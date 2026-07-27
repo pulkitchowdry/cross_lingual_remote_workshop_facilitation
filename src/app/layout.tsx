@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   // distinct document title, which is what triggers Next's built-in App Router
   // screen-reader route-change announcement — a single unchanging app-wide title never
   // fires it.
-  title: { default: "Workshop Copilot", template: "%s — Workshop Copilot" },
+  title: { default: "Interlingo", template: "%s — Interlingo" },
   description:
     "Cross-lingual remote workshop facilitation prototype — facilitator dashboard and learner view with live translated captions.",
 };

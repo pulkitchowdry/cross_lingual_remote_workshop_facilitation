@@ -23,5 +23,7 @@ export type MeetingTranscriptSegment = {
     confidence?: number | null;
     confidenceLevel?: string | null;
     rootCause?: string | null;
+    translationConfidence?: number | null;
+    terminologyConfidence?: number | null;
   }>;
 };

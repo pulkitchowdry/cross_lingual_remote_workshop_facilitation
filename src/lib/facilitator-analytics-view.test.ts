@@ -25,7 +25,7 @@ describe("buildFacilitatorAnalyticsView", () => {
     mocks.translationFindMany.mockResolvedValue([]);
   });
 
-  it("builds participation analytics from public messages only", async () => {
+  it("builds participation analytics from messages visible to the facilitator", async () => {
     await buildFacilitatorAnalyticsView(
       "session-1",
       {
@@ -33,6 +33,7 @@ describe("buildFacilitatorAnalyticsView", () => {
         createdAt: new Date("2026-07-27T08:50:00.000Z"),
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
+        facilitatorId: "facilitator-1",
         participants: [{ userId: "learner-a", user: { displayName: "Learner A" } }],
       },
       "en",
@@ -40,7 +41,7 @@ describe("buildFacilitatorAnalyticsView", () => {
 
     expect(mocks.messageGroupBy).toHaveBeenCalledWith({
       by: ["senderId", "kind", "isAnonymous"],
-      where: { sessionId: "session-1", recipientId: null },
+      where: { sessionId: "session-1", OR: [{ recipientId: null }, { recipientId: "facilitator-1" }] },
       _count: true,
     });
   });
@@ -53,6 +54,7 @@ describe("buildFacilitatorAnalyticsView", () => {
         createdAt: new Date("2026-07-27T08:50:00.000Z"),
         status: SessionStatus.LIVE,
         endedAt: null,
+        facilitatorId: "facilitator-2",
         participants: [],
       },
       "en",
@@ -64,7 +66,7 @@ describe("buildFacilitatorAnalyticsView", () => {
     });
     expect(mocks.messageGroupBy).toHaveBeenCalledWith({
       by: ["senderId", "kind", "isAnonymous"],
-      where: { sessionId: "session-2", recipientId: null },
+      where: { sessionId: "session-2", OR: [{ recipientId: null }, { recipientId: "facilitator-2" }] },
       _count: true,
     });
     expect(mocks.insightFindMany).toHaveBeenNthCalledWith(2, {
@@ -91,6 +93,7 @@ describe("buildFacilitatorAnalyticsView", () => {
         createdAt: new Date("2026-07-27T08:50:00.000Z"),
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
+        facilitatorId: "facilitator-1",
         participants: [],
       },
       "en",
@@ -118,6 +121,7 @@ describe("buildFacilitatorAnalyticsView", () => {
         createdAt: new Date("2026-07-27T08:50:00.000Z"),
         status: SessionStatus.ENDED,
         endedAt: new Date("2026-07-27T10:00:00.000Z"),
+        facilitatorId: "facilitator-1",
         participants: [{ userId: "learner-a", user: { displayName: "Learner A" } }],
       },
       "en",

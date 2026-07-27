@@ -42,6 +42,15 @@ export async function publishTranslatedCaption(
   // check whether the caption uses a term with no approved translation yet — fetched once
   // per segment rather than once per target language, since it's the same for all of them.
   const [glossaryTerms, centralGlossary] = await Promise.all([
+    // NOTE: as of this pass, nothing in the app ever creates/updates/deletes a
+    // `GlossaryTerm` row (grepped the whole src/app tree — only `CentralGlossaryEntry`,
+    // a different table, has a write path, in
+    // src/app/sessions/[sessionId]/facilitator/glossary/actions.ts). This query therefore
+    // always returns an empty array, and estimateTerminologyConfidence's session-specific-
+    // glossary signal below is presently a permanently-dead no-op (always maximally
+    // confident) even though the schema and confidence.ts's logic were clearly built to
+    // use it. Left as-is rather than inventing a GlossaryTerm CRUD UI/feature here — flagged
+    // for a future PR that decides the actual product intent for this table.
     prisma.glossaryTerm.findMany({
       where: { sessionId: session.id },
       select: { sourceTerm: true, aliases: true, approvedTranslation: true },
@@ -85,6 +94,10 @@ export async function publishTranslatedCaption(
         confidence: confidence.overall,
         confidenceLevel: confidence.level,
         rootCause: confidence.rootCause,
+        // Individual signals for the Confidence Score breakdown UI (ConfidenceBadge) — see
+        // that column's own schema comment for why audioQuality/network aren't persisted.
+        translationConfidence: confidence.breakdown.translation,
+        terminologyConfidence: confidence.breakdown.terminology,
       };
     }),
   );

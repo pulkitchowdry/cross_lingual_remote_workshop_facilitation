@@ -4,10 +4,9 @@ import { useId, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Like a plain `<Link href="/setup">`, but confirms first — there's no session list
- * anywhere in the app and facilitator auth is a per-session cookie, not an account, so
- * navigating away from a still-LIVE facilitator dashboard without saving its link first
- * means losing the only way back into it while its learners could still be connected.
+ * Like a plain `<Link href="/setup">`, but confirms first. Facilitator auth is a
+ * per-session cookie, and starting a new workshop from a still-LIVE facilitator
+ * dashboard can leave the current session's learners without an active facilitator.
  * Native `<dialog>` for the same reasons as `ConfirmSubmitButton` (focus trap, Escape,
  * `::backdrop`, all free) — not reused directly since this navigates via the router
  * rather than submitting a form.

@@ -25,6 +25,17 @@ export interface GlossaryFormResult {
   error: string | null;
 }
 
+/**
+ * The Central Glossary is shared and global (not per-session, see requireFacilitator's
+ * own doc comment) — an oversized entry here degrades every future translation call
+ * across every session that uses it, unlike a per-session caption/chat message. Every
+ * other user-text input in this app already caps length (captions 3,000, chat 1,000,
+ * setup fields 80-1,000); these two just match that same pattern. sourceTerm/category
+ * are short identifiers; notes/translations are free text, so they get more room.
+ */
+const GLOSSARY_SHORT_FIELD_MAX_LENGTH = 200;
+const GLOSSARY_LONG_FIELD_MAX_LENGTH = 2_000;
+
 function revalidateGlossaryPage(sessionId: string) {
   revalidatePath(`/sessions/${sessionId}/facilitator/glossary`);
 }
@@ -50,10 +61,22 @@ export async function upsertGlossaryEntry(
   if (typeof sourceTerm !== "string" || !sourceTerm.trim()) {
     return { error: "Enter a source term." };
   }
+  if (sourceTerm.trim().length > GLOSSARY_SHORT_FIELD_MAX_LENGTH) {
+    return { error: `Source term must be ${GLOSSARY_SHORT_FIELD_MAX_LENGTH} characters or fewer.` };
+  }
   const category = formData.get("category");
+  if (typeof category === "string" && category.trim().length > GLOSSARY_SHORT_FIELD_MAX_LENGTH) {
+    return { error: `Category must be ${GLOSSARY_SHORT_FIELD_MAX_LENGTH} characters or fewer.` };
+  }
   const notes = formData.get("notes");
+  if (typeof notes === "string" && notes.trim().length > GLOSSARY_LONG_FIELD_MAX_LENGTH) {
+    return { error: `Notes must be ${GLOSSARY_LONG_FIELD_MAX_LENGTH} characters or fewer.` };
+  }
   const translate = formData.get("translate") !== "verbatim";
   const translations = readTranslations(formData);
+  if (Object.values(translations).some((value) => value.length > GLOSSARY_LONG_FIELD_MAX_LENGTH)) {
+    return { error: `Translations must be ${GLOSSARY_LONG_FIELD_MAX_LENGTH} characters or fewer.` };
+  }
 
   try {
     if (entryId) {
@@ -135,6 +158,18 @@ export async function uploadGlossaryCsv(
   }
   if (rows.length === 0) {
     return { error: "That file has no glossary rows to import.", addedOrUpdated: 0 };
+  }
+  const oversizedRow = rows.find(
+    (row) =>
+      row.sourceTerm.length > GLOSSARY_SHORT_FIELD_MAX_LENGTH ||
+      (row.notes && row.notes.length > GLOSSARY_LONG_FIELD_MAX_LENGTH) ||
+      Object.values(row.translations).some((value) => value.length > GLOSSARY_LONG_FIELD_MAX_LENGTH),
+  );
+  if (oversizedRow) {
+    return {
+      error: `"${oversizedRow.sourceTerm.slice(0, 40)}" has a source term, note, or translation that's too long — check that row.`,
+      addedOrUpdated: 0,
+    };
   }
 
   await Promise.all(

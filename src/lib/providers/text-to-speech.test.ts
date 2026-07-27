@@ -89,6 +89,10 @@ describe("textToSpeechProvider", () => {
     await expect(
       textToSpeechProvider.synthesize("hello", "en", { allowCloudFallback: false }),
     ).rejects.toThrow();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Both local-inference retry attempts still run before giving up on that tier
+    // (matching translateText's LOCAL_TRANSLATE_ATTEMPTS pattern — see translation.test.ts)
+    // — `allowCloudFallback` only gates what happens *after* the local tier is exhausted,
+    // never ElevenLabs itself.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -6,13 +6,15 @@ import type { FormActionResult } from "@/lib/session-contracts";
 type SendAction = (prevState: FormActionResult, formData: FormData) => Promise<FormActionResult>;
 
 /**
- * Quick "ask about this caption" actions for a learner, reusing the same QUESTION-
- * flagged `sendChatMessage` the manual chat composer uses (see SessionChatPanel) —
- * this only needs to prefill and submit `message`/`kind` on its behalf. Each button
- * owns its own `useActionState` (rather than one submit handler) so a facilitator
- * still gets the two "Explain simply"/"Give an example" questions as distinct QUESTION
- * messages, not one combined submission, and one button's pending/error state doesn't
- * block the other.
+ * Quick "ask about this caption or message" actions for a learner, reusing the same
+ * QUESTION-flagged `sendChatMessage` the manual chat composer uses (see
+ * SessionChatPanel, which also renders this directly for a chat message, alongside
+ * TranslationHistoryTab/learn/page.tsx for a caption) — this only needs to prefill
+ * and submit `message`/`kind` on its behalf. Each button owns its own
+ * `useActionState` (rather than one submit handler) so a facilitator still gets the
+ * two "Explain simply"/"Give an example" questions as distinct QUESTION messages,
+ * not one combined submission, and one button's pending/error state doesn't block
+ * the other.
  */
 export function CaptionComprehensionActions({
   sendAction,

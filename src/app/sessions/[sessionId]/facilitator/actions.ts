@@ -38,7 +38,15 @@ export async function startSession(sessionId: string) {
     data: { status: SessionStatus.LIVE, startedAt: new Date(), endedAt: null },
   });
   if (count === 0) {
-    throw new Error("This session has already started or ended.");
+    // This form isn't useActionState-driven (its happy path below is a redirect into the
+    // live room, not an inline error render), so there's no state slot to return a
+    // FormActionResult-style error into the way publishCaption/sendChatMessage do.
+    // StartSessionButton's own pending-disable stops the common same-tab double-click;
+    // the remaining case (a stale second tab, or a resubmit after the session already
+    // moved on) is rare enough that redirecting back to the dashboard — which re-renders
+    // showing whatever the session's real current status now is — is preferable to
+    // throwing and crashing the whole route's error boundary over it.
+    redirect(`/sessions/${sessionId}/facilitator`);
   }
   revalidatePath(`/sessions/${sessionId}/facilitator`);
   revalidatePath(`/sessions/${sessionId}/learn`);
@@ -51,10 +59,20 @@ export async function startSession(sessionId: string) {
 export async function endSession(sessionId: string) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  const session = await prisma.session.update({
-    where: { id: sessionId },
+  // Guarded to only leave LIVE — mirrors startSession's own DRAFT-only guard above.
+  // Without this, a stale second tab's "End session" button (or a resubmitted form)
+  // could re-run this on an already-ENDED session: silently resetting `endedAt` to now
+  // (extending the retention deadline indefinitely, see startSession's doc comment on
+  // why that matters) and re-triggering the paid Claude summary call below for no
+  // reason, non-deterministically overwriting whatever summary already finished
+  // generating from the first, legitimate end.
+  const { count } = await prisma.session.updateMany({
+    where: { id: sessionId, status: SessionStatus.LIVE },
     data: { status: SessionStatus.ENDED, endedAt: new Date() },
   });
+  if (count === 0) return;
+
+  const session = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
   // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
   // process stays alive after the response is sent, so a plain unawaited call is enough
   // to let the summary finish generating without making "End session" wait on a Claude

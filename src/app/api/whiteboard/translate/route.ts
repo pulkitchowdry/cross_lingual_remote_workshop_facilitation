@@ -1,12 +1,40 @@
 import { NextRequest } from "next/server";
+import { RoomServiceClient } from "livekit-server-sdk";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
+import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
+import { SessionStatus } from "@/generated/prisma/client";
+import { parseRoomMetadata } from "@/components/meeting/room-metadata";
 
 function isSupportedLanguage(value: unknown): value is SupportedLanguage {
   return SUPPORTED_LANGUAGES.some((lang) => lang.value === value);
+}
+
+/**
+ * Whether a learner currently has presenting rights — the same `allowLearnerPresenting`
+ * check Whiteboard.tsx/MeetingRoom.tsx make client-side via useRoomInfo() + parseRoomMetadata
+ * before letting a learner edit at all. `allowLearnerPresenting` is a live LiveKit
+ * room-metadata toggle (see roomProvider.setPresenterAccess in src/lib/providers/room.ts), not
+ * a Prisma column, and RoomProvider doesn't expose a getter for it — reading it directly here,
+ * scoped to this route, so a learner without presenting rights can't bypass the client-side
+ * gate by POSTing straight to this endpoint.
+ */
+async function learnerCanPresent(sessionId: string): Promise<boolean> {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const serverUrl = process.env.LIVEKIT_AGENT_URL || process.env.LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !serverUrl) return false;
+  try {
+    const client = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+    const [room] = await client.listRooms([`workshop-${sessionId}`]);
+    return parseRoomMetadata(room?.metadata).allowLearnerPresenting;
+  } catch (error) {
+    console.error(`learnerCanPresent: LiveKit listRooms failed for session ${sessionId}:`, error);
+    return false;
+  }
 }
 
 /**
@@ -39,9 +67,24 @@ export async function POST(request: NextRequest) {
   if (!isFacilitator && !isLearner) {
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
   }
+  // Whiteboard.tsx only lets a learner without presenting rights view text (never edit it),
+  // gated client-side by `canPresent`/`viewModeEnabled` — without this, a learner without
+  // presenting rights could bypass that gate entirely by POSTing straight to this route.
+  if (!isFacilitator && !(await learnerCanPresent(sessionId))) {
+    return Response.json({ error: "You do not have presenting rights for this session." }, { status: 403 });
+  }
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) return Response.json({ error: "Session not found." }, { status: 404 });
+  // Mirrors publishTranslatedCaption's late re-check in src/lib/captions.ts (a
+  // translation call can take several seconds, long enough for the facilitator to end
+  // the session while it's in flight) and the retention check every other route
+  // serving session content applies — without both, a still-valid facilitator/learner
+  // cookie could trigger a paid translation call and a live room broadcast for a
+  // session that has already ended or is past its own retention deadline.
+  if (session.status !== SessionStatus.LIVE || isSessionRetentionExpired(session)) {
+    return Response.json({ error: "This session is no longer available." }, { status: 404 });
+  }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   const translations: Partial<Record<SupportedLanguage, string>> = {};
@@ -51,6 +94,16 @@ export async function POST(request: NextRequest) {
       if (result) translations[target] = result.text;
     }),
   );
+
+  // Late re-check, right before broadcasting/persisting — mirrors publishTranslatedCaption's
+  // own re-check in src/lib/captions.ts. The translation batch above can take several
+  // seconds, long enough for the facilitator to end the session while it's in flight; the
+  // check at the top of this function alone isn't enough to prevent a broadcast into an
+  // already-ended (or now retention-expired) session.
+  const stillLive = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+  if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
+    return Response.json({ error: "This session is no longer available." }, { status: 404 });
+  }
 
   const customData = { sourceLanguage, sourceText, translations };
   await roomProvider.sendWhiteboardUpdate(sessionId, [{ id: elementId, customData }]);

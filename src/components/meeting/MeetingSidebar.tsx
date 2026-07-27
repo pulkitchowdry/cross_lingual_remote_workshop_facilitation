@@ -87,6 +87,22 @@ export function MeetingSidebar({
       // Already released — nothing to do.
     }
   }
+  // Keyboard equivalent of the pointer-drag resize above — same width state
+  // (`sidebarWidth`/`setSidebarWidth`, which already clamps to
+  // SIDEBAR_MIN_WIDTH/SIDEBAR_MAX_WIDTH in MeetingShellContext), just stepped
+  // instead of dragged. Sidebar is docked right, so ArrowLeft (which drags the
+  // handle further from the sidebar) grows it, matching onResizePointerMove's
+  // own sign convention.
+  const RESIZE_STEP = 16;
+  function onResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setSidebarWidth(sidebarWidth + RESIZE_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setSidebarWidth(sidebarWidth - RESIZE_STEP);
+    }
+  }
 
   if (!sidebarOpen) {
     // The toolbar has no chat button (7 buttons total, per design) — this is
@@ -100,7 +116,14 @@ export function MeetingSidebar({
           type="button"
           onClick={() => setSidebarOpen(true)}
           aria-label={dict.expandSidebar}
-          className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95"
+          // MeetingToolbar's control-bar row wraps to two lines below ~396px viewport
+          // width (7 buttons at 44px + gaps don't fit narrower than that) — at
+          // `bottom-20` this button's own footprint (80px-128px from the viewport
+          // bottom) lands squarely on top of that wrapped second row. `bottom-36`
+          // clears the wrapped toolbar's full height (~128px) with room to spare;
+          // above that width the toolbar fits on one line and the extra gap here is
+          // harmless.
+          className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95 max-[430px]:bottom-36"
           style={{ background: "var(--accent)" }}
         >
           <ChatIcon className="h-5 w-5" />
@@ -131,17 +154,40 @@ export function MeetingSidebar({
   // LiveSessionRoom's doc comment on it).
   if (viewerIsFacilitator && analyticsView) tabs.push(["analytics", analyticsTabLabel]);
 
+  const tabId = (value: SidebarTab) => `meeting-sidebar-tab-${value}`;
+  const panelId = (value: SidebarTab) => `meeting-sidebar-panel-${value}`;
+
+  // ARIA Authoring Practices tabs pattern: Left/Right moves focus between tabs and
+  // activates the newly-focused one (roving tabindex — only the active tab is
+  // Tab-reachable), Home/End jump to the first/last tab.
+  function onTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextValue = tabs[nextIndex][0];
+    setTab(nextValue);
+    document.getElementById(tabId(nextValue))?.focus();
+  }
+
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 border-b border-border-subtle p-1.5">
         <div role="tablist" className="flex flex-1 gap-1 rounded-md bg-surface p-1">
-          {tabs.map(([value, label]) => (
+          {tabs.map(([value, label], index) => (
             <button
               key={value}
+              id={tabId(value)}
               type="button"
               role="tab"
               aria-selected={tab === value}
+              aria-controls={panelId(value)}
+              tabIndex={tab === value ? 0 : -1}
               onClick={() => setTab(value)}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
               className={`font-data flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide ${
                 tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -159,7 +205,13 @@ export function MeetingSidebar({
           <CloseIcon className="h-4 w-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
+      <div
+        className="min-h-0 flex-1"
+        id={panelId(tab)}
+        role="tabpanel"
+        aria-labelledby={tabId(tab)}
+        tabIndex={0}
+      >
         {tab === "chat" ? (
           <SessionChatPanel
             messages={messages}
@@ -180,6 +232,8 @@ export function MeetingSidebar({
               emptyLabel={captionsEmptyLabel}
               header={captionsHeader}
               composer={captionComposer}
+              sendChatAction={sendChatAction}
+              viewerIsFacilitator={viewerIsFacilitator}
             />
           </div>
         ) : (
@@ -231,9 +285,14 @@ export function MeetingSidebar({
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={onResizePointerUp}
+        onKeyDown={onResizeKeyDown}
+        tabIndex={0}
         role="separator"
         aria-orientation="vertical"
         aria-label={dict.resizeSidebar}
+        aria-valuenow={sidebarWidth}
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
       />
       {panel}
     </div>
