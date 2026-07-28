@@ -272,6 +272,14 @@ export function LiveCaptionStream({
       // those cases used to be indistinguishable from a real server rejection), and a
       // "dropped" connection that opened and streamed before failing.
       socket.onclose = (event) => {
+        console.log("[captions] SOCKET CLOSED", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        stoppedByUser: stoppedByUserRef.current,
+        hasOpened: hasOpenedRef.current,
+        readyState: socket.readyState,
+      });
         // A stale socket's close must never touch shared state. `stop()` acts on
         // `socketRef`/`recorderRef`/`streamRef`, which by the time an *older* socket closes
         // already belong to a NEWER one — so without this guard, handling the old socket's
@@ -291,7 +299,7 @@ export function LiveCaptionStream({
           attempts: reconnectAttemptsRef.current,
           shouldCapture: shouldCaptureRef.current,
         });
-
+        console.log("[captions] recovery", recovery);
         if (recovery.kind === "reconnect") {
           reconnectAttemptsRef.current += 1;
           // `stop()` first (it clears any previously scheduled retry), then schedule —
@@ -354,14 +362,16 @@ export function LiveCaptionStream({
         socket.send(JSON.stringify({ type: "connection-quality", quality: qualityRef.current }));
         void event.data.arrayBuffer().then((buffer) => socket.send(buffer));
       };
-      recorder.onerror = () => {
+      recorder.onerror = (e) => {
+        console.log("[captions] recorder error", e);
         setError(dict.micRecordingFailed);
         stop();
       };
 
       recorder.start(CHUNK_INTERVAL_MS);
       setIsStreaming(true);
-    } catch {
+    } catch (err) {
+      console.log("[captions] START FAILED", err);
       setError(dict.micDenied);
       stop();
     } finally {
