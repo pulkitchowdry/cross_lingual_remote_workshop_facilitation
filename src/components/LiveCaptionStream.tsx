@@ -149,6 +149,10 @@ export function LiveCaptionStream({
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
       socketRef.current = socket;
       socket.onopen = () => {
+        // Same staleness guard as `onclose` below: a superseded socket reaching OPEN must
+        // not claim `hasOpenedRef` (which decides "opaque" vs. "dropped" for the *current*
+        // socket) or reset the current socket's backoff ladder.
+        if (socketRef.current !== socket) return;
         hasOpenedRef.current = true;
         // Reaching OPEN is the only real proof the path works end to end, so the backoff
         // ladder resets here rather than on a successful `start()` call — otherwise a
@@ -160,6 +164,9 @@ export function LiveCaptionStream({
       // server-provided reason, or an abnormal closure) — nothing to add here.
       socket.onerror = () => {};
       socket.onmessage = (event) => {
+        // A superseded socket's final error frame must not surface on the UI the newer,
+        // healthy socket is now driving.
+        if (socketRef.current !== socket) return;
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
           if (payload.type === "error") {
@@ -185,6 +192,15 @@ export function LiveCaptionStream({
       // those cases used to be indistinguishable from a real server rejection), and a
       // "dropped" connection that opened and streamed before failing.
       socket.onclose = (event) => {
+        // A stale socket's close must never touch shared state. `stop()` acts on
+        // `socketRef`/`recorderRef`/`streamRef`, which by the time an *older* socket closes
+        // already belong to a NEWER one — so without this guard, handling the old socket's
+        // close tears down the new socket and its `MediaRecorder`. That was observed in
+        // production as a livelock: server.ts evicts A in favour of B (`superseding an older
+        // caption stream …`), A's close then kills B, a remount opens C, B's close kills C,
+        // and so on. Captions never survive a cycle — no error is shown (an eviction is
+        // silent by design), no "captions active" indicator, and no audio ever reaches STT.
+        if (socketRef.current !== socket) return;
         if (stoppedByUserRef.current || event.code === CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
           stop();
           return;
