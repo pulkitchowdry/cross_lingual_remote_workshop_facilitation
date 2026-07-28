@@ -1,11 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
 import { AudioTrack, isTrackReference, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { FACILITATOR_IDENTITY_PREFIX, LEARNER_IDENTITY_PREFIX } from "@/components/meeting/use-speaker-languages";
-import { resolveLanguage } from "@/lib/i18n";
-import type { MeetingTranscriptSegment } from "@/components/meeting/types";
+import { useSpeakerLanguages, FACILITATOR_IDENTITY_PREFIX, LEARNER_IDENTITY_PREFIX } from "@/components/meeting/use-speaker-languages";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
@@ -26,23 +23,6 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * aren't attributable to a single speaker's spoken language, and skipping
  * them here would silently break screen-share audio for everyone now that
  * nothing else renders those tracks.
- *
- * Which language to compare against `myLanguage` is read from `transcript`
- * (each segment's STT-detected `language`, the same field `TranslatedAudioPlayer`
- * keys its dub queue off), NOT from the speaker's own `preferredLanguage`
- * attribute (`use-speaker-languages.ts`). That attribute is the language a
- * speaker wants to *read/hear things in* — it says nothing about what
- * language they're actually speaking, and it's set unconditionally at join
- * regardless of whether live transcription has produced anything for them
- * yet. Keying ducking off it caused two same-language speakers (e.g. both
- * actually speaking English) to go silent for each other whenever their
- * chosen attribute values merely differed, and permanently silenced a
- * speaker who never got a caption/transcript segment at all (no dub will
- * ever arrive to replace the raw audio this ducks). Using the transcript's
- * detected language instead means: no segment yet for this speaker -> stay
- * audible (nothing to duck in favor of), and a segment whose detected
- * language matches `myLanguage` -> stay audible even if their attribute
- * says otherwise.
  */
 // NOT literal `0` — `livekit-client`'s `RemoteAudioTrack.attach()` only re-applies a
 // previously-set volume to a freshly (re-)attached element via `if (this.elementVolume)`
@@ -56,19 +36,11 @@ const DUCKED_VOLUME = 0.0001;
 
 export function DuckedRoomAudio({
   myLanguage,
-  transcript,
+  facilitatorSourceLanguage,
   ttsConfigured,
 }: {
   myLanguage: SupportedLanguage;
-  /**
-   * The session's live transcript (same prop `LiveSessionRoom` already threads to
-   * `TranslatedAudioPlayer`) — used to look up each speaker's actual STT-detected
-   * spoken language (`segment.speakerId` is that speaker's display name, matching
-   * `RemoteParticipant.name`; see `resolveLearnerSpeaker`/`issueCredential`) rather
-   * than their self-selected `preferredLanguage` attribute. See the component doc
-   * comment above for why.
-   */
-  transcript: MeetingTranscriptSegment[];
+  facilitatorSourceLanguage: SupportedLanguage;
   /**
    * Whether `TranslatedAudioPlayer` actually has a text-to-speech backend to dub
    * from (`textToSpeechProvider.isConfigured`, threaded down from the route page
@@ -80,17 +52,7 @@ export function DuckedRoomAudio({
    */
   ttsConfigured: boolean;
 }) {
-  // Last-seen detected spoken language per speaker display name — `transcript` is
-  // chronological, so a later segment for the same speaker simply overwrites the
-  // map entry, keeping this current as they keep talking.
-  const spokenLanguageBySpeaker = useMemo(() => {
-    const map: Record<string, SupportedLanguage> = {};
-    for (const segment of transcript) {
-      if (!segment.speakerId) continue;
-      map[segment.speakerId] = resolveLanguage(segment.language);
-    }
-    return map;
-  }, [transcript]);
+  const speakerLanguages = useSpeakerLanguages(facilitatorSourceLanguage);
   const tracks = useTracks([
     { source: Track.Source.Microphone, withPlaceholder: false },
     { source: Track.Source.ScreenShareAudio, withPlaceholder: false },
@@ -111,16 +73,16 @@ export function DuckedRoomAudio({
     <>
       {tracks.map((track) => {
         const isMic = track.source === Track.Source.Microphone;
-        // `track.participant.name` is the LiveKit `RemoteParticipant.name`, set to the
-        // same display name `resolveLearnerSpeaker`/facilitator captioning persist as
-        // `TranscriptSegment.speakerId` — see the doc comment above.
-        const spokenLanguage = spokenLanguageBySpeaker[track.participant.name ?? ""];
-        // No transcript segment yet for this speaker (they haven't spoken, or nothing
-        // is transcribing them) defaults to audible rather than silently ducked — same
-        // reasoning as `ttsConfigured` below: never duck the original raw audio unless
-        // a dub is actually going to be available to replace it, otherwise a listener
-        // hears nothing at all from that speaker for the entire session.
-        const shouldDuck = isMic && ttsConfigured && spokenLanguage !== undefined && spokenLanguage !== myLanguage;
+        const speakerLanguage = speakerLanguages[track.participant.identity];
+        // Unknown speaker language (the narrow staleness window
+        // `SyncParticipantLanguageAttribute` documents) defaults to audible
+        // rather than silently ducked — a listener briefly hearing an
+        // unexpected language for a moment is a far smaller problem than a
+        // speaker going randomly inaudible. Same reasoning for `ttsConfigured`:
+        // never duck the original raw audio unless a dub is actually going to be
+        // available to replace it — otherwise a listener hears nothing at all
+        // from a cross-language speaker for the entire session.
+        const shouldDuck = isMic && ttsConfigured && speakerLanguage !== undefined && speakerLanguage !== myLanguage;
         return <AudioTrack key={`${track.participant.identity}-${track.source}`} trackRef={track} volume={shouldDuck ? DUCKED_VOLUME : 1} />;
       })}
     </>

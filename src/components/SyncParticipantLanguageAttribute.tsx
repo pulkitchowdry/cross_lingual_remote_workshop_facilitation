@@ -7,13 +7,10 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 
 /**
  * Keeps the local participant's LiveKit `preferredLanguage` attribute live —
- * a general-purpose signal of which language this participant wants to
- * read/hear things in. `DuckedRoomAudio` no longer reads this attribute for
- * remote speakers (it now keys ducking off each speaker's STT-detected
- * spoken language in the live transcript instead — see that file's doc
- * comment for why), but this attribute update still keeps the value fresh
- * for any other consumer and for this participant's own token-issued
- * baseline.
+ * every other connected client reads this (via `useSpeakerLanguages`, see
+ * `use-speaker-languages.ts`) to decide whether to duck this participant's
+ * raw mic audio and auto-play a dub instead (`DuckedRoomAudio`/
+ * `TranslatedAudioPlayer`).
  *
  * `issueCredential` (room.ts) bakes `preferredLanguage` into the room token's
  * attributes at connect time, but the token itself is fetched once and never
