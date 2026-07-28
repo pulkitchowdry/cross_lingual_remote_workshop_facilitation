@@ -31,32 +31,6 @@ interface QueueEntry {
 }
 
 /**
- * Whether a freshly-translated segment should queue for this listener at all — exported
- * (and covered by `TranslatedAudioPlayer.test.ts`) because this exact predicate getting
- * gated on `captionsVisible` for a TYPED segment too (instead of only for a spoken one)
- * was a real production regression: it silently broke the caption composer's own promise
- * ("read aloud to every learner ... even if they haven't turned on translated audio") for
- * every listener who hadn't opted into captions — see the component doc comment.
- */
-export function shouldAutoplaySegment(
-  segment: { isTyped: boolean; language: string },
-  preferredLanguage: string,
-  captionsVisible: boolean,
-  enabled: boolean,
-): boolean {
-  return segment.isTyped || (captionsVisible && (segment.language !== preferredLanguage || enabled));
-}
-
-/**
- * Whether an already-queued (or currently playing) entry should survive a
- * `captionsVisible`/`enabled` change — the cutoff-side mirror of `shouldAutoplaySegment`
- * above, same `isTyped`-is-immune reasoning.
- */
-export function shouldKeepQueuedEntry(entry: { isTyped: boolean; alwaysPlay: boolean }, captionsVisible: boolean, enabled: boolean): boolean {
-  return entry.isTyped || (captionsVisible && (enabled || entry.alwaysPlay));
-}
-
-/**
  * Translated-audio playback for the learner's caption feed — Part 3 of
  * `docs/TRANSLATION_ARCHITECTURE.md`. A spoken caption in a *different*
  * language than this listener's own auto-plays its dub — but only once this
@@ -65,27 +39,15 @@ export function shouldKeepQueuedEntry(entry: { isTyped: boolean; alwaysPlay: boo
  * locally once that's true too (see `DuckedRoomAudio`), so before then the
  * dub would just talk over perfectly audible raw mic audio instead of
  * standing in for it. With captions off, everyone hears everyone else's raw
- * audio regardless of language — that's the default.
- *
- * Facilitator- and learner-typed captions are a THIRD, unconditional case —
- * NOT gated on `captionsVisible` at all (see every `isTyped` check below).
- * Unlike a spoken cross-language segment, a typed one has no live raw mic
- * audio to talk over (the speaker didn't/couldn't speak in the first place),
- * so nothing is lost by playing it regardless of this listener's caption
- * preference — this is exactly what the caption composer's own copy
- * promises ("read aloud to every learner in their language, even if they
- * haven't turned on translated audio"). Gating typed captions on
- * `captionsVisible` too (an earlier version of this gate did) silently broke
- * that promise for every listener who hadn't opted into captions — since
- * `captionsVisible` now defaults to false, that meant nobody. `enabled` is an
- * opt-*in* for the narrower case of a same-language SPOKEN segment (the
- * listener wants to hear a dub even though they'd understand the original
- * fine) — that one stays gated on captions being on, since unlike a typed
- * caption its raw audio is genuinely live and audible, so playing a dub over
- * it unprompted is the same "talks over the speaker" problem this file
- * exists to avoid. Fetches `/api/captions/[segmentId]/audio` on demand for
- * each new segment and queues playback so overlapping captions don't talk
- * over each other.
+ * audio regardless of language — that's the default. Facilitator- and
+ * learner-typed captions are a second, independent always-play case (once
+ * captions are on) — they stand in for a speaker's voice when they can't/
+ * didn't speak, not a translation nicety. `enabled` is an opt-*in* for the
+ * narrower case of a same-language segment (the listener wants to hear a dub
+ * even though they'd understand the original fine), also only once captions
+ * are on. Fetches `/api/captions/[segmentId]/audio` on demand for each new
+ * segment and queues playback so overlapping captions don't talk over each
+ * other.
  *
  * Also rendered standalone on the dashboard's read-only transcript review
  * (facilitator/learn `page.tsx`, outside any `MeetingShellProvider` — no live
@@ -208,11 +170,11 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       hasMountedRef.current = true;
       return;
     }
-    // Typed captions always queue (see doc comment — no live raw audio to talk over, so
-    // they're never gated on captionsVisible). A spoken cross-language segment, or a
-    // same-language one this listener opted into, only queues once captions are on —
-    // otherwise its dub would talk over perfectly audible, un-ducked raw mic audio.
-    const toQueue = newlyTranslated.filter((segment) => shouldAutoplaySegment(segment, preferredLanguage, captionsVisible, enabled));
+    // No dub ever queues while this listener hasn't turned captions on — see the
+    // component doc comment. Bookkeeping above (seenIdsRef) still runs unconditionally
+    // so nothing is missed once captions do get turned on.
+    if (!captionsVisible) return;
+    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || segment.language !== preferredLanguage || enabled);
     if (toQueue.length === 0) return;
 
     queueRef.current.push(
@@ -228,22 +190,18 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
   }, [segments, enabled, captionsVisible, preferredLanguage]);
 
   useEffect(() => {
-    // A typed entry (`isTyped`) is immune to both gates below — see doc comment, it has
-    // no live raw audio to talk over — so it keeps playing/queued no matter what this
-    // listener does with captions or the opt-in checkbox. For everything else:
-    //  - Unchecking the opt-in box (or turning captions off entirely) must actually
-    //    silence playback that exists because of it, not just stop queueing new segments
-    //    — without this, whatever was already playing (or queued right behind it) kept
-    //    right on talking after the control turned off.
-    //  - Turning captions off entirely cuts off every non-typed entry, including
-    //    cross-language ones — with captions off the raw mic audio is no longer ducked
-    //    (DuckedRoomAudio), so a dub would just talk over it.
-    //  - With captions still on but the same-language opt-in unchecked, only entries
-    //    that are NOT `alwaysPlay` get cut — cross-language segments keep playing
-    //    regardless of that opt-in.
-    const keepEntry = (entry: QueueEntry) => shouldKeepQueuedEntry(entry, captionsVisible, enabled);
+    // Unchecking the opt-in box (or the listener turning captions off entirely) must
+    // actually silence playback that exists because of it, not just stop queueing new
+    // segments — without this, whatever was already playing (or queued right behind it)
+    // kept right on talking after the control turned off. Turning captions off cuts off
+    // EVERY queued/playing entry, including `alwaysPlay` ones — with captions off the raw
+    // mic audio is no longer ducked (DuckedRoomAudio), so a dub would just talk over it.
+    // With captions still on but the same-language opt-in unchecked, only entries that
+    // are NOT `alwaysPlay` get cut — typed captions and cross-language segments (see the
+    // doc comment above) keep playing regardless of that opt-in.
     const current = currentRef.current;
-    if (current && !keepEntry(current)) {
+    const cutoffCondition = !captionsVisible || (!enabled && current && !current.alwaysPlay);
+    if (current && cutoffCondition) {
       audioRef.current?.pause();
       playingRef.current = false;
       currentRef.current = null;
@@ -253,10 +211,16 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       // button around that replays the exact dub they just declined.
       setErrorKind(null);
     }
-    queueRef.current = queueRef.current.filter(keepEntry);
-    // If we just cut off the current item (or nothing was playing), resume immediately
-    // so any surviving entries aren't stranded in the queue until the next `segments`
-    // update happens to trigger playNext.
+    if (!captionsVisible) {
+      queueRef.current = [];
+      return;
+    }
+    if (enabled) return;
+    queueRef.current = queueRef.current.filter((entry) => entry.alwaysPlay);
+    // If we just cut off a non-always-play current item (or nothing was
+    // playing), resume immediately so any surviving always-play entries
+    // aren't stranded in the queue until the next `segments` update happens
+    // to trigger playNext.
     if (!playingRef.current && queueRef.current.length > 0) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, captionsVisible]);
