@@ -23,14 +23,50 @@ const dataFont = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+// Same NEXT_PUBLIC_APP_URL override that resolveAppUrl() (src/lib/env.ts) uses for
+// invite links — metadataBase can't call resolveAppUrl itself since Metadata is a
+// static export evaluated without access to the request's headers.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const DESCRIPTION =
+  "Cross-lingual remote workshop facilitation — live speech-to-text, translation, and AI-generated context (progress, decisions, blockers) so facilitators and learners can communicate across language differences in real time.";
+
 export const metadata: Metadata = {
   // A per-page `title` (see setup/join/facilitator/learn pages) lets each route have a
   // distinct document title, which is what triggers Next's built-in App Router
   // screen-reader route-change announcement — a single unchanging app-wide title never
   // fires it.
   title: { default: "Interlingo", template: "%s — Interlingo" },
-  description:
-    "Cross-lingual remote workshop facilitation prototype — facilitator dashboard and learner view with live translated captions.",
+  description: DESCRIPTION,
+  metadataBase: new URL(APP_URL),
+  keywords: [
+    "live translation",
+    "workshop facilitation",
+    "cross-lingual captions",
+    "real-time speech-to-text",
+    "remote learning",
+    "multilingual collaboration",
+  ],
+  openGraph: {
+    title: "Interlingo",
+    description: DESCRIPTION,
+    url: "/",
+    siteName: "Interlingo",
+    type: "website",
+    images: ["/opengraph-image"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Interlingo",
+    description: DESCRIPTION,
+    images: ["/opengraph-image"],
+  },
+  robots: {
+    // The app itself is entirely session/auth-gated past setup — nothing here
+    // is public content worth indexing, so opt every route out by default;
+    // robots.ts below still serves a robots.txt for well-behaved crawlers.
+    index: false,
+    follow: false,
+  },
 };
 
 // Runs before paint so a returning visitor's stored theme and accessibility
