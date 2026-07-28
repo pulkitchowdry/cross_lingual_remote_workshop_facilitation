@@ -168,6 +168,76 @@ being reverted.
 underlying iOS Safari problem this was trying to fix is still open** — see
 below.
 
+### 8. The per-speaker caption lock deadlocking a session permanently (2026-07-28)
+
+**Symptom:** "live captions are not available, try again" for most participants, most
+of the time, on Railway. The reported wording maps to `captions.connectionFailed`
+("Live captions disconnected. Try again…"), i.e. `classifyCaptionSocketClose`
+returning `kind: "dropped"` — the socket *opened*, then closed with a non-1000 code
+and an **empty** reason.
+
+**The log signature** (Railway, `web`):
+
+```
+[captions/stream] upgrade request received (sessionId=X)
+[captions/stream] upgrade request received (sessionId=X)
+[captions/stream] rejecting after upgrade: Another caption stream is already active for this speaker.
+[captions/stream] upgrade request received (sessionId=X)
+[captions/stream] rejecting after upgrade: Another caption stream is already active for this speaker.
+   … repeating indefinitely
+```
+
+**Root cause:** `server.ts`'s duplicate-capture guard was a `Set<string>` of speaker
+keys that **rejected** a second connection for the same speaker, and the entry was
+freed *only* by the server-side `ws` `close`/`error` event. Three things combined:
+
+1. **`WebSocket.close()` only initiates a close.** The server's `close` event — the
+   only thing that freed the entry — lands a network round-trip later.
+2. **`LiveCaptionStream` remounts routinely.** `MeetingSidebar` renders
+   `captionsHeader` only while `tab === "captions"`, so switching to Chat/Analytics
+   and back unmounts and remounts it; its unmount cleanup calls `stop()` (async close)
+   and the new mount calls `start()` immediately. Any remount fast enough to beat the
+   old socket's close was refused.
+3. **No liveness detection.** Neither `ws` nor the browser pings on its own, and there
+   was no keepalive here — so a socket whose peer vanished without a FIN (phone losing
+   signal, laptop sleeping, proxy dropping the flow) stayed OPEN **forever**, holding
+   the speaker key and pinning an STT stream nothing was feeding.
+
+Once any orphan existed, every subsequent attempt for that speaker was refused for the
+rest of the session, with no recovery path — and the client made it terminal by
+rendering the error and giving up rather than retrying.
+
+**Fix:**
+
+- **`server.ts`: last-writer-wins instead of reject.** `activeCaptionStreamSpeakers`
+  (a `Set`) became `activeCaptionStreamSockets` (a `Map<string, WebSocket>`); a newer
+  connection **evicts** the older one with close code `1012` and a reason. This is the
+  semantic a reconnect actually wants — the newest socket is the one with a live
+  `MediaRecorder` behind it. The release callback is guarded to only delete the entry
+  if it still points at *that* socket, so the evicted socket's own late `close` event
+  can't clobber the newer socket's claim.
+- **`server.ts`: WebSocket keepalive.** A 30s ping/pong sweep over `wss.clients`
+  `terminate()`s any socket that missed the previous round's pong, which fires `close`
+  and so releases the speaker key *and* tears down the STT stream. (`wss.clients` is
+  populated even under `noServer: true` — `ws`'s `completeUpgrade` adds to it whenever
+  `clientTracking` is on, the default.)
+- **`LiveCaptionStream.tsx`: bounded automatic reconnect.** A non-user-initiated close
+  now retries with exponential backoff (500ms → 8s, 5 attempts, ladder reset on every
+  socket that reaches `OPEN`) instead of dying at the first drop. Close code `1012` is
+  special-cased to tear down *silently* — a newer socket in the same browser already
+  owns the stream, and retrying would evict it, which would retry and evict this one,
+  ping-ponging forever. A `server-reason` close is never retried (the verdict won't
+  change on its own and its message is already actionable); only "opaque"/"dropped"
+  closes are.
+- The retry policy lives in `caption-socket-client.ts`'s `decideCaptionSocketReconnect`
+  as a pure function, unit-tested alongside `classifyCaptionSocketClose` — no live
+  socket, `MediaRecorder`, or fake timers needed.
+
+**Not yet addressed (deliberately):** `LiveCaptionStream` still unmounts on a
+captions-tab switch. With eviction + backoff that now recovers cleanly instead of
+deadlocking, but hoisting the socket into a provider so it survives tab switches would
+remove the churn entirely — the better long-term fix.
+
 ## Still open
 
 ### Safari / iPhone: live captions never connect
@@ -202,7 +272,8 @@ underlying theory. **Do not re-attempt this blind.** Before shipping a fix:
 ### LiveKit Cloud connectivity (Railway → LiveKit Cloud region-redirect)
 
 Still intermittent. Railway's container network occasionally can't reach
-LiveKit Cloud's region-redirect endpoint over IPv6 (`ENETUNREACH`), which
+LiveKit Cloud's region-redirect endpoint over IPv6 (`ENETUNREACH`, and
+`ECONNREFUSED` on the region-lookup URL), which
 `@livekit/rtc-node`'s native client doesn't fall back from to IPv4 the way
 Node's own `fetch()` does. Neither the `ca-certificates` fix nor the
 `/etc/gai.conf` IPv4-preference fix (both in the `Dockerfile`) resolved it.
@@ -210,6 +281,62 @@ This is why the browser-mic fallback exists at all, and why `caption-agent.ts`
 capturing the facilitator is itself intermittent — when it fails to connect,
 the facilitator's own browser-mic fallback picks up the slack (same pattern
 as the learner side, minus the duplicate-capture risk since that path is
-facilitator-only). Not something fixable from application code; would need
-LiveKit Cloud support or a self-hosted LiveKit deployment with a real UDP
-port range (which Railway itself cannot provide — see `DEPLOYMENT.md`).
+facilitator-only).
+
+**This is documented, expected Railway behavior, not a mystery** (found
+2026-07-28, postdating the entry above): *"Outbound IPv6 is disabled by
+default"*, and while disabled *"IPv6 connection attempts fail with `Network is
+unreachable` or `ENETUNREACH`"* —
+[docs.railway.com/networking/outbound-networking](https://docs.railway.com/networking/outbound-networking).
+Two consequences worth knowing before spending more time on this:
+
+- **There is a toggle.** Service Settings → Networking → "Enable Outbound
+  IPv6" (staged change, needs a redeploy), or
+  `railway outbound-network ipv6 enable`
+  ([CLI docs](https://docs.railway.com/cli/outbound-network)). Enabling it
+  *"does not affect your service's existing IPv4 outbound connectivity."*
+  Caveat: a [community report](https://station.railway.com/questions/i-pv6-feature-flag-can-t-connect-to-sup-38b41ca1)
+  says IPv6 routing still failed to reach some hosts even with the flag on, so
+  staying IPv4-only and stopping the native client from attempting AAAA at all
+  is the more reliable direction.
+- **Why `/etc/gai.conf` didn't work:** it only reorders `getaddrinfo` results.
+  Rust clients that call `to_socket_addrs` and iterate, or that use their own
+  resolver, routinely ignore glibc `precedence` rules. Railway documents **no**
+  env var for forcing IPv4 (`NODE_OPTIONS`, `--dns-result-order`,
+  `autoSelectFamily` — all absent from their docs); the toggle is the only
+  documented control.
+
+**The deeper issue is architectural.** LiveKit documents agent workers as a
+*dedicated deployment*, and embedding one in the Next.js server process fights
+four documented assumptions: the default `load_fnc` is **host CPU** with a 0.7
+threshold (so Next.js request traffic makes the worker refuse jobs), agents want
+a **10+ minute** SIGTERM drain while a web server wants seconds (every deploy
+either kills live sessions or stalls the rollout), the two scale on opposite
+axes, and a crash in either takes out both. It also silently binds :8081 for its
+own health check. See
+[docs.livekit.io/deploy/custom/deployments](https://docs.livekit.io/deploy/custom/deployments)
+and [agent server options](https://docs.livekit.io/agents/server/options).
+
+The supported fixes, in increasing order of effort:
+
+1. **Split the worker into its own Railway service.** This also deletes
+   `@livekit/rtc-node` from the `web` image, making the IPv6 question moot for
+   the service that actually serves users.
+2. **LiveKit Cloud Agents** (`lk agent create` / `lk agent deploy`) — GA, Node
+   is first-class with an official Dockerfile template, and rolling deploys
+   drain active sessions for up to an hour, which Railway can't do.
+   [docs.livekit.io/deploy/agents](https://docs.livekit.io/deploy/agents).
+   ~$0.01/agent-session-minute.
+
+**Worth knowing:** there is **no** hosted, agent-less server-side transcription
+— every LiveKit transcription path runs through an agent you own (LiveKit
+Inference is a hosted *model gateway*, not a transcription service). But caption
+*delivery* is first-class and this app is reinventing it: `AgentSession`
+publishes to the `lk.transcription` text-stream topic **by default**, consumed
+client-side with `useTranscriptions()`. The custom DataChannel push is a second,
+redundant path. Persisting to Postgres, on the other hand, is legitimately the
+app's job — LiveKit explicitly does not persist text streams, and late joiners
+receive nothing of a stream already in progress, so app-side backfill is
+required. See
+[text & transcriptions](https://docs.livekit.io/agents/multimodality/text) and
+[text streams](https://docs.livekit.io/transport/data/text-streams).

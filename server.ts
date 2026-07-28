@@ -84,6 +84,41 @@ async function main() {
 
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
+
+  /**
+   * WebSocket-level liveness for `/api/captions/stream`. Neither `ws` nor the browser
+   * sends keepalive pings on its own, and a TCP connection that dies without a FIN (a
+   * laptop sleeping, a phone losing signal, a NAT/proxy dropping the flow — all routine
+   * on mobile, and Railway publishes no egress idle timeout) leaves the server side
+   * OPEN indefinitely. That orphan used to hold this session's entry in
+   * `activeCaptionStreamSockets` (declared below) forever, and it still pins an STT
+   * stream (a paid Deepgram connection, or a local-inference flush timer) that nothing
+   * is feeding. That map's eviction policy fixes the caption-blocking symptom; this
+   * sweep is what reclaims the resources.
+   *
+   * `wss.clients` is populated even though this server is `noServer: true` and never
+   * emits its own `connection` event — `ws`'s `completeUpgrade` (reached via
+   * `handleUpgrade` below) adds to it whenever `clientTracking` is on, which is the
+   * default.
+   */
+  const CAPTION_SOCKET_PING_INTERVAL_MS = 30_000;
+  const captionSocketAlive = new WeakSet<import("ws").WebSocket>();
+  const captionSocketKeepalive = setInterval(() => {
+    for (const client of wss.clients) {
+      // Missed the previous round's pong — the peer is gone, so drop it. `terminate()`
+      // (not `close()`) because a half-open socket will never complete a close
+      // handshake; this fires the `close` event that runs `releaseSpeakerKey` and
+      // tears down the STT stream (`captions-socket.ts`'s own `close` handler).
+      if (!captionSocketAlive.has(client)) {
+        client.terminate();
+        continue;
+      }
+      captionSocketAlive.delete(client);
+      client.ping();
+    }
+  }, CAPTION_SOCKET_PING_INTERVAL_MS);
+  // Nothing here should keep the process alive on its own if the HTTP server is closing.
+  captionSocketKeepalive.unref();
   // Next's own dev tooling (HMR, the React DevTools bridge, etc.) upgrades
   // WebSocket connections too — most visibly `/_next/webpack-hmr`. Destroying
   // those sockets (the old behavior here) makes Next's dev client believe the
@@ -96,18 +131,30 @@ async function main() {
   const nextUpgradeHandler = app.getUpgradeHandler();
 
   /**
-   * Guards against two concurrent `/api/captions/stream` connections for the SAME
-   * speaker identity (e.g. the same facilitator or learner with two tabs/devices open,
-   * mic unmuted in both) — without this, both sockets would run independent STT
-   * pipelines against the same speech and duplicate every caption line, the same bug
-   * class the `captionAgentActive` check below guards against for the LiveKit
-   * caption-agent worker vs. a browser-mic socket (that check has nothing to say about
-   * two browser-mic sockets racing each other). In-memory only, matching this app's
+   * Tracks the ONE live `/api/captions/stream` socket per speaker identity, so two
+   * concurrent connections for the same speaker never run independent STT pipelines
+   * against the same speech and duplicate every caption line (the same bug class the
+   * `captionAgentActive` check below guards against for the LiveKit caption-agent
+   * worker vs. a browser-mic socket, which has nothing to say about two browser-mic
+   * sockets racing each other). In-memory only, matching this app's
    * single-persistent-process architecture (same as `captionAgentActive`'s own
-   * duplicate-guard state) — entries are added and removed synchronously around each
-   * socket's lifetime, no DB table needed.
+   * duplicate-guard state) — no DB table needed.
+   *
+   * A newer connection EVICTS the older one (last-writer-wins) rather than being
+   * rejected. Rejecting was a permanent, unrecoverable deadlock in production: the
+   * client (`LiveCaptionStream.tsx`) remounts on every captions-tab switch and reopens
+   * this socket, and `WebSocket.close()` only *initiates* a close — the server's own
+   * `close` event (the only thing that used to free this entry) lands a network
+   * round-trip later. Any remount fast enough to beat that, or any client that lost its
+   * socket reference without closing it, left an orphaned-but-OPEN socket holding the
+   * entry forever, since nothing here pings for liveness. Every subsequent attempt was
+   * then refused with "Another caption stream is already active for this speaker" — the
+   * exact `upgrade received` → `rejecting after upgrade` loop seen in Railway's logs,
+   * with captions dead for the rest of the session. Eviction makes a reconnect
+   * authoritative, which is the semantic a reconnect actually wants: the newest socket
+   * is the one with a live `MediaRecorder` behind it.
    */
-  const activeCaptionStreamSpeakers = new Set<string>();
+  const activeCaptionStreamSockets = new Map<string, import("ws").WebSocket>();
   function captionStreamSpeakerKey(sessionId: string, speaker: CaptionSpeaker): string {
     return speaker.role === "facilitator" ? `${sessionId}:facilitator` : `${sessionId}:learner:${speaker.participantId}`;
   }
@@ -160,15 +207,30 @@ async function main() {
         : ((await resolveLearnerSpeaker(found.id, speaker.participantId))?.language ?? (found.sourceLanguage as SupportedLanguage));
 
     // Everything above this point is async (DB lookups, dynamic imports); everything
-    // from here down is synchronous, so this check-then-add is atomic against a second
+    // from here down is synchronous, so this evict-then-claim is atomic against a second
     // connection attempt for the same speaker racing this one — no `await` runs between
-    // the `.has()` check and the `.add()` below.
+    // reading the previous socket and installing this one below.
     const speakerKey = captionStreamSpeakerKey(sessionId, speaker);
-    if (activeCaptionStreamSpeakers.has(speakerKey)) {
-      throw new Error("Another caption stream is already active for this speaker.");
+    const superseded = activeCaptionStreamSockets.get(speakerKey);
+    activeCaptionStreamSockets.set(speakerKey, ws);
+    if (superseded) {
+      // 1012 ("service restart") rather than 1011: this is an orderly handover, not an
+      // error, and it carries a reason so the *evicted* client reports something
+      // specific instead of a generic "disconnected". That client has already been
+      // replaced by this newer socket in the same browser, so in practice nothing is
+      // listening to it — but a second tab/device genuinely losing the stream should say
+      // why. Closed AFTER this socket claims the entry above so the guard below sees the
+      // map already pointing at `ws` and can't clobber it.
+      console.log(`[captions/stream] superseding an older caption stream for ${speakerKey}`);
+      closeWithReason(superseded, 1012, "Superseded by a newer caption stream for this speaker.");
     }
-    activeCaptionStreamSpeakers.add(speakerKey);
-    const releaseSpeakerKey = () => activeCaptionStreamSpeakers.delete(speakerKey);
+    // Only free the entry if it still points at THIS socket. Without the guard, the
+    // evicted socket's own `close` event (which fires after the newer socket has already
+    // claimed the key) would delete the *newer* socket's entry, silently reintroducing
+    // the duplicate-pipeline bug this map exists to prevent.
+    const releaseSpeakerKey = () => {
+      if (activeCaptionStreamSockets.get(speakerKey) === ws) activeCaptionStreamSockets.delete(speakerKey);
+    };
     ws.on("close", releaseSpeakerKey);
     ws.on("error", releaseSpeakerKey);
 
@@ -200,6 +262,13 @@ async function main() {
     // it" — see caption-socket-client.ts's `"opaque"` classification, which is what
     // silently absorbs this class of abrupt, reasonless close.
     wss.handleUpgrade(req, socket, head, (ws) => {
+      // Seeded alive so the first keepalive sweep doesn't terminate a socket that simply
+      // hasn't been pinged yet, then re-marked on every pong (and on any inbound frame —
+      // a client actively streaming audio is self-evidently alive, and some proxies
+      // forward data frames while dropping control frames).
+      captionSocketAlive.add(ws);
+      ws.on("pong", () => captionSocketAlive.add(ws));
+      ws.on("message", () => captionSocketAlive.add(ws));
       void authorizeAndAttachCaptionSocket(req, query, ws).catch((error) => {
         // Completing the handshake and closing with a reason (rather than destroying the
         // raw TCP socket) lets the browser's `WebSocket.onclose` report *why* the
