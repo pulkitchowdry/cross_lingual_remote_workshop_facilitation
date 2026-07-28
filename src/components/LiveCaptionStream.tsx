@@ -50,6 +50,13 @@ export function LiveCaptionStream({
    */
   agentCapturing?: boolean;
 }) {
+  useEffect(() => {
+    console.log("[captions] LiveCaptionStream mounted");
+
+    return () => {
+      console.log("[captions] LiveCaptionStream unmounted");
+    };
+  }, []);
   const dict = getDictionary(lang).captions;
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
   // The Confidence Score's network signal (issue #130's "Future Enhancements") for this
@@ -95,6 +102,7 @@ export function LiveCaptionStream({
    * `useCallback` dependency.
    */
   const startRef = useRef<() => void>(() => {});
+  const startingRef = useRef(false);
   /**
    * Whether capture *should* still be running, mirrored for the same reason `qualityRef`
    * is: `onclose` is registered once per `start()` call, so reading these values directly
@@ -148,19 +156,26 @@ export function LiveCaptionStream({
   }, []);
 
   const stop = useCallback(() => {
+    console.log("[captions] STOP");
+
     activeRef.current = false;
     stoppedByUserRef.current = true;
     hasOpenedRef.current = false;
+
     if (reconnectTimerRef.current !== null) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+
     recorderRef.current?.stop();
     recorderRef.current = null;
+
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+
     socketRef.current?.close();
     socketRef.current = null;
+
     setIsStreaming(false);
   }, []);
 
@@ -178,13 +193,38 @@ export function LiveCaptionStream({
   }, [agentCapturing, isStreaming, stop]);
 
   const start = useCallback(async () => {
+    // Prevent multiple concurrent start attempts.
+    if (startingRef.current) {
+      console.log("[captions] start ignored (already starting)");
+      return;
+    }
+
+    const existing = socketRef.current;
+    if (
+      existing &&
+      (existing.readyState === WebSocket.CONNECTING ||
+        existing.readyState === WebSocket.OPEN)
+    ) {
+      console.log(
+        "[captions] start ignored (socket already exists)",
+        existing.readyState,
+      );
+      return;
+    }
+
+    startingRef.current = true;
+
+    console.log("[captions] START");
+
     activeRef.current = true;
     setError(null);
     stoppedByUserRef.current = false;
     hasOpenedRef.current = false;
     lastServerMessageRef.current = null;
     setIsConnecting(true);
+
     try {
+      // Existing code...
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
       socketRef.current = socket;
@@ -325,7 +365,8 @@ export function LiveCaptionStream({
       setError(dict.micDenied);
       stop();
     } finally {
-      setIsConnecting(false);
+        startingRef.current = false;
+        setIsConnecting(false);
     }
   }, [sessionId, stop, acquireMicStream, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
@@ -339,12 +380,19 @@ export function LiveCaptionStream({
   // there's nothing separate to click or forget. Skipped entirely while the server-side
   // agent already covers this identity (`agentCapturing`) to avoid duplicating captions.
   useEffect(() => {
-    if (agentCapturing) return;
-    if (isMicrophoneEnabled) {
-      if (!activeRef.current) void start();
-    } else if (activeRef.current) {
-      stop();
-    }
+  console.log("[captions] mic effect", {
+    mic: isMicrophoneEnabled,
+    agentCapturing,
+    active: activeRef.current,
+  });
+
+  if (agentCapturing) return;
+
+  if (isMicrophoneEnabled) {
+    if (!activeRef.current) void start();
+  } else if (activeRef.current) {
+    stop();
+  }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMicrophoneEnabled, agentCapturing]);
 

@@ -150,6 +150,14 @@ export function LiveSessionRoom({
   /** Facilitator-only "Analytics" sidebar tab (see MeetingSidebar) — omitted entirely for learners. */
   analyticsView?: FacilitatorAnalyticsView;
 }) {
+  console.log("[room] render");
+  useEffect(() => {
+  console.log("[room] mounted");
+
+  return () => {
+    console.log("[room] unmounted");
+  };
+}, []);
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -300,12 +308,17 @@ export function LiveSessionRoom({
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
       try {
+        console.log("[room] fetchCredentials", {
+        background,
+        time: new Date().toISOString(),
+      });
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, role }),
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
+        console.log("new token", payload.token.slice(0,20));
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
         // A background refresh can still be in flight when the user clicks Leave —
         // `hasLeftRef` is set synchronously at that moment (see handleDisconnected), but
@@ -336,6 +349,7 @@ export function LiveSessionRoom({
           }
         }
         setCredentials(payload);
+        console.log("[room] token", payload.token.substring(0, 20));
         if (!background) setError(null);
       } catch (reason) {
         // A background refresh failing (e.g. a transient network blip) must not tear
