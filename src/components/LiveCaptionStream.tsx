@@ -103,6 +103,25 @@ export function LiveCaptionStream({
    */
   const startRef = useRef<() => void>(() => {});
   const startingRef = useRef(false);
+  // ─── TEMPORARY DIAGNOSTICS (remove alongside server.ts's `[captions/diag]` block) ───
+  // The existing logs show START → SOCKET CLOSED with no timing at all, so there is no way
+  // to tell a socket that died in 200ms (a handshake/auth-shaped failure) from one that
+  // lived 30s (a liveness/proxy-shaped failure) — and those have opposite root causes.
+  // These also record whether `MediaRecorder` ever produced a chunk, which decides whether
+  // "no captions" is a capture problem or a transport problem.
+  const startedAtRef = useRef(0);
+  const openedAtRef = useRef(0);
+  const chunksSentRef = useRef(0);
+  const bytesSentRef = useRef(0);
+  const diagRef = useRef(() => ({
+    sinceStartMs: startedAtRef.current ? Date.now() - startedAtRef.current : null,
+    sinceOpenMs: openedAtRef.current ? Date.now() - openedAtRef.current : null,
+    chunksSent: chunksSentRef.current,
+    bytesSent: bytesSentRef.current,
+    visibility: typeof document === "undefined" ? "?" : document.visibilityState,
+    online: typeof navigator === "undefined" ? "?" : navigator.onLine,
+  }));
+  // ─── end temporary diagnostics ───
   /**
    * Whether capture *should* still be running, mirrored for the same reason `qualityRef`
    * is: `onclose` is registered once per `start()` call, so reading these values directly
@@ -214,7 +233,11 @@ export function LiveCaptionStream({
 
     startingRef.current = true;
 
-    console.log("[captions] START");
+    startedAtRef.current = Date.now();
+    openedAtRef.current = 0;
+    chunksSentRef.current = 0;
+    bytesSentRef.current = 0;
+    console.log("[captions] START", new Date().toISOString());
 
     activeRef.current = true;
     setError(null);
@@ -233,6 +256,8 @@ export function LiveCaptionStream({
         // not claim `hasOpenedRef` (which decides "opaque" vs. "dropped" for the *current*
         // socket) or reset the current socket's backoff ladder.
         if (socketRef.current !== socket) return;
+        openedAtRef.current = Date.now();
+        console.log("[captions] SOCKET OPEN", diagRef.current());
         hasOpenedRef.current = true;
         // Reaching OPEN is the only real proof the path works end to end, so the backoff
         // ladder resets here rather than on a successful `start()` call — otherwise a
@@ -279,6 +304,7 @@ export function LiveCaptionStream({
         stoppedByUser: stoppedByUserRef.current,
         hasOpened: hasOpenedRef.current,
         readyState: socket.readyState,
+        ...diagRef.current(),
       });
         // A stale socket's close must never touch shared state. `stop()` acts on
         // `socketRef`/`recorderRef`/`streamRef`, which by the time an *older* socket closes
@@ -335,6 +361,13 @@ export function LiveCaptionStream({
       };
 
       const stream = await acquireMicStream();
+      // Which of the two capture paths ran, and how long it took, is the other thing the
+      // current logs can't show — a `getUserMedia` fallback here means the clone fix isn't
+      // actually engaging, which reintroduces the dual-capture republish loop.
+      console.log("[captions] MIC ACQUIRED", {
+        ...diagRef.current(),
+        tracks: stream.getTracks().map((t) => ({ id: t.id.slice(0, 8), readyState: t.readyState, muted: t.muted, enabled: t.enabled })),
+      });
       // The WebSocket can already have failed and closed (running `stop()` via `onclose`
       // above) while `getUserMedia`'s permission prompt was still pending — resolving
       // after that must not resurrect a "streaming" state or leave the mic hot with
@@ -355,7 +388,17 @@ export function LiveCaptionStream({
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
+        if (event.data.size === 0 || socket.readyState !== WebSocket.OPEN) {
+          console.log("[captions] CHUNK DROPPED", { size: event.data.size, readyState: socket.readyState, ...diagRef.current() });
+          return;
+        }
+        chunksSentRef.current += 1;
+        bytesSentRef.current += event.data.size;
+        // Only the first and then every 20th (~5s) — enough to prove audio is flowing without
+        // drowning the console at 4 chunks/second.
+        if (chunksSentRef.current === 1 || chunksSentRef.current % 20 === 0) {
+          console.log("[captions] CHUNK SENT", diagRef.current());
+        }
         // A small JSON text frame alongside each binary audio chunk — captions-socket.ts
         // branches on the WebSocket frame's own binary/text flag to tell these apart, so
         // this must go out as its own `send()` call, not merged into the audio buffer.
@@ -369,6 +412,7 @@ export function LiveCaptionStream({
       };
 
       recorder.start(CHUNK_INTERVAL_MS);
+      console.log("[captions] RECORDER STARTED", { mimeType: recorder.mimeType, state: recorder.state, ...diagRef.current() });
       setIsStreaming(true);
     } catch (err) {
       console.log("[captions] START FAILED", err);

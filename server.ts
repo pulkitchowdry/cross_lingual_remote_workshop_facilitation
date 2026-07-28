@@ -85,6 +85,49 @@ async function main() {
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
 
+  // ─────────────────── TEMPORARY DIAGNOSTICS — remove once root-caused ───────────────────
+  //
+  // The client-side logs on this branch establish that the caption socket *reaches OPEN*
+  // and then closes with code 1006 and an EMPTY reason, over and over. 1006 + empty reason
+  // means the browser never received a close frame at all, which rules out every one of
+  // this app's own orderly closes — `closeWithReason` (1011 with text), the 1012 eviction,
+  // and `captions-socket.ts`'s `onError` path all send a frame with a reason. Exactly four
+  // things can produce a frameless close, and nothing logged so far distinguishes them:
+  //
+  //   1. `client.terminate()` — the keepalive sweep below (added on this branch).
+  //   2. This process dying and being restarted (a new `boot=` below proves it).
+  //   3. Something between the browser and this process resetting the TCP flow — the
+  //      Railway edge proxy, or a proxy that drops WS control frames so the sweep in (1)
+  //      sees a healthy socket as dead.
+  //   4. The upgrade being answered 101 by the edge without this process ever seeing it
+  //      (in which case there is no `upgrade request received` line for the connection).
+  //
+  // Every log below exists to separate those four. They're deliberately verbose and
+  // deliberately temporary — delete this block, the `diag`/`markFrame` calls in the upgrade
+  // handler, and the sweep's logging once the cause is known.
+  const bootId = Math.random().toString(36).slice(2, 8);
+  console.log(`[captions/diag] boot=${bootId} pid=${process.pid} node=${process.version}`);
+  // `uncaughtExceptionMonitor` (not `uncaughtException`) observes without installing a
+  // handler, so the process still exits exactly as it would have — a diagnostic must not
+  // change the very behavior it's measuring. `unhandledRejection` has no monitor variant,
+  // so it rethrows to preserve Node's default crash semantics.
+  process.on("uncaughtExceptionMonitor", (error) => console.error(`[captions/diag] boot=${bootId} uncaughtException:`, error));
+  process.on("unhandledRejection", (reason) => {
+    console.error(`[captions/diag] boot=${bootId} unhandledRejection:`, reason);
+    throw reason;
+  });
+
+  type CaptionSocketDiag = { id: string; sessionId: string; upgradeAtMs: number; openAtMs: number; binaryFrames: number; textFrames: number; bytes: number; pongs: number; pings: number; lastFrameAtMs: number };
+  const captionSocketDiag = new WeakMap<import("ws").WebSocket, CaptionSocketDiag>();
+  let captionSocketSeq = 0;
+  const sinceMs = (from: number) => `${Date.now() - from}ms`;
+  function diagLine(ws: import("ws").WebSocket): string {
+    const d = captionSocketDiag.get(ws);
+    if (!d) return "sock=? (untracked)";
+    return `sock=${d.id} boot=${bootId} age=${sinceMs(d.upgradeAtMs)} sinceFrame=${d.lastFrameAtMs ? sinceMs(d.lastFrameAtMs) : "never"} binary=${d.binaryFrames} text=${d.textFrames} bytes=${d.bytes} pings=${d.pings} pongs=${d.pongs}`;
+  }
+  // ──────────────────────────── end temporary diagnostics ────────────────────────────
+
   /**
    * WebSocket-level liveness for `/api/captions/stream`. Neither `ws` nor the browser
    * sends keepalive pings on its own, and a TCP connection that dies without a FIN (a
@@ -110,10 +153,16 @@ async function main() {
       // handshake; this fires the `close` event that runs `releaseSpeakerKey` and
       // tears down the STT stream (`captions-socket.ts`'s own `close` handler).
       if (!captionSocketAlive.has(client)) {
+        // TEMPORARY DIAGNOSTIC: this is candidate (1) for the frameless 1006 — if this line
+        // appears ~30s before each client-side "SOCKET CLOSED", the sweep is the killer, and
+        // `binary=`/`pongs=` say whether it killed a socket that was actually still healthy.
+        console.warn(`[captions/diag] keepalive TERMINATE (missed pong) ${diagLine(client)}`);
         client.terminate();
         continue;
       }
       captionSocketAlive.delete(client);
+      const diag = captionSocketDiag.get(client);
+      if (diag) diag.pings += 1;
       client.ping();
     }
   }, CAPTION_SOCKET_PING_INTERVAL_MS);
@@ -221,7 +270,7 @@ async function main() {
       // listening to it — but a second tab/device genuinely losing the stream should say
       // why. Closed AFTER this socket claims the entry above so the guard below sees the
       // map already pointing at `ws` and can't clobber it.
-      console.log(`[captions/stream] superseding an older caption stream for ${speakerKey}`);
+      console.log(`[captions/stream] superseding an older caption stream for ${speakerKey} (evicted ${diagLine(superseded)}, in favour of ${diagLine(ws)})`);
       closeWithReason(superseded, 1012, "Superseded by a newer caption stream for this speaker.");
     }
     // Only free the entry if it still points at THIS socket. Without the guard, the
@@ -235,6 +284,9 @@ async function main() {
     ws.on("error", releaseSpeakerKey);
 
     attachCaptionSocket(ws, found, speaker, initialLanguage);
+    // TEMPORARY DIAGNOSTIC: proves the socket was fully wired to an STT stream, so any
+    // later close is a *live* connection dying rather than a rejection in disguise.
+    console.log(`[captions/diag] attached speaker=${speakerKey} lang=${initialLanguage} mode=${found.translationMode} ${diagLine(ws)}`);
   }
 
   server.on("upgrade", async (req, socket, head) => {
@@ -244,6 +296,16 @@ async function main() {
       return;
     }
     console.log(`[captions/stream] upgrade request received (sessionId=${query.sessionId ?? "none"})`);
+    // TEMPORARY DIAGNOSTIC: candidate (4) — if a client-side "SOCKET CLOSED" has no matching
+    // `sock=` line here at all, the 101 the browser saw was synthesized by the edge and this
+    // process never received the upgrade. `x-forwarded-*`/`via` say what's in the path.
+    const upgradeAtMs = Date.now();
+    const socketId = `s${++captionSocketSeq}`;
+    console.log(
+      `[captions/diag] upgrade sock=${socketId} boot=${bootId} sessionId=${query.sessionId ?? "none"}` +
+        ` xff=${req.headers["x-forwarded-for"] ?? "-"} xfproto=${req.headers["x-forwarded-proto"] ?? "-"} via=${req.headers["via"] ?? "-"}` +
+        ` ext=${req.headers["sec-websocket-extensions"] ?? "-"} ua=${(req.headers["user-agent"] ?? "-").slice(0, 60)}`,
+    );
     // `wss.handleUpgrade` is called immediately and synchronously here, before any
     // `await` — this is deliberate, not just style. This app's browser-mic caption path
     // has a long-standing, deployment-specific quirk (see issue #102, #106): on at
@@ -267,8 +329,50 @@ async function main() {
       // a client actively streaming audio is self-evidently alive, and some proxies
       // forward data frames while dropping control frames).
       captionSocketAlive.add(ws);
-      ws.on("pong", () => captionSocketAlive.add(ws));
-      ws.on("message", () => captionSocketAlive.add(ws));
+      // ─── TEMPORARY DIAGNOSTICS for this socket's whole lifetime ───
+      const diag: CaptionSocketDiag = {
+        id: socketId,
+        sessionId: typeof query.sessionId === "string" ? query.sessionId : "none",
+        upgradeAtMs,
+        openAtMs: Date.now(),
+        binaryFrames: 0,
+        textFrames: 0,
+        bytes: 0,
+        pongs: 0,
+        pings: 0,
+        lastFrameAtMs: 0,
+      };
+      captionSocketDiag.set(ws, diag);
+      console.log(`[captions/diag] handshake complete (101 sent) sock=${socketId} boot=${bootId} handshake=${sinceMs(upgradeAtMs)}`);
+      ws.on("pong", () => {
+        diag.pongs += 1;
+        // The FIRST pong is the one that matters: it proves WS control frames survive the
+        // path between this process and the browser, which is what candidate (3) turns on.
+        if (diag.pongs === 1) console.log(`[captions/diag] first pong ${diagLine(ws)}`);
+        captionSocketAlive.add(ws);
+      });
+      ws.on("message", (data, isBinary) => {
+        const size = Buffer.isBuffer(data) ? data.byteLength : 0;
+        if (isBinary) {
+          diag.binaryFrames += 1;
+          diag.bytes += size;
+          // Audio actually arriving is the difference between "the socket is fine but STT is
+          // broken" and "the socket dies before a single chunk lands" — the client-side logs
+          // cannot tell those apart, and they point at completely different root causes.
+          if (diag.binaryFrames === 1) console.log(`[captions/diag] first audio chunk (${size}B) ${diagLine(ws)}`);
+        } else {
+          diag.textFrames += 1;
+        }
+        diag.lastFrameAtMs = Date.now();
+        captionSocketAlive.add(ws);
+      });
+      ws.on("close", (code, reason) => {
+        console.log(`[captions/diag] CLOSED code=${code} reason="${reason.toString().slice(0, 120)}" ${diagLine(ws)}`);
+      });
+      ws.on("error", (error) => {
+        console.error(`[captions/diag] SOCKET ERROR ${diagLine(ws)}:`, error);
+      });
+      // ─── end temporary diagnostics ───
       void authorizeAndAttachCaptionSocket(req, query, ws).catch((error) => {
         // Completing the handshake and closing with a reason (rather than destroying the
         // raw TCP socket) lets the browser's `WebSocket.onclose` report *why* the

@@ -240,6 +240,71 @@ remove the churn entirely — the better long-term fix.
 
 ## Still open
 
+### The frameless 1006 reconnect loop (under investigation, `fix/testing-stt3`)
+
+**Symptom:** on a facilitator join with `agentCapturing: false`, the caption status
+indicator flickers on and off indefinitely. Client console, repeating:
+
+```
+[captions] START
+[captions] SOCKET CLOSED {code: 1006, reason: '', wasClean: false, stoppedByUser: false, hasOpened: true}
+[captions] recovery {kind: 'reconnect', delayMs: 500}
+[captions] STOP
+```
+
+**This is the same underlying failure as §8, not a new one.** §8's fix (eviction +
+keepalive + bounded reconnect) changed the *presentation* — a single terminal "Live
+captions disconnected. Try again" became a self-healing loop — but the socket is still
+dying exactly as it was: §8 describes "the socket *opened*, then closed with a non-1000
+code and an **empty** reason," which is this signature verbatim. The `Another caption
+stream is already active for this speaker` deadlock was real and is fixed; it was a
+*consequence* of sockets dying abnormally, not the cause.
+
+**What `code: 1006, reason: ''` rules out.** 1006 with an empty reason means the browser
+never received a close frame (MDN: browsers zero out `code`/`reason` when the connection
+drops without a server-acknowledged close). Every orderly close this app performs sends
+a frame *with* text — `closeWithReason(ws, 1011, …)` for all seven of
+`authorizeAndAttachCaptionSocket`'s rejections, `1012` for the eviction handover, and
+`captions-socket.ts`'s `onError` for every STT-tier failure (Deepgram close, local
+tier + disabled cloud fallback, `openStream` throwing). So **none** of those are what's
+happening here, and neither is any STT/auth/session-state problem — chasing them is
+chasing the wrong layer. `delayMs: 500` on every single cycle independently confirms
+the socket reaches `OPEN` each time (the ladder resets in `onopen`).
+
+**The four remaining candidates**, all transport-level:
+
+1. `client.terminate()` in `server.ts`'s keepalive sweep killing a healthy socket —
+   e.g. Railway's edge not forwarding WS ping/pong control frames, which the sweep
+   reads as a missed pong. Note the sweep is *new* on this branch, so it can't explain
+   §8's identical signature, but it can now add to it.
+2. The `web` process dying and restarting under each connection.
+3. The Railway edge proxy resetting the flow.
+4. The edge answering `101` itself without the upgrade ever reaching this process.
+
+**Why the existing logs can't pick between them:** they are client-only and carry no
+timing. A socket that dies in 200ms (handshake/auth-shaped) and one that lives 30s
+(liveness/proxy-shaped) print identically, and those have opposite causes. Nothing
+records whether `MediaRecorder` ever produced a chunk, so "no captions" can't be
+separated into a capture problem vs. a transport problem either.
+
+**Instrumentation added for the next run** (all `[captions/diag]`, all marked
+TEMPORARY — delete once root-caused): server-side per-socket lifetime logging in
+`server.ts` (upgrade → 101 → attach → first pong → first audio chunk → close, with a
+`boot=` id so a process restart is unmistakable, and an explicit line when the sweep
+terminates), plus client-side timestamps, mic-acquisition path/track state, recorder
+mimeType, and chunk-send counters in `LiveCaptionStream.tsx`.
+
+**Reproduce with both halves captured at once** — the Railway `web` service log and the
+browser console from the *same* join, since the whole point is correlating them:
+
+- No `[captions/diag] upgrade sock=…` for a socket the client saw open → candidate 4.
+- A changing `boot=` → candidate 2.
+- `keepalive TERMINATE` ~30s before each client close, with `binary=` climbing (audio
+  was flowing) and `pongs=0` → candidate 1, and the control-frame theory with it.
+- `CLOSED` logged server-side with `age=` and no terminate/eviction → candidate 3.
+- `first audio chunk` never appearing while the client logs `CHUNK SENT` → the frames
+  are dying in the path, not in this app.
+
 ### Safari / iPhone: live captions never connect
 
 This is **not fixed**. The leading (unconfirmed) theory is the dual
