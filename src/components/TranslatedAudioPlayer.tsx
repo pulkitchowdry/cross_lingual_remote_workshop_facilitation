@@ -256,7 +256,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           className="hidden"
         />
         {error && (
-          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
             {error}
           </p>
         )}
@@ -264,7 +264,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           <button
             type="button"
             onClick={playBlockedSegment}
-            className="font-data flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground"
+            className="font-data press-scale animate-fade-in flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground transition-colors"
           >
             {dict.playBlockedAudio}
           </button>

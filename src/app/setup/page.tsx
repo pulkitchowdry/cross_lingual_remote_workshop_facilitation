@@ -19,7 +19,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
     <div className="flex flex-col gap-6">
       <SyncUiLanguage lang={lang} />
       <LanguageSwitcher current={lang} basePath="/setup" />
-      <div>
+      <div className="animate-fade-in-down">
         <h1 className="font-heading text-2xl font-semibold">{dict.heading}</h1>
         <p className="text-sm text-muted-foreground">{dict.subtitle}</p>
       </div>

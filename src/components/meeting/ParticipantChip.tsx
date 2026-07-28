@@ -81,7 +81,7 @@ export function ParticipantChip({
   if (variant === "tile") {
     return (
       <div
-        className="relative h-full w-full shrink-0 overflow-hidden rounded-lg border-2"
+        className="animate-scale-in relative h-full w-full shrink-0 overflow-hidden rounded-lg border-2 transition-colors"
         style={{ borderColor: isSpeaking ? "var(--accent)" : "var(--border-subtle)", background: "var(--surface)" }}
         role="listitem"
       >
@@ -124,7 +124,7 @@ export function ParticipantChip({
 
   return (
     <div
-      className={`flex shrink-0 items-center gap-2 rounded-lg border p-2 transition-colors ${
+      className={`animate-scale-in flex shrink-0 items-center gap-2 rounded-lg border p-2 transition-colors ${
         variant === "strip" ? "flex-col text-center" : "flex-row"
       }`}
       style={{ borderColor: isSpeaking ? "var(--accent)" : "var(--border-subtle)" }}

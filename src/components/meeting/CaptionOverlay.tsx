@@ -106,7 +106,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           return (
             <div
               key={segment.id}
-              className="rounded-md px-3 py-1.5 text-center shadow-lg"
+              className="animate-fade-in rounded-md px-3 py-1.5 text-center shadow-lg"
               style={{ background: "rgba(10, 14, 22, 0.78)", fontSize: `${captionFontScale}rem` }}
             >
               <p className="text-white" lang={resolved.lang}>
@@ -139,7 +139,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={shrinkCaptionFont}
           aria-label={dict.shrinkCaptionFont}
-          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data press-scale flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white transition-colors"
         >
           A-
         </button>
@@ -147,7 +147,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={growCaptionFont}
           aria-label={dict.growCaptionFont}
-          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data press-scale flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white transition-colors"
         >
           A+
         </button>

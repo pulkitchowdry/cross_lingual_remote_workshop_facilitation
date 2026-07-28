@@ -124,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isLiveVideoRoomRoute
             ? // Full viewport width for the live video grid — no cap, no side padding.
               "w-full max-w-none flex-1"
-            : "mx-auto w-full max-w-[1000px] flex-1 px-6 py-8"
+            : "mx-auto w-full max-w-[1000px] flex-1 animate-fade-in px-6 py-8"
         }
       >
         {children}
