@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { AudioTrack, isTrackReference, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { FACILITATOR_IDENTITY_PREFIX, LEARNER_IDENTITY_PREFIX } from "@/components/meeting/use-speaker-languages";
+import { useMeetingShell } from "@/components/meeting/MeetingShellContext";
 import { resolveLanguage } from "@/lib/i18n";
 import type { MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -14,12 +15,17 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * `RoomAudioRendererProps` in `@livekit/components-react`) so each listener
  * can locally mute a specific speaker's raw mic audio when that speaker's
  * language differs from their own, while a dubbed translation auto-plays
- * instead (`TranslatedAudioPlayer`). Only ever ducks when `ttsConfigured` is
- * true — with no text-to-speech backend configured, `TranslatedAudioPlayer`
- * never renders any dub audio, so ducking the raw mic anyway would leave a
- * cross-language listener hearing nothing from that speaker at all. This is
- * purely a local rendering choice — it never touches what any other
- * participant hears.
+ * instead (`TranslatedAudioPlayer`). Ducking only ever happens when BOTH:
+ * `ttsConfigured` is true (with no text-to-speech backend configured,
+ * `TranslatedAudioPlayer` never renders any dub audio, so ducking the raw
+ * mic anyway would leave a cross-language listener hearing nothing from that
+ * speaker at all), AND this listener has turned captions on
+ * (`captionsVisible`, from `MeetingShellContext` — the same flag
+ * `TranslatedAudioPlayer` gates its own auto-play on). Everyone hears
+ * everyone else's raw mic audio regardless of language by default; a dub
+ * only ever replaces it once a listener has opted into captions for
+ * themselves. This is purely a local rendering choice — it never touches
+ * what any other participant hears.
  *
  * Must render every non-mic audio source `RoomAudioRenderer` also covered
  * (`ScreenShareAudio`, `Unknown`) at full volume with no ducking — those
@@ -80,6 +86,11 @@ export function DuckedRoomAudio({
    */
   ttsConfigured: boolean;
 }) {
+  // This listener's own "captions on" preference — must render inside
+  // `MeetingShellProvider` (see MeetingRoom, which now renders this component
+  // for exactly that reason instead of LiveSessionRoom rendering it as a
+  // provider-less sibling).
+  const { captionsVisible } = useMeetingShell();
   // Last-seen detected spoken language per speaker display name — `transcript` is
   // chronological, so a later segment for the same speaker simply overwrites the
   // map entry, keeping this current as they keep talking.
@@ -120,7 +131,7 @@ export function DuckedRoomAudio({
         // reasoning as `ttsConfigured` below: never duck the original raw audio unless
         // a dub is actually going to be available to replace it, otherwise a listener
         // hears nothing at all from that speaker for the entire session.
-        const shouldDuck = isMic && ttsConfigured && spokenLanguage !== undefined && spokenLanguage !== myLanguage;
+        const shouldDuck = isMic && ttsConfigured && captionsVisible && spokenLanguage !== undefined && spokenLanguage !== myLanguage;
         return <AudioTrack key={`${track.participant.identity}-${track.source}`} trackRef={track} volume={shouldDuck ? DUCKED_VOLUME : 1} />;
       })}
     </>
