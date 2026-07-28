@@ -446,7 +446,7 @@ export function LiveSessionRoom({
         <button
           type="button"
           onClick={handleRejoin}
-          className="rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
+          className="press-scale rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground transition-colors"
         >
           {dict.rejoin}
         </button>
@@ -462,12 +462,12 @@ export function LiveSessionRoom({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       {deviceWarning && (
-        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {deviceWarning}
         </p>
       )}
       {screenShareInterrupted && (
-        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {dict.screenShareInterrupted}
         </p>
       )}

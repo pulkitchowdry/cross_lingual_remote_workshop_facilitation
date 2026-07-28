@@ -74,7 +74,7 @@ export function MeetingHeader({
                 type="button"
                 onClick={() => void copyLink()}
                 aria-label={dict.copyInviteLink}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+                className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
               >
                 <CopyIcon className="h-4 w-4" />
               </button>

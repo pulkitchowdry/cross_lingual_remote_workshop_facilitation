@@ -78,21 +78,23 @@ export function GlossaryManager({
         <button
           type="button"
           onClick={() => setEditingId("new")}
-          className="font-data rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+          className="font-data press-scale rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors duration-150"
         >
           {dict.addEntry}
         </button>
       </div>
 
       {isFormOpen && (
-        <GlossaryEntryForm
-          key={editingId}
-          entry={editingEntry}
-          dict={dict}
-          requiredFieldMessage={requiredFieldMessage}
-          saveAction={saveAction}
-          onDone={() => setEditingId(null)}
-        />
+        <div className="animate-fade-in-up">
+          <GlossaryEntryForm
+            key={editingId}
+            entry={editingEntry}
+            dict={dict}
+            requiredFieldMessage={requiredFieldMessage}
+            saveAction={saveAction}
+            onDone={() => setEditingId(null)}
+          />
+        </div>
       )}
 
       <Card>
@@ -110,8 +112,12 @@ export function GlossaryManager({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((entry) => (
-                  <tr key={entry.id} className="border-t border-border-subtle align-top">
+                {filtered.map((entry, index) => (
+                  <tr
+                    key={entry.id}
+                    className="animate-fade-in-up animate-stagger border-t border-border-subtle align-top"
+                    style={{ "--stagger-index": index } as React.CSSProperties}
+                  >
                     <td className="py-2 pr-3">
                       <span className="font-medium">{entry.sourceTerm}</span>
                       {entry.isBuiltIn && (
@@ -138,7 +144,7 @@ export function GlossaryManager({
                         <button
                           type="button"
                           onClick={() => setEditingId(entry.id)}
-                          className="font-data rounded-md border border-border-strong px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-accent"
+                          className="font-data press-scale rounded-md border border-border-strong px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-accent hover:text-accent"
                         >
                           {dict.editEntry}
                         </button>
@@ -273,7 +279,7 @@ function GlossaryEntryForm({
           <button
             type="button"
             onClick={onDone}
-            className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:bg-background"
+            className="font-data press-scale rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:bg-background"
           >
             {dict.formCancel}
           </button>
@@ -291,7 +297,7 @@ function SubmitButton({ label }: { label: string }) {
       type="submit"
       disabled={pending}
       aria-disabled={pending}
-      className="font-data rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground disabled:opacity-40"
+      className="font-data press-scale rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors duration-150 disabled:opacity-40"
     >
       {label}
     </button>

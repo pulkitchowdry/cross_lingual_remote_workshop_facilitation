@@ -21,7 +21,7 @@ export default async function NotFound() {
   const dict = getDictionary(lang).notFound;
 
   return (
-    <div className="flex flex-col items-start gap-4">
+    <div className="flex animate-fade-in flex-col items-start gap-4">
       <SyncUiLanguage lang={lang} />
       <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">404</p>
       <h1 className="font-heading text-2xl font-semibold">{dict.title}</h1>

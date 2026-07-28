@@ -34,7 +34,7 @@ export function NewSessionLink({
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="font-data border-b-2 border-transparent pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+        className="font-data press-scale border-b-2 border-transparent pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors duration-150 hover:border-border-strong hover:text-foreground"
       >
         {label}
       </button>
@@ -54,7 +54,7 @@ export function NewSessionLink({
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:bg-background"
+              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground press-scale transition-colors duration-150 hover:bg-background"
             >
               {cancelLabel}
             </button>
@@ -69,7 +69,7 @@ export function NewSessionLink({
                 // ConfirmSubmitButton.tsx documents and works around.
                 document.getElementById("main-content")?.focus();
               }}
-              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground press-scale transition-colors duration-150"
               style={{ backgroundColor: "var(--accent-fill)" }}
             >
               {confirmLabel}

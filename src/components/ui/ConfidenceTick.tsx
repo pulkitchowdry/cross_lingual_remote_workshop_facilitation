@@ -24,7 +24,7 @@ export function ConfidenceTick({ confidence }: { confidence: Confidence }) {
   const filled = FILLED_BARS[confidence];
 
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5" title={`${confidence} confidence`}>
+    <span className="inline-flex shrink-0 animate-fade-in items-center gap-1.5" title={`${confidence} confidence`}>
       <span className="flex items-end gap-0.5" aria-hidden="true">
         {BAR_HEIGHTS.map((height, index) => (
           <span

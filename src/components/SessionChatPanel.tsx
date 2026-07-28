@@ -126,7 +126,7 @@ export function SessionChatPanel({
             const revealed = isExplainable && revealedMessageIds.has(message.id);
             const quotedText = translatedText(message, targetLanguage, translationUnavailable);
             return (
-              <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
+              <article key={message.id} className="animate-fade-in-up rounded-md border border-border-subtle bg-surface p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-data text-xs font-medium text-[var(--accent-text)]">
                     {message.isAnonymous && !viewerIsFacilitator ? dict.anonymousLearner : message.sender.displayName}
@@ -202,7 +202,7 @@ export function SessionChatPanel({
                 {viewerIsFacilitator && message.sender.id !== viewerUserId && recipientByUserId.has(message.sender.id) && (
                   <button
                     type="button"
-                    className="font-data mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    className="font-data press-scale mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                     onClick={() => {
                       const recipient = recipientByUserId.get(message.sender.id);
                       if (recipient) setSelectedRecipientParticipantId(recipient.participantId);
@@ -245,7 +245,7 @@ export function SessionChatPanel({
             {isPrivateComposer && (
               <button
                 type="button"
-                className="font-data rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                className="font-data press-scale rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                 onClick={() => {
                   setLearnerPrivateMode(false);
                   setSelectedRecipientParticipantId("");

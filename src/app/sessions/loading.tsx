@@ -9,14 +9,14 @@ export default function SessionsOverviewLoading() {
         <div className="h-4 w-full max-w-lg rounded-md bg-surface-raised" />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Card>
+        <Card className="animate-fade-in">
           <div className="flex flex-col gap-3">
             <div className="h-4 w-32 rounded-md bg-surface" />
             <div className="h-5 w-48 rounded-md bg-surface" />
             <div className="h-4 w-full rounded-md bg-surface" />
           </div>
         </Card>
-        <Card>
+        <Card className="animate-fade-in">
           <div className="flex flex-col gap-3">
             <div className="h-4 w-32 rounded-md bg-surface" />
             <div className="h-5 w-48 rounded-md bg-surface" />
