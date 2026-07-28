@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/components-react";
+import { Track } from "livekit-client";
 import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, decideCaptionSocketReconnect } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -106,6 +107,45 @@ export function LiveCaptionStream({
   useEffect(() => {
     shouldCaptureRef.current = isMicrophoneEnabled && !agentCapturing;
   }, [isMicrophoneEnabled, agentCapturing]);
+  /**
+   * Read inside `acquireMicStream` at call time — deliberately NOT a dependency of
+   * `start()` or the auto-start effect. Depending on the participant (or its
+   * `microphoneTrack`) is what broke the previously-reverted attempt at this fix: those
+   * references change identity on room events unrelated to the mic actually toggling,
+   * re-firing the effect and producing a reconnect loop.
+   */
+  const localParticipantRef = useRef(localParticipant);
+  useEffect(() => {
+    localParticipantRef.current = localParticipant;
+  }, [localParticipant]);
+
+  /**
+   * Prefers a **clone of the microphone track LiveKit already published** over opening a
+   * second, independent capture of the same physical device.
+   *
+   * A second `getUserMedia({audio:true})` alongside LiveKit's own mic publication put two
+   * captures on one device, which disturbs LiveKit's track enough to make it
+   * unpublish/republish. `isMicrophoneEnabled` is derived from that publication
+   * (`!publication?.isMuted ?? true`) and recomputes on `LocalTrackPublished`/
+   * `LocalTrackUnpublished`/`TrackMuted`/`TrackUnmuted`/`MediaDevicesError` — so each flip
+   * re-ran the auto-start effect, which called `stop()` then `start()`, which opened
+   * another capture, which flipped it again. Observed in production as an endless
+   * `superseding an older caption stream …` loop that no caption ever survived.
+   *
+   * This is learner-only in practice: a facilitator's `LiveCaptionStream` returns early on
+   * `agentCapturing` (the server-side worker captures them instead) and so never opened a
+   * second capture at all — exactly the asymmetry the bug showed.
+   *
+   * `clone()` yields an independent `MediaStreamTrack` backed by the same source, so
+   * `stop()`ing it on teardown never stops the track LiveKit is still publishing, and no
+   * new device capture is requested. Falls back to `getUserMedia` when there's no live
+   * publication to clone (mic still initializing, or a non-LiveKit context).
+   */
+  const acquireMicStream = useCallback(async (): Promise<MediaStream> => {
+    const published = localParticipantRef.current?.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack;
+    if (published && published.readyState === "live") return new MediaStream([published.clone()]);
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }, []);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -246,7 +286,7 @@ export function LiveCaptionStream({
         stop();
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await acquireMicStream();
       // The WebSocket can already have failed and closed (running `stop()` via `onclose`
       // above) while `getUserMedia`'s permission prompt was still pending — resolving
       // after that must not resurrect a "streaming" state or leave the mic hot with
@@ -287,7 +327,7 @@ export function LiveCaptionStream({
     } finally {
       setIsConnecting(false);
     }
-  }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+  }, [sessionId, stop, acquireMicStream, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
 
   // Keeps the indirection `onclose` reconnects through pointing at the current `start`.
   useEffect(() => {

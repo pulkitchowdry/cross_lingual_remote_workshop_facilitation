@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LiveKitRoom, useDataChannel, useLocalParticipant } from "@livekit/components-react";
+import { LiveKitRoom, StartAudio, useDataChannel, useLocalParticipant } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
@@ -507,6 +507,20 @@ export function LiveSessionRoom({
         <PublishStateTracker onChange={handlePublishStateChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
         <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} />
+        {/* Chrome/Safari autoplay policy blocks ALL audio output until the page has seen a
+            real user gesture — `attach()`'s `play()` rejects with NotAllowedError and
+            livekit-client emits AudioPlaybackFailed ("could not playback audio"). Nothing
+            here handled that, so a participant who joined without clicking anything sat in
+            a connected room hearing complete silence — both other participants' raw mic
+            audio (DuckedRoomAudio) and the translated dub (TranslatedAudioPlayer) — with
+            no error surfaced anywhere on the page. `StartAudio` renders a button ONLY while
+            `room.canPlaybackAudio` is false and hides itself the moment playback is
+            allowed, so this costs nothing once audio is unblocked. Kept inside
+            <LiveKitRoom> because it reads the room from context. */}
+        <StartAudio
+          label={dict.enableAudio}
+          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-border-strong bg-surface px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground shadow-lg"
+        />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>
