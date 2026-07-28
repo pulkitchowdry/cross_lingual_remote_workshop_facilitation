@@ -84,6 +84,35 @@ async function main() {
 
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
+
+  /**
+   * Detects and terminates caption-stream sockets that have gone silently dead
+   * (mobile tab backgrounded, WiFi-to-cellular handoff, laptop sleep, a proxy
+   * dropping an idle connection without a close frame) instead of relying on
+   * TCP's own timeout, which can take minutes or never fire at all on some
+   * networks. Without this, `activeCaptionStreamSpeakers` below never learns
+   * the old connection is gone (its `ws.on("close"/"error", releaseSpeakerKey)`
+   * only fires on an actual close/error event) and permanently rejects every
+   * reconnect attempt for that speaker with "Another caption stream is already
+   * active for this speaker" — indistinguishable, from the facilitator's or
+   * learner's side, from captions being broken outright, for the rest of the
+   * LIVE session. Standard `ws` heartbeat pattern: ping everyone every 30s,
+   * terminate anyone who didn't `pong` back since the last ping (`terminate()`
+   * synchronously emits `close`, which runs the normal cleanup).
+   */
+  const CAPTION_SOCKET_HEARTBEAT_MS = 30_000;
+  const captionSocketHeartbeat = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      const socket = ws as import("ws").WebSocket & { isAlive?: boolean };
+      if (socket.isAlive === false) {
+        socket.terminate();
+        return;
+      }
+      socket.isAlive = false;
+      socket.ping();
+    });
+  }, CAPTION_SOCKET_HEARTBEAT_MS);
+  wss.on("close", () => clearInterval(captionSocketHeartbeat));
   // Next's own dev tooling (HMR, the React DevTools bridge, etc.) upgrades
   // WebSocket connections too — most visibly `/_next/webpack-hmr`. Destroying
   // those sockets (the old behavior here) makes Next's dev client believe the
@@ -200,6 +229,13 @@ async function main() {
     // it" — see caption-socket-client.ts's `"opaque"` classification, which is what
     // silently absorbs this class of abrupt, reasonless close.
     wss.handleUpgrade(req, socket, head, (ws) => {
+      // Seeds the heartbeat's `isAlive` flag (see captionSocketHeartbeat above) — starts
+      // `true` so a connection isn't terminated before its very first ping/pong round-trip
+      // even completes, and flips back to `true` on every `pong` the client answers with.
+      (ws as import("ws").WebSocket & { isAlive?: boolean }).isAlive = true;
+      ws.on("pong", () => {
+        (ws as import("ws").WebSocket & { isAlive?: boolean }).isAlive = true;
+      });
       void authorizeAndAttachCaptionSocket(req, query, ws).catch((error) => {
         // Completing the handshake and closing with a reason (rather than destroying the
         // raw TCP socket) lets the browser's `WebSocket.onclose` report *why* the
