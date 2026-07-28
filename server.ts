@@ -85,26 +85,28 @@ async function main() {
   const server = createServer((req, res) => handle(req, res));
   const wss = new WebSocketServer({ noServer: true });
 
-  // ─────────────────── TEMPORARY DIAGNOSTICS — remove once root-caused ───────────────────
+  // ──────────── DIAGNOSTICS for the frameless-1006 loop — remove once A is closed ────────────
   //
-  // The client-side logs on this branch establish that the caption socket *reaches OPEN*
-  // and then closes with code 1006 and an EMPTY reason, over and over. 1006 + empty reason
-  // means the browser never received a close frame at all, which rules out every one of
-  // this app's own orderly closes — `closeWithReason` (1011 with text), the 1012 eviction,
-  // and `captions-socket.ts`'s `onError` path all send a frame with a reason. Exactly four
-  // things can produce a frameless close, and nothing logged so far distinguishes them:
+  // These logs already did their job once: correlating them with the browser console proved
+  // the caption socket reaches OPEN and is then reset with code 1006 and an empty reason
+  // ~2ms later, and they eliminated three of the four candidate causes outright —
   //
-  //   1. `client.terminate()` — the keepalive sweep below (added on this branch).
-  //   2. This process dying and being restarted (a new `boot=` below proves it).
-  //   3. Something between the browser and this process resetting the TCP flow — the
-  //      Railway edge proxy, or a proxy that drops WS control frames so the sweep in (1)
-  //      sees a healthy socket as dead.
-  //   4. The upgrade being answered 101 by the edge without this process ever seeing it
-  //      (in which case there is no `upgrade request received` line for the connection).
+  //   • NOT the keepalive sweep below: every dead socket shows `pings=0 pongs=0`, i.e. it
+  //     died long before the first 30s sweep could ever look at it.
+  //   • NOT the process restarting: `boot=` is identical across all 137 sockets of an
+  //     affected session.
+  //   • NOT the edge answering 101 by itself: every socket the browser saw open has its own
+  //     `upgrade sock=` line here, so the upgrade does reach this process.
   //
-  // Every log below exists to separate those four. They're deliberately verbose and
-  // deliberately temporary — delete this block, the `diag`/`markFrame` calls in the upgrade
-  // handler, and the sweep's logging once the cause is known.
+  // What remains (A) is a reset originating inside Railway's network: `age=2ms` is far too
+  // fast to be a round trip to the client (~50ms+ from the India-South edge), and the
+  // second `x-forwarded-for` hop differs on every reconnect, so the edge fleet is in the
+  // path and load-balanced. That is still open — see docs/CAPTION_AUDIO_TROUBLESHOOTING.md.
+  //
+  // The *amplifier* (B) that turned A into a permanent, worsening failure is fixed: see the
+  // `readyState` guard in `authorizeAndAttachCaptionSocket` below. Keep these logs until A
+  // is closed too, then delete this block, the `diag` calls in the upgrade handler, and the
+  // sweep's logging.
   const bootId = Math.random().toString(36).slice(2, 8);
   console.log(`[captions/diag] boot=${bootId} pid=${process.pid} node=${process.version}`);
   // `uncaughtExceptionMonitor` (not `uncaughtException`) observes without installing a
@@ -255,10 +257,36 @@ async function main() {
         ? (found.sourceLanguage as SupportedLanguage)
         : ((await resolveLearnerSpeaker(found.id, speaker.participantId))?.language ?? (found.sourceLanguage as SupportedLanguage));
 
-    // Everything above this point is async (DB lookups, dynamic imports); everything
-    // from here down is synchronous, so this evict-then-claim is atomic against a second
-    // connection attempt for the same speaker racing this one — no `await` runs between
-    // reading the previous socket and installing this one below.
+    // Everything above this point is async — several DB round trips and a dynamic import,
+    // which measured ~470ms cold and ~6ms warm. The socket can therefore already be DEAD by
+    // the time we get here, and in production it reliably is: Railway's logs show
+    // `CLOSED code=1006 age=2ms` landing *before* `attached age=6ms`, every cycle.
+    //
+    // Continuing past this point on a closed socket is what turned a transient failure into
+    // a permanent one. `attachCaptionSocket` registers its `ws.on("close")`/`ws.on("error")`
+    // cleanup handlers *at the end*, and a listener added after `ws` has already emitted
+    // `close` is never called — so every one of these cycles permanently leaked:
+    //
+    //   • an STT stream (a paid Deepgram socket, or a local-inference flush timer) that
+    //     `sttStream.close()` never ran on, and
+    //   • for a facilitator, a 3-second `setInterval` hammering Postgres forever
+    //     (`duplicateGuardInterval`), never cleared, and
+    //   • the `activeCaptionStreamSockets` entry, since `releaseSpeakerKey` was likewise
+    //     registered too late to ever run.
+    //
+    // With the client retrying every 500ms that compounds without bound — by socket #137 in
+    // one observed session that's 137 orphaned STT streams and ~46 junk queries/second — which
+    // is exactly the reported "worked initially, then suddenly started flickering and never
+    // recovered". The trigger for the first close is a separate question (see the doc); this
+    // guard is what stops one bad connection from poisoning the process.
+    if (ws.readyState !== ws.OPEN) {
+      console.warn(`[captions/stream] socket closed during authorization (readyState=${ws.readyState}); not attaching an STT stream to it.`);
+      return;
+    }
+
+    // From here down everything is synchronous, so this evict-then-claim is atomic against a
+    // second connection attempt for the same speaker racing this one — no `await` runs
+    // between reading the previous socket and installing this one below.
     const speakerKey = captionStreamSpeakerKey(sessionId, speaker);
     const superseded = activeCaptionStreamSockets.get(speakerKey);
     activeCaptionStreamSockets.set(speakerKey, ws);
@@ -287,6 +315,15 @@ async function main() {
     // TEMPORARY DIAGNOSTIC: proves the socket was fully wired to an STT stream, so any
     // later close is a *live* connection dying rather than a rejection in disguise.
     console.log(`[captions/diag] attached speaker=${speakerKey} lang=${initialLanguage} mode=${found.translationMode} ${diagLine(ws)}`);
+    // The client cannot tell a usable socket from a useless one on its own: reaching `OPEN`
+    // only means the 101 arrived, and the authorization above happens *after* that. A socket
+    // that opens and is then reset before it's ever attached looked, to
+    // `LiveCaptionStream`, exactly like a healthy connection that dropped — so it reset the
+    // reconnect ladder on every cycle, `MAX_RECONNECT_ATTEMPTS` was unreachable, and the
+    // retry loop ran at a flat 500ms forever (the observed flicker). This frame is the only
+    // honest "this connection can actually carry captions" signal, so it's what the client
+    // resets its ladder on instead.
+    ws.send(JSON.stringify({ type: "ready" }));
   }
 
   server.on("upgrade", async (req, socket, head) => {

@@ -188,12 +188,19 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     firstAudioSubmittedAtMs ??= captionLatencyNowMs();
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });
-  ws.on("close", () => {
+  const releaseResources = () => {
     if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
     sttStream.close();
-  });
-  ws.on("error", () => {
-    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
-    sttStream.close();
-  });
+  };
+  ws.on("close", releaseResources);
+  ws.on("error", releaseResources);
+
+  // `ws` emits `close` exactly once, and a listener registered afterwards is never called —
+  // so if this socket died before we got here, the two handlers above are dead code and both
+  // the STT stream and the 3s duplicate-guard interval would leak for the lifetime of the
+  // process. `server.ts` already refuses to call this function on a closed socket, which is
+  // the real fix; this is the backstop, in the module that actually owns these resources, so
+  // a future caller can't reintroduce the leak. See server.ts's readyState guard for the
+  // production log evidence (`CLOSED age=2ms` preceding `attached age=6ms`).
+  if (ws.readyState !== ws.OPEN) releaseResources();
 }

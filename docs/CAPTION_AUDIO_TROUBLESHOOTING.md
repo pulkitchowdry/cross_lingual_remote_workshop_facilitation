@@ -238,12 +238,12 @@ captions-tab switch. With eviction + backoff that now recovers cleanly instead o
 deadlocking, but hoisting the socket into a provider so it survives tab switches would
 remove the churn entirely — the better long-term fix.
 
-## Still open
+### 9. The frameless-1006 reconnect loop: a self-amplifying resource leak (2026-07-28)
 
-### The frameless 1006 reconnect loop (under investigation, `fix/testing-stt3`)
-
-**Symptom:** on a facilitator join with `agentCapturing: false`, the caption status
-indicator flickers on and off indefinitely. Client console, repeating:
+**Symptom:** the caption status indicator flickers on/off indefinitely. Reported as
+"worked for the first attempt but after that never worked again", and in a later test
+"worked initially and then all of a sudden started flickering" — i.e. a session that
+starts healthy and degrades irreversibly. Client console, repeating every ~500ms:
 
 ```
 [captions] START
@@ -252,59 +252,113 @@ indicator flickers on and off indefinitely. Client console, repeating:
 [captions] STOP
 ```
 
-**This is the same underlying failure as §8, not a new one.** §8's fix (eviction +
-keepalive + bounded reconnect) changed the *presentation* — a single terminal "Live
-captions disconnected. Try again" became a self-healing loop — but the socket is still
-dying exactly as it was: §8 describes "the socket *opened*, then closed with a non-1000
-code and an **empty** reason," which is this signature verbatim. The `Another caption
-stream is already active for this speaker` deadlock was real and is fixed; it was a
-*consequence* of sockets dying abnormally, not the cause.
+**This is the same underlying close as §8**, which describes "the socket *opened*, then
+closed with a non-1000 code and an **empty** reason" — the identical signature. §8's
+eviction + keepalive + bounded-reconnect work fixed a real deadlock, but it changed the
+*presentation* of this failure (one terminal error became a self-healing loop) rather
+than its cause. There are two separate bugs, and only one of them is ours.
 
-**What `code: 1006, reason: ''` rules out.** 1006 with an empty reason means the browser
-never received a close frame (MDN: browsers zero out `code`/`reason` when the connection
-drops without a server-acknowledged close). Every orderly close this app performs sends
-a frame *with* text — `closeWithReason(ws, 1011, …)` for all seven of
-`authorizeAndAttachCaptionSocket`'s rejections, `1012` for the eviction handover, and
-`captions-socket.ts`'s `onError` for every STT-tier failure (Deepgram close, local
-tier + disabled cloud fallback, `openStream` throwing). So **none** of those are what's
-happening here, and neither is any STT/auth/session-state problem — chasing them is
-chasing the wrong layer. `delayMs: 500` on every single cycle independently confirms
-the socket reaches `OPEN` each time (the ladder resets in `onopen`).
+#### What the evidence establishes
 
-**The four remaining candidates**, all transport-level:
+`1006` + empty reason means the browser never received a close frame, which rules out
+every orderly close this app performs — `closeWithReason` (1011 + text), the 1012
+eviction handover, and `captions-socket.ts`'s `onError` all carry a reason. So no
+auth/session/STT-tier explanation fits, and `delayMs: 500` on every single cycle
+independently proves the socket reaches `OPEN` each time.
 
-1. `client.terminate()` in `server.ts`'s keepalive sweep killing a healthy socket —
-   e.g. Railway's edge not forwarding WS ping/pong control frames, which the sweep
-   reads as a missed pong. Note the sweep is *new* on this branch, so it can't explain
-   §8's identical signature, but it can now add to it.
-2. The `web` process dying and restarting under each connection.
-3. The Railway edge proxy resetting the flow.
-4. The edge answering `101` itself without the upgrade ever reaching this process.
+Correlating the Railway `web` log with the browser console (server-side per-socket
+logging added for this, `[captions/diag]`) gave the decisive ordering:
 
-**Why the existing logs can't pick between them:** they are client-only and carry no
-timing. A socket that dies in 200ms (handshake/auth-shaped) and one that lives 30s
-(liveness/proxy-shaped) print identically, and those have opposite causes. Nothing
-records whether `MediaRecorder` ever produced a chunk, so "no captions" can't be
-separated into a capture problem vs. a transport problem either.
+```
+[captions/diag] upgrade sock=s137 boot=2e2zll xff=202.94.70.53, 152.233.15.120 xfproto=https
+[captions/diag] handshake complete (101 sent) sock=s137 handshake=0ms
+[captions/diag] CLOSED code=1006 reason="" sock=s137 age=2ms  binary=0 bytes=0 pings=0 pongs=0
+[captions/diag] attached speaker=…:facilitator                sock=s137 age=6ms
+```
 
-**Instrumentation added for the next run** (all `[captions/diag]`, all marked
-TEMPORARY — delete once root-caused): server-side per-socket lifetime logging in
-`server.ts` (upgrade → 101 → attach → first pong → first audio chunk → close, with a
-`boot=` id so a process restart is unmistakable, and an explicit line when the sweep
-terminates), plus client-side timestamps, mic-acquisition path/track state, recorder
-mimeType, and chunk-send counters in `LiveCaptionStream.tsx`.
+That eliminated three of the four candidates outright:
 
-**Reproduce with both halves captured at once** — the Railway `web` service log and the
-browser console from the *same* join, since the whole point is correlating them:
+- **Not the keepalive sweep.** Every dead socket reports `pings=0 pongs=0` — it died
+  ~2ms in, long before the first 30s sweep could look at it.
+- **Not the process restarting.** `boot=2e2zll` is identical across all 137 sockets.
+- **Not the edge answering `101` by itself.** Every socket the browser saw open has its
+  own `upgrade sock=` line server-side.
+- **Not STT.** `binary=0 bytes=0` on every socket: no audio ever reached the server, so
+  Deepgram/local-inference were never in the picture.
 
-- No `[captions/diag] upgrade sock=…` for a socket the client saw open → candidate 4.
-- A changing `boot=` → candidate 2.
-- `keepalive TERMINATE` ~30s before each client close, with `binary=` climbing (audio
-  was flowing) and `pongs=0` → candidate 1, and the control-frame theory with it.
-- `CLOSED` logged server-side with `age=` and no terminate/eviction → candidate 3.
-- `first audio chunk` never appearing while the client logs `CHUNK SENT` → the frames
-  are dying in the path, not in this app.
+**Reproduced locally**, with no Railway proxy and no browser: a Node `ws` client against
+`npm run dev` produced `code=1006 reason="" openedFor=25ms` on a seeded LIVE session.
+Worth noting because `server.ts`'s pre-existing comment (issue #102/#106) asserts "a
+plain Node `ws` client hitting the exact same endpoint with the exact same delay is
+unaffected, so this is a browser-side characteristic" — that conclusion is wrong.
 
+#### Root cause B (ours, fixed): every failed cycle permanently leaked resources
+
+`authorizeAndAttachCaptionSocket` is async — several DB round trips plus a dynamic
+import, measured at ~470ms cold and ~6ms warm. The socket can therefore already be
+**dead** when `attachCaptionSocket` runs, and in production it reliably was (`CLOSED
+age=2ms` preceding `attached age=6ms`, every cycle).
+
+`attachCaptionSocket` registers its cleanup as `ws.on("close")` / `ws.on("error")` **at
+the end**. `ws` emits `close` exactly once, and a listener added afterwards is never
+called. So on every one of those cycles the code opened resources and then installed
+handlers that could never fire, permanently leaking:
+
+- an **STT stream** — a paid Deepgram socket, or a local-inference flush timer —
+  that `sttStream.close()` never ran on;
+- for a facilitator, the 3-second `duplicateGuardInterval` **hammering Postgres
+  forever**, never cleared;
+- the `activeCaptionStreamSockets` entry, since `releaseSpeakerKey` was likewise
+  registered too late to run — which is why every `superseding an older caption
+  stream …` line in the log evicts a socket that died 540ms earlier.
+
+With the client retrying every 500ms this compounds without bound. At socket #137 in one
+observed session that is 137 orphaned STT streams and ~46 junk queries/second, all from
+one initial glitch. **This is what made the failure permanent and progressive** — the
+exact "worked initially, then never again" shape, and a positive feedback loop with a
+knee rather than a steady failure rate.
+
+**Fix:** a `ws.readyState !== ws.OPEN` guard in `authorizeAndAttachCaptionSocket` before
+it claims the speaker key or attaches anything, plus a backstop at the end of
+`attachCaptionSocket` (in the module that owns those resources, so a future caller can't
+reintroduce the leak). Verified live — 6/6 simulated cycles hit the guard with zero
+attachments and zero leaked intervals — and covered by a unit test that fails without
+the backstop.
+
+**Also fixed: the flicker was unbounded.** `LiveCaptionStream` reset its reconnect ladder
+in `onopen`, but reaching `OPEN` only means the 101 arrived — authorization happens
+after. A socket that opened and was reset before ever being attached therefore reset the
+ladder on every cycle, making `MAX_RECONNECT_ATTEMPTS` unreachable and pinning the retry
+rate at a flat 500ms forever. The server now sends a `{ type: "ready" }` frame once the
+STT stream is actually wired up, and the client resets its ladder on *that* instead — so
+this failure mode now backs off 500ms → 8s and surfaces a real error after 5 attempts
+instead of flickering indefinitely.
+
+#### Root cause A (not ours, still open): the reset itself
+
+Something inside Railway's network resets the connection ~2ms after the `101`. Two
+constraints on any explanation:
+
+- `age=2ms` is far too fast to be the client — a round trip to a macOS browser from the
+  India-South edge is ≥50ms, so the browser cannot be what closed it.
+- The second `x-forwarded-for` hop differs on every reconnect (`152.233.15.120`,
+  `152.233.68.98`, `152.233.15.121`, …), so the edge fleet is in the path and
+  load-balanced.
+
+The leading hypothesis is that the edge dislikes a connection that is upgraded and then
+carries no traffic while the app spends its authorization window silent. The structural
+fix that follows is to **authorize *before* completing the handshake**, so a `101` is
+only ever sent for a connection already wired to an STT stream. Note that `server.ts`
+deliberately does the opposite today, and its comment cites issue #102/#106 as the
+reason — but that comment's supporting claim (that a Node `ws` client is unaffected) is
+now known to be false, so the tradeoff deserves re-testing rather than being taken as
+settled. **Do not change the handshake ordering without re-running the local harness
+before and after**, since it is the one part of this that reproduces off Railway.
+
+With B fixed, A degrades to what it should always have been: a transient reconnect that
+either recovers or reports a clear error, instead of poisoning the process.
+
+## Still open
 ### Safari / iPhone: live captions never connect
 
 This is **not fixed**. The leading (unconfirmed) theory is the dual

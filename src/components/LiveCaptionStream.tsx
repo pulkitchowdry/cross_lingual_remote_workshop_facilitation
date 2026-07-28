@@ -259,11 +259,13 @@ export function LiveCaptionStream({
         openedAtRef.current = Date.now();
         console.log("[captions] SOCKET OPEN", diagRef.current());
         hasOpenedRef.current = true;
-        // Reaching OPEN is the only real proof the path works end to end, so the backoff
-        // ladder resets here rather than on a successful `start()` call — otherwise a
-        // socket that opens and drops repeatedly would burn its 5 attempts once and never
-        // reconnect again for the rest of the session.
-        reconnectAttemptsRef.current = 0;
+        // The backoff ladder deliberately does NOT reset here. Reaching OPEN only proves the
+        // 101 arrived — server.ts authorizes and opens the STT stream *after* that, so a
+        // socket can be OPEN and permanently useless. Resetting here made
+        // `MAX_RECONNECT_ATTEMPTS` unreachable whenever that happened: every cycle opened,
+        // died, reset the ladder to 0, and retried at a flat 500ms forever. The reset now
+        // lives in `onmessage`, on the server's `{ type: "ready" }` frame, which is the only
+        // signal that this socket can actually carry captions.
       };
       // `onclose` always fires right after and carries the actual signal (a
       // server-provided reason, or an abnormal closure) — nothing to add here.
@@ -274,6 +276,13 @@ export function LiveCaptionStream({
         if (socketRef.current !== socket) return;
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
+          if (payload.type === "ready") {
+            // Proof the whole path works end to end — authorized, session LIVE, STT stream
+            // open. Only now is it safe to forgive the previous failures; see `onopen`.
+            console.log("[captions] SERVER READY", diagRef.current());
+            reconnectAttemptsRef.current = 0;
+            return;
+          }
           if (payload.type === "error") {
             const message = payload.message ?? dict.sttError;
             lastServerMessageRef.current = message;
