@@ -15,7 +15,7 @@ import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
-import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
@@ -28,6 +28,20 @@ const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
  */
 const STREAM_SAMPLE_RATE = 16_000;
 const STREAM_CHANNELS = 1;
+/**
+ * A Deepgram stream close/error here isn't necessarily the facilitator's mic dying —
+ * it's routinely just Deepgram's own idle timeout (e.g. "did not receive audio data
+ * ... within the timeout window") firing during an ordinary lull (facilitator pauses,
+ * briefly mutes, or a network blip drops the socket) while the track itself is still
+ * live and still expected to caption automatically. Without a reconnect, one idle
+ * timeout permanently ends server-side capture for the rest of the LIVE session — the
+ * facilitator gets no notification, since this worker has no UI, and the only recovery
+ * is noticing captions stopped and manually starting the browser-mic fallback. Retrying
+ * a bounded number of times keeps transient closes invisible instead of silently
+ * degrading a whole session's captions.
+ */
+const STT_RECONNECT_MAX_ATTEMPTS = 5;
+const STT_RECONNECT_BASE_DELAY_MS = 1_000;
 
 /** Maps this SDK's numeric wire enum to the same string vocabulary the browser-mic path
  * (livekit-client's own `ConnectionQuality`) sends over the WebSocket — both paths funnel
@@ -124,18 +138,35 @@ async function streamParticipantAudio(
     return;
   }
 
+  // Captured once, outside the nested `openSttStream` closure below — TS narrowing
+  // (from this function's own top-of-function `!speechToTextProvider.openStream`
+  // guard, and from `initialSpeaker`'s null-check above) doesn't carry into a nested
+  // function declaration.
+  const openStreamFn = speechToTextProvider.openStream;
+  const speakerLanguage = initialSpeaker.language;
+
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
-  // Set by onError below and checked by the audio loop so a dead STT stream actually
-  // stops the pipeline instead of running forever — see the loop's own comment.
+  // Set by onError below only once reconnect attempts are exhausted, and checked by
+  // the audio loop so a truly dead STT stream actually stops the pipeline instead of
+  // running forever — see the loop's own comment.
   let stopped = false;
-  let sttStream: ReturnType<typeof speechToTextProvider.openStream> | undefined;
-  try {
-    sttStream = speechToTextProvider.openStream({
-      expectedLanguage: initialSpeaker.language,
+  // Counts consecutive reconnects since the last successfully-opened stream; reset to 0
+  // on a successful `openSttStream()` below so a long, mostly-healthy session doesn't
+  // exhaust its budget on old, already-recovered-from blips.
+  let reconnectAttempts = 0;
+  let sttStream: SpeechToTextStream | undefined;
+
+  function openSttStream(): SpeechToTextStream {
+    const stream = openStreamFn({
+      expectedLanguage: speakerLanguage,
       encoding: { format: "linear16", sampleRate: STREAM_SAMPLE_RATE, channels: STREAM_CHANNELS },
       allowCloudFallback: translationMode !== "LOCAL_ONLY",
       onSegment: (event) => {
+        // Any segment (even a non-final interim one) proves this connection is
+        // healthy — reset the reconnect budget so a later, unrelated blip doesn't
+        // inherit an already-recovered-from stream's exhausted attempt count.
+        reconnectAttempts = 0;
         if (!event.isFinal) return;
         // Capture and advance synchronously — see the matching comment in
         // src/app/api/captions/stream/route.ts for why reassigning inside a
@@ -179,26 +210,50 @@ async function streamParticipantAudio(
           });
         })().catch((error) => console.error(`[caption-agent] failed to publish a segment for ${sessionId}:`, error));
       },
-      // A console.error alone used to leave the pipeline running: the for-await loop
+      // A bare console.error used to leave the pipeline running: the for-await loop
       // below kept feeding frames into a now-dead stream (its sendAudio silently
       // no-ops once the underlying connection isn't OPEN) forever — captions died
       // instantly but captionAgentActive stayed true and the browser-mic fallback
       // stayed hidden behind "already running", with zero signal to the facilitator
-      // that anything broke, for the rest of the LIVE session. Stopping the loop lets
-      // the `finally` below run its real cleanup (activeTracks + captionAgentActive).
+      // that anything broke, for the rest of the LIVE session. Reconnecting (bounded by
+      // STT_RECONNECT_MAX_ATTEMPTS) recovers from the common transient case — Deepgram's
+      // own idle timeout, a dropped socket — while still falling through to the same
+      // permanent stop (and its `finally` cleanup) once retries are exhausted.
       onError: (error) => {
         console.error(`[caption-agent] Deepgram stream error for ${sessionId}:`, error);
-        stopped = true;
-        sttStream?.close();
+        stream.close();
+        if (stream !== sttStream) return; // superseded by a newer reconnect already
+        if (stopped || reconnectAttempts >= STT_RECONNECT_MAX_ATTEMPTS) {
+          stopped = true;
+          return;
+        }
+        reconnectAttempts++;
+        const attempt = reconnectAttempts;
+        const delayMs = STT_RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1);
+        console.warn(
+          `[caption-agent] reconnecting Deepgram stream for ${sessionId} in ${delayMs}ms (attempt ${attempt}/${STT_RECONNECT_MAX_ATTEMPTS}).`,
+        );
+        setTimeout(() => {
+          if (stopped) return;
+          sttStream = openSttStream();
+        }, delayMs);
       },
     });
+    return stream;
+  }
+
+  try {
+    sttStream = openSttStream();
     console.log(`[caption-agent] STT stream opened for ${identity} in session ${sessionId} (expectedLanguage: ${initialSpeaker.language}).`);
 
     const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
     for await (const frame of audioStream) {
       if (stopped) break;
       firstAudioSubmittedAtMs ??= captionLatencyNowMs();
-      sttStream.sendAudio(new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength));
+      // Between a stream erroring and its scheduled reconnect landing, `sttStream` is
+      // still the closed one — its own `sendAudio` already no-ops once the underlying
+      // socket isn't OPEN, so frames during that gap are safely dropped, not queued.
+      sttStream?.sendAudio(new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength));
     }
   } catch (error) {
     // Without this, an error thrown mid-stream (a dropped LiveKit connection, a
@@ -211,6 +266,12 @@ async function streamParticipantAudio(
     // the `finally` below instead of leaving captionAgentActive stuck true forever.
     console.error(`[caption-agent] audio stream error for ${sessionId}:`, error);
   } finally {
+    // Guards a reconnect that was scheduled (via setTimeout in onError) but hasn't
+    // fired yet — e.g. the track itself ended while a reconnect was pending — from
+    // opening a new Deepgram connection after this function has already torn down
+    // (activeTracks/captionAgentActive below), which would leak a stream nothing
+    // ever closes again.
+    stopped = true;
     sttStream?.close();
     // Only clear this identity's guard if `track` is still the one on record — a
     // `TrackUnsubscribed`-triggered clear (or a newer `TrackSubscribed` superseding
