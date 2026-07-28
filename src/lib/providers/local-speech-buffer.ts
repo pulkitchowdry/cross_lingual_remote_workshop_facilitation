@@ -27,6 +27,11 @@ interface LocalBufferingSpeechToTextStreamOptions {
   /** Lazily invoked exactly once, on the first local failure, if `allowCloudFallback` is true. */
   openCloudFallback: () => SpeechToTextStream;
   encoding?: { format: "linear16"; sampleRate: number; channels: number };
+  /** The browser `MediaRecorder` mimeType in use for a containerized (no `encoding`)
+   * stream — see `OpenStreamInput.mimeType` in speech-to-text.ts. Determines which
+   * container-header-boundary finder `encodeWindow` uses; unrecognized values fall
+   * back to the original WebM-only assumption. */
+  mimeType?: string;
 }
 
 /**
@@ -52,15 +57,18 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   /** The most recently started `flush()` call's promise — lets `close()` find and wait out an in-flight flush before issuing its own final one; see `close()`'s comment for why. */
   private flushPromise: Promise<void> | null = null;
   /**
-   * Browser `MediaRecorder` writes the WebM/Matroska container header (EBML +
-   * Segment info + Tracks) only into the very first emitted chunk of a
-   * continuous recording; every later chunk is a headerless Cluster that
-   * can't be decoded on its own. Captured once from the first window and
-   * prepended to every later window so each POST to local-inference is an
-   * independently decodable file. `null` until the first window has been
-   * seen; an empty array if no Cluster boundary was found (best effort).
+   * Browser `MediaRecorder` writes the container's initialization header (WebM's
+   * EBML + Segment info + Tracks, or fragmented-MP4's ftyp + moov) only into the
+   * very first emitted chunk of a continuous recording; every later chunk is a
+   * headerless WebM Cluster or MP4 `moof`/`mdat` fragment that can't be decoded
+   * on its own. Captured once from the first window and prepended to every later
+   * window so each POST to local-inference is an independently decodable file.
+   * `null` until the first window has been seen; an empty array if no boundary
+   * was found (best effort — including for a container this app doesn't know how
+   * to find a boundary for, in which case later windows won't transcribe, but the
+   * first one — the client's own genuinely self-contained chunk — still will).
    */
-  private webmHeader: Uint8Array | null = null;
+  private containerHeader: Uint8Array | null = null;
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
@@ -139,12 +147,20 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
     if (encoding) {
       return { bytes: wrapPcm16AsWav(audio, encoding.sampleRate, encoding.channels), mimeType: "audio/wav" };
     }
-    if (this.webmHeader === null) {
-      const clusterStart = findWebmClusterStart(audio);
-      this.webmHeader = clusterStart >= 0 ? audio.slice(0, clusterStart) : new Uint8Array(0);
-      return { bytes: audio, mimeType: "audio/webm" };
+    // Safari supports neither WebM variant at all (only `audio/mp4`), so a client
+    // that reported an mp4 mimeType (see LiveCaptionStream.tsx's pickRecorderMimeType)
+    // needs the fragmented-MP4 boundary finder instead of WebM's — everything else
+    // (including an absent/unrecognized mimeType, e.g. an older client build) keeps
+    // this app's original WebM-only assumption.
+    const isMp4 = Boolean(this.options.mimeType?.startsWith("audio/mp4"));
+    const outputMimeType = isMp4 ? "audio/mp4" : "audio/webm";
+    const findFragmentStart = isMp4 ? findMp4FragmentStart : findWebmClusterStart;
+    if (this.containerHeader === null) {
+      const fragmentStart = findFragmentStart(audio);
+      this.containerHeader = fragmentStart >= 0 ? audio.slice(0, fragmentStart) : new Uint8Array(0);
+      return { bytes: audio, mimeType: outputMimeType };
     }
-    return { bytes: concat([this.webmHeader, audio]), mimeType: "audio/webm" };
+    return { bytes: concat([this.containerHeader, audio]), mimeType: outputMimeType };
   }
 
   private switchToFallback(error: unknown, failedWindow: Uint8Array[] = []): void {
@@ -193,6 +209,52 @@ function findWebmClusterStart(bytes: Uint8Array): number {
     if (WEBM_CLUSTER_ID.every((byte, offset) => bytes[index + offset] === byte)) return index;
   }
   return -1;
+}
+
+/**
+ * Byte offset of the first ISO-BMFF `moof` (movie fragment) box in `bytes`, or
+ * -1 if none is found (or the box structure looks malformed). Safari's
+ * fragmented-MP4 `MediaRecorder` output writes an initialization segment
+ * (`ftyp` + `moov`, analogous to WebM's EBML + Segment info + Tracks) only into
+ * the first emitted chunk; every later chunk is one or more headerless
+ * `moof`+`mdat` fragment pairs. Walks the top-level box sequence (each box:
+ * 4-byte big-endian size + 4-byte ASCII type, or an 8-byte 64-bit "largesize"
+ * when size === 1) rather than searching for a byte pattern like
+ * `findWebmClusterStart` does — ISO-BMFF boxes have no unique magic-number
+ * marker the way a WebM Cluster ID does, so the box sizes must be walked to
+ * find where `moof` actually starts.
+ */
+function findMp4FragmentStart(bytes: Uint8Array): number {
+  let offset = 0;
+  while (offset + 8 <= bytes.length) {
+    const size32 = readUint32BE(bytes, offset);
+    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+    if (type === "moof") return offset;
+
+    let boxSize: number;
+    let headerSize = 8;
+    if (size32 === 1) {
+      if (offset + 16 > bytes.length) return -1;
+      // 64-bit largesize immediately follows the 8-byte size+type header.
+      const high = readUint32BE(bytes, offset + 8);
+      const low = readUint32BE(bytes, offset + 12);
+      boxSize = high * 2 ** 32 + low;
+      headerSize = 16;
+    } else if (size32 === 0) {
+      // A size of 0 means "box extends to the end of the file" — valid for a
+      // truly final box, but there's no further box after it to be `moof`.
+      return -1;
+    } else {
+      boxSize = size32;
+    }
+    if (boxSize < headerSize) return -1; // malformed — refuse to loop forever
+    offset += boxSize;
+  }
+  return -1;
+}
+
+function readUint32BE(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
 }
 
 function concat(chunks: Uint8Array[]): Uint8Array {

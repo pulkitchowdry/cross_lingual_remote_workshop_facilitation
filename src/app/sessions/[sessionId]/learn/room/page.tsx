@@ -139,6 +139,7 @@ export default async function LearnerRoomPage({
           canMessageFacilitatorPrivately
           currentLanguage={lang}
           facilitatorSourceLanguage={resolveLanguage(participant.session.sourceLanguage)}
+          ttsConfigured={textToSpeechProvider.isConfigured}
           onChangeLanguage={changeLanguageAction}
           languageOptions={learnerLanguageOptions}
           captionsHeader={captionsHeader}

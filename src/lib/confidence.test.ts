@@ -27,10 +27,10 @@ describe("computeOverallConfidence", () => {
     expect(result.rootCause).toBe("translation");
   });
 
-  it("is Medium with a terminology root cause when only terminology is weak (scenario 4)", () => {
+  it("is Medium with no displayed root cause when only terminology is weak (scenario 4) — terminology still drags the level down but is never itself surfaced as the reason", () => {
     const result = computeOverallConfidence({ audioQuality: 98, translation: 96, terminology: 42 });
     expect(result.level).toBe("medium");
-    expect(result.rootCause).toBe("terminology");
+    expect(result.rootCause).toBeNull();
   });
 
   it("prefers a severe (audio/translation/network) root cause over terminology", () => {

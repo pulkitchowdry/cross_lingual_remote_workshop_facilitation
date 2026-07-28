@@ -227,7 +227,13 @@ export interface Dictionary {
     analyticsLanguagesHeading: string;
     analyticsLanguagesRow: (language: string, count: number) => string;
     analyticsConfidenceHeading: string;
-    analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
+    // `topRootCause` is the single most-frequent RootCause key across this session's
+    // Medium/Low translations (see facilitator-analytics-view.ts), one of "audio" |
+    // "speech-recognition" | "translation" | "network" — "terminology" is never passed
+    // here, since (per confidence.ts's computeOverallConfidence) it's never itself a
+    // displayed root cause. `null` when there's no Medium/Low translation with a root
+    // cause at all, in which case no extra clause is appended.
+    analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number, topRootCause: string | null) => string;
     analyticsConfusionTrendSummary: (bucketCount: number, highestLevel: string) => string;
     confusionLevelLabel: Record<"CALM" | "SOME" | "HIGH", string>;
     analyticsEmptyState: string;
@@ -333,6 +339,13 @@ export interface Dictionary {
   meeting: {
     raisedHandTitle: (name: string) => string;
     connectionQualityTitle: (quality: string) => string;
+    /** Short localized words for LiveKit's raw `ConnectionQuality` enum values
+     * ("excellent"/"good"/"poor"/"lost"), so `connectionQualityTitle` above never
+     * has to interpolate untranslated English into an otherwise-localized tooltip. */
+    connectionQualityExcellent: string;
+    connectionQualityGood: string;
+    connectionQualityPoor: string;
+    connectionQualityLost: string;
     toolbarLabel: string;
     muteMic: string;
     unmuteMic: string;
@@ -367,6 +380,7 @@ export interface Dictionary {
     pictureInPicture: string;
     copyInviteLink: string;
     linkCopied: string;
+    copyLinkFailed: string;
   };
   common: {
     speaker: string;
@@ -393,7 +407,6 @@ export interface Dictionary {
     confidenceReasonAudio: string;
     confidenceReasonSpeechRecognition: string;
     confidenceReasonTranslation: string;
-    confidenceReasonTerminology: string;
     confidenceReasonNetwork: string;
     confidenceReasonGeneric: string;
     requestClarification: string;
@@ -642,15 +655,26 @@ const en: Dictionary = {
     analyticsConfusionTrendHeading: "Confusion trend",
     analyticsParticipationHeading: "Participation",
     analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
-      `${displayName} · ${messages} messages · ${questions} questions${isAnonymous ? " · anonymous" : ""}`,
+      `${displayName} · ${messages} message${messages === 1 ? "" : "s"} · ${questions} question${questions === 1 ? "" : "s"}${isAnonymous ? " · anonymous" : ""}`,
     analyticsBlockersHeading: "Blockers",
     analyticsBlockersSummary: (raised, resolved, open) =>
       `${raised} raised · ${resolved} resolved · ${open} open`,
     analyticsLanguagesHeading: "Languages",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} translations`,
     analyticsConfidenceHeading: "Confidence Score",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "audio",
+        "speech-recognition": "speech recognition",
+        translation: "translation",
+        network: "network",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · top cause: ${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Confusion trend: ${bucketCount} time buckets, highest level: ${highestLevel}`,
     confusionLevelLabel: { CALM: "Calm", SOME: "Some confusion", HIGH: "High confusion" },
@@ -742,6 +766,10 @@ const en: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} raised their hand`,
     connectionQualityTitle: (quality) => `Connection: ${quality}`,
+    connectionQualityExcellent: "Excellent",
+    connectionQualityGood: "Good",
+    connectionQualityPoor: "Poor",
+    connectionQualityLost: "Lost",
     toolbarLabel: "Meeting controls",
     muteMic: "Mute microphone",
     unmuteMic: "Unmute microphone",
@@ -776,6 +804,7 @@ const en: Dictionary = {
     pictureInPicture: "Picture-in-picture",
     copyInviteLink: "Copy invite link",
     linkCopied: "Link copied!",
+    copyLinkFailed: "Couldn't copy the invite link.",
   },
   common: {
     speaker: "Speaker",
@@ -799,7 +828,6 @@ const en: Dictionary = {
     confidenceReasonAudio: "We couldn't hear you clearly.",
     confidenceReasonSpeechRecognition: "Some words could not be recognised accurately.",
     confidenceReasonTranslation: "This sentence could not be translated reliably.",
-    confidenceReasonTerminology: "Some technical terms may not have translated correctly.",
     confidenceReasonNetwork: "A network issue may have affected this message.",
     confidenceReasonGeneric: "Some content may not have translated correctly.",
     requestClarification: "Request clarification",
@@ -1038,8 +1066,19 @@ const zh: Dictionary = {
     analyticsLanguagesHeading: "语言",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} 次翻译`,
     analyticsConfidenceHeading: "置信度",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "音频",
+        "speech-recognition": "语音识别",
+        translation: "翻译",
+        network: "网络",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · 主要原因：${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `困惑趋势：${bucketCount} 个时间区间，最高等级：${highestLevel}`,
     confusionLevelLabel: { CALM: "平静", SOME: "一些困惑", HIGH: "困惑较多" },
@@ -1131,6 +1170,10 @@ const zh: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} 举手了`,
     connectionQualityTitle: (quality) => `连接质量：${quality}`,
+    connectionQualityExcellent: "优秀",
+    connectionQualityGood: "良好",
+    connectionQualityPoor: "较差",
+    connectionQualityLost: "已断开",
     toolbarLabel: "会议控制",
     muteMic: "静音麦克风",
     unmuteMic: "取消静音",
@@ -1165,6 +1208,7 @@ const zh: Dictionary = {
     pictureInPicture: "画中画",
     copyInviteLink: "复制邀请链接",
     linkCopied: "链接已复制！",
+    copyLinkFailed: "复制邀请链接失败。",
   },
   common: {
     speaker: "发言者",
@@ -1188,7 +1232,6 @@ const zh: Dictionary = {
     confidenceReasonAudio: "我们没能听清楚你的声音。",
     confidenceReasonSpeechRecognition: "部分词语未能被准确识别。",
     confidenceReasonTranslation: "这句话未能可靠地翻译。",
-    confidenceReasonTerminology: "部分专业术语可能未能正确翻译。",
     confidenceReasonNetwork: "网络问题可能影响了这条消息。",
     confidenceReasonGeneric: "部分内容可能未能正确翻译。",
     requestClarification: "请求澄清",
@@ -1420,15 +1463,26 @@ const es: Dictionary = {
     analyticsConfusionTrendHeading: "Tendencia de confusión",
     analyticsParticipationHeading: "Participación",
     analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
-      `${displayName} · ${messages} mensajes · ${questions} preguntas${isAnonymous ? " · anónimo" : ""}`,
+      `${displayName} · ${messages} mensaje${messages === 1 ? "" : "s"} · ${questions} pregunta${questions === 1 ? "" : "s"}${isAnonymous ? " · anónimo" : ""}`,
     analyticsBlockersHeading: "Bloqueos",
     analyticsBlockersSummary: (raised, resolved, open) =>
       `${raised} planteados · ${resolved} resueltos · ${open} abiertos`,
     analyticsLanguagesHeading: "Idiomas",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} traducciones`,
     analyticsConfidenceHeading: "Puntuación de confianza",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "audio",
+        "speech-recognition": "reconocimiento de voz",
+        translation: "traducción",
+        network: "red",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · causa principal: ${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Tendencia de confusión: ${bucketCount} intervalos de tiempo, nivel máximo: ${highestLevel}`,
     confusionLevelLabel: { CALM: "Tranquilo", SOME: "Algo de confusión", HIGH: "Mucha confusión" },
@@ -1520,6 +1574,10 @@ const es: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} levantó la mano`,
     connectionQualityTitle: (quality) => `Conexión: ${quality}`,
+    connectionQualityExcellent: "Excelente",
+    connectionQualityGood: "Buena",
+    connectionQualityPoor: "Deficiente",
+    connectionQualityLost: "Perdida",
     toolbarLabel: "Controles de la reunión",
     muteMic: "Silenciar micrófono",
     unmuteMic: "Activar micrófono",
@@ -1554,6 +1612,7 @@ const es: Dictionary = {
     pictureInPicture: "Imagen en imagen",
     copyInviteLink: "Copiar enlace de invitación",
     linkCopied: "¡Enlace copiado!",
+    copyLinkFailed: "No se pudo copiar el enlace de invitación.",
   },
   common: {
     speaker: "Orador",
@@ -1577,7 +1636,6 @@ const es: Dictionary = {
     confidenceReasonAudio: "No pudimos escucharte con claridad.",
     confidenceReasonSpeechRecognition: "Algunas palabras no se reconocieron con precisión.",
     confidenceReasonTranslation: "Esta frase no se pudo traducir de forma fiable.",
-    confidenceReasonTerminology: "Algunos términos técnicos podrían no haberse traducido correctamente.",
     confidenceReasonNetwork: "Un problema de red pudo haber afectado este mensaje.",
     confidenceReasonGeneric: "Parte del contenido podría no haberse traducido correctamente.",
     requestClarification: "Solicitar aclaración",

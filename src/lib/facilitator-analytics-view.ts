@@ -57,6 +57,30 @@ export interface FacilitatorAnalyticsView {
 }
 
 /**
+ * The single most-frequent RootCause key in a `ConfidenceStats.byRootCause` map, for
+ * `dict.analyticsConfidenceSummary`'s "top cause" clause — `null` when the map is empty
+ * or every count is zero. Excludes `"terminology"`: per confidence.ts's
+ * `computeOverallConfidence`, that signal is never itself surfaced as a displayed root
+ * cause (see PR #159/issue #130 follow-up), so a session whose only Medium/Low
+ * translations blame terminology should read the same as one with no root cause at all,
+ * not silently promote terminology into a UI slot it was deliberately removed from.
+ * Historical rows persisted before that change can still carry `"terminology"` as their
+ * `rootCause`, which is exactly the case this guards against.
+ */
+function topRootCauseKey(byRootCause: Record<string, number>): string | null {
+  let top: string | null = null;
+  let topCount = 0;
+  for (const [key, count] of Object.entries(byRootCause)) {
+    if (key === "terminology") continue;
+    if (count > topCount) {
+      top = key;
+      topCount = count;
+    }
+  }
+  return top;
+}
+
+/**
  * Fetches and computes everything AnalyticsDrawer needs, shared by every page a
  * facilitator can occupy during a session — originally only called from
  * facilitator/page.tsx (the dashboard), which meant facilitator/room/page.tsx (the
@@ -186,6 +210,7 @@ export async function buildFacilitatorAnalyticsView(
       analytics.confidence.averagePercent,
       analytics.confidence.mediumCount,
       analytics.confidence.lowCount,
+      topRootCauseKey(analytics.confidence.byRootCause),
     ),
     activeActionItems,
   };

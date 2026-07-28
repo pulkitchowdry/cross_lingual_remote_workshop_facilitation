@@ -48,6 +48,19 @@ interface OpenStreamInput {
    * local tier's buffering class ships as-is.
    */
   encoding?: { format: "linear16"; sampleRate: number; channels: number };
+  /**
+   * The browser `MediaRecorder` mimeType actually in use for a containerized
+   * (no `encoding`) caller — e.g. `"audio/webm;codecs=opus"` (Chrome/Firefox/Edge)
+   * or `"audio/mp4"` (Safari, which supports neither WebM variant at all). Only
+   * consulted by the local-inference tier (`LocalBufferingSpeechToTextStream`),
+   * which needs to know the container format to correctly splice each buffered
+   * window into an independently-decodable file — see that class's `encodeWindow`.
+   * Deepgram's real-time API auto-detects the container from the byte stream
+   * itself, so this is never forwarded there. Omitted (or unrecognized) falls
+   * back to treating the stream as WebM, matching this app's original
+   * Chrome/Firefox-only assumption.
+   */
+  mimeType?: string;
   /** Disables the cloud fallback tier for this call — a session's strict-privacy mode. Defaults to true. */
   allowCloudFallback?: boolean;
 }
@@ -221,6 +234,7 @@ function openStream(input: OpenStreamInput): SpeechToTextStream {
       onSegment: input.onSegment,
       onError: input.onError,
       encoding: input.encoding,
+      mimeType: input.mimeType,
       allowCloudFallback,
       openCloudFallback: () => openDeepgramStream(input),
     });

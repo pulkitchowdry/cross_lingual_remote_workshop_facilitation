@@ -22,6 +22,10 @@ export interface ConfidenceSignals {
   audioQuality?: number;
 }
 
+/** `"terminology"` remains a valid value for historical `Translation.rootCause` rows
+ * persisted before this type's decision-tree stopped selecting it (see
+ * `computeOverallConfidence`'s doc comment) — kept in the union so those old rows still
+ * type-check, even though nothing computed today will ever produce it as a fresh value. */
 export type RootCause = "audio" | "speech-recognition" | "translation" | "terminology" | "network";
 
 export interface ConfidenceResult {
@@ -53,11 +57,18 @@ const WEIGHTS: Record<keyof ConfidenceSignals, number> = {
 
 /**
  * Combines the per-stage confidence signals of one translated caption into a
- * single overall score, level, and (for Medium/Low) a root cause — see issue
- * #130's "Confidence Score Logic" scenarios. Root cause is decision-tree based,
- * not just "whichever signal is lowest": a badly-translated technical term
- * should read as Medium ("terminology") rather than Low ("translation"), since
- * it affects one word, not the whole sentence, matching the issue's Scenario 4.
+ * single overall score, level, and (for Low) a root cause — see issue #130's
+ * "Confidence Score Logic" scenarios. Root cause is decision-tree based, not
+ * just "whichever signal is lowest": only audio/speech-recognition/translation/
+ * network are ever surfaced as a displayed root cause. `terminology` still
+ * feeds the weighted `overall` average and can still push a message down to
+ * Medium on its own (matching the issue's Scenario 4's severity), but is never
+ * itself the *displayed* reason — ConfidenceBadge's expandable breakdown
+ * doesn't show a terminology row (see PR #159), so surfacing "terminology" as
+ * the explanation would be an orphaned claim with no corroborating evidence
+ * above it. When terminology alone is why the level dropped, `rootCause` falls
+ * through to `null` (the same generic "some content may not have translated
+ * correctly" case used whenever no single signal is clearly to blame).
  */
 export function computeOverallConfidence(signals: ConfidenceSignals): ConfidenceResult {
   const breakdown: Required<ConfidenceSignals> = {
@@ -88,8 +99,13 @@ export function computeOverallConfidence(signals: ConfidenceSignals): Confidence
     return { overall, level: "low", rootCause: severe[0], breakdown };
   }
 
+  // A weak terminology signal alone (none of the severe causes above triggered) still
+  // reads as Medium rather than High, but `terminology` is never itself the displayed
+  // root cause — there's no other single signal to blame here (the severe check above
+  // already ruled all of them out), so this falls through to `null`, same as the
+  // generic "overall dipped below 85 with no single cause" case right below.
   if (breakdown.terminology < ROOT_CAUSE_THRESHOLD) {
-    return { overall, level: "medium", rootCause: "terminology", breakdown };
+    return { overall, level: "medium", rootCause: null, breakdown };
   }
 
   if (overall < 85) {

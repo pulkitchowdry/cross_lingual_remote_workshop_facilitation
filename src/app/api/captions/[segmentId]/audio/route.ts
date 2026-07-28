@@ -3,7 +3,16 @@ import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { isRateLimited } from "@/lib/rate-limit";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+
+/** rate-limit.ts's own module doc names ElevenLabs TTS as one of the exact use cases
+ * this limiter exists for — this route had no throttle at all before this, despite
+ * calling that same paid API. More generous than CHAT_RATE_LIMIT/CAPTION_RATE_LIMIT
+ * (sessions/actions.ts, learn|facilitator/actions.ts's sibling per-sender limits)
+ * since TTS output is read-heavy/cacheable (see audioCache below) rather than a
+ * one-shot write. */
+const TTS_AUDIO_RATE_LIMIT = { max: 20, windowMs: 10_000 };
 
 /**
  * On-demand translated-audio synthesis for one transcript segment — Part 3 of
@@ -60,11 +69,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   });
   if (!segment) return Response.json({ error: "Segment not found." }, { status: 404 });
 
-  const isAuthorized =
-    (await hasFacilitatorAccess(segment.sessionId)) || Boolean(await learnerParticipantId(segment.sessionId));
-  if (!isAuthorized) {
+  const [isFacilitator, learnerId] = await Promise.all([
+    hasFacilitatorAccess(segment.sessionId),
+    learnerParticipantId(segment.sessionId),
+  ]);
+  if (!isFacilitator && !learnerId) {
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
   }
+  // Keyed by the already-authenticated requester's identity (not a raw cookie or IP) —
+  // there's exactly one facilitator per session, so `segment.sessionId` disambiguates
+  // facilitators the same way `learnerId` (a SessionParticipant id) already does for
+  // learners.
+  const requesterId = isFacilitator ? `facilitator:${segment.sessionId}` : `learner:${learnerId}`;
 
   const session = await prisma.session.findUnique({
     where: { id: segment.sessionId },
@@ -93,6 +109,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let synthesizing = audioCache.get(cacheKey);
 
   if (!synthesizing) {
+    // Only gates the cache-miss path — a cache hit below never calls the paid
+    // ElevenLabs API at all, so there's nothing to throttle there.
+    if (isRateLimited(`tts-audio:${requesterId}`, TTS_AUDIO_RATE_LIMIT.max, TTS_AUDIO_RATE_LIMIT.windowMs)) {
+      return Response.json({ error: "Too many audio requests. Please wait a moment and try again." }, { status: 429 });
+    }
+
     const text =
       segment.language === language
         ? segment.originalText

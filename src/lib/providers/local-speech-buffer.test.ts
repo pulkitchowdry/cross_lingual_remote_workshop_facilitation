@@ -9,6 +9,22 @@ import { LocalBufferingSpeechToTextStream } from "./local-speech-buffer";
 
 const localTranscribeMock = localTranscribe as unknown as ReturnType<typeof vi.fn>;
 
+/** Builds one ISO-BMFF box: 4-byte big-endian size + 4-byte ASCII type + payload. */
+function mp4Box(type: string, payload: number[] = []): number[] {
+  const size = 8 + payload.length;
+  return [
+    (size >>> 24) & 0xff,
+    (size >>> 16) & 0xff,
+    (size >>> 8) & 0xff,
+    size & 0xff,
+    type.charCodeAt(0),
+    type.charCodeAt(1),
+    type.charCodeAt(2),
+    type.charCodeAt(3),
+    ...payload,
+  ];
+}
+
 describe("LocalBufferingSpeechToTextStream", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -301,6 +317,40 @@ describe("LocalBufferingSpeechToTextStream", () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(openCloudFallback).not.toHaveBeenCalled();
+    stream.close();
+  });
+
+  it("captures the fragmented-MP4 header from the first window and prepends it to later headerless windows when mimeType is audio/mp4", async () => {
+    // Safari's MediaRecorder produces fragmented MP4, not WebM — the boundary
+    // finder must walk ISO-BMFF box sizes (ftyp/moov/moof), not search for
+    // WebM's Cluster ID byte pattern.
+    localTranscribeMock.mockResolvedValue({ text: "" });
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback: vi.fn(),
+      mimeType: "audio/mp4",
+    });
+
+    const ftyp = mp4Box("ftyp", [0, 0, 0, 0]);
+    const moov = mp4Box("moov", [1, 2, 3, 4]);
+    const header = [...ftyp, ...moov];
+    const firstWindow = new Uint8Array([...header, ...mp4Box("moof", [9]), ...mp4Box("mdat", [0xaa])]);
+
+    stream.sendAudio(firstWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+    const [firstBytes, firstMimeType] = localTranscribeMock.mock.calls[0].slice(0, 2) as [Uint8Array, string];
+    expect(firstMimeType).toBe("audio/mp4");
+    expect(Array.from(firstBytes)).toEqual(Array.from(firstWindow));
+
+    // A real second-or-later MediaRecorder chunk is headerless: just more fragments.
+    const secondWindow = new Uint8Array([...mp4Box("moof", [9]), ...mp4Box("mdat", [0xbb])]);
+    stream.sendAudio(secondWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(Array.from(localTranscribeMock.mock.calls[1][0] as Uint8Array)).toEqual([...header, ...Array.from(secondWindow)]);
+
     stream.close();
   });
 

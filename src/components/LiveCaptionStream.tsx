@@ -1,12 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/components-react";
+import { useLocalParticipant } from "@livekit/components-react";
 import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CHUNK_INTERVAL_MS = 250;
+
+/**
+ * Explicitly picks a `MediaRecorder` mimeType instead of leaving it to the
+ * browser's own default, in priority order of what the server-side buffering
+ * (`local-speech-buffer.ts`) and Deepgram's container auto-detect both know how
+ * to handle. Chrome/Firefox/Edge support `audio/webm;codecs=opus`; Safari
+ * supports neither WebM variant at all but does support `audio/mp4` (AAC) —
+ * without requesting it explicitly, Safari's un-opinionated default has in the
+ * past varied across versions, which the server has no way to detect after the
+ * fact. Returns `undefined` (browser default, best-effort) only when
+ * `MediaRecorder`/`isTypeSupported` themselves are unavailable or none of the
+ * known-good candidates are supported.
+ */
+function pickRecorderMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+}
 
 /**
  * Streams mic audio to `/api/captions/stream` over a WebSocket — true
@@ -42,18 +60,7 @@ export function LiveCaptionStream({
   agentCapturing?: boolean;
 }) {
   const dict = getDictionary(lang).captions;
-  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
-  // The Confidence Score's network signal (issue #130's "Future Enhancements") for this
-  // participant's own captions — same live, reactive quality ParticipantChip already
-  // shows in the meeting UI, just also reported to the server here. Read via a ref (not
-  // `quality` directly) inside `recorder.ondataavailable` below: that callback is set up
-  // once per `start()` call and would otherwise keep sending whatever quality was
-  // current at that moment, not the live value.
-  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
-  const qualityRef = useRef(quality);
-  useEffect(() => {
-    qualityRef.current = quality;
-  }, [quality]);
+  const { isMicrophoneEnabled } = useLocalParticipant();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +119,12 @@ export function LiveCaptionStream({
     setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
+      // Chosen once per connection attempt and reused for both the URL (so the server
+      // knows what container to expect — see captions-socket.ts/local-speech-buffer.ts)
+      // and the MediaRecorder instantiation below, so the two can never disagree.
+      const mimeType = pickRecorderMimeType();
+      const mimeTypeParam = mimeType ? `&mimeType=${encodeURIComponent(mimeType)}` : "";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}${mimeTypeParam}`);
       socketRef.current = socket;
       socket.onopen = () => {
         hasOpenedRef.current = true;
@@ -184,15 +196,11 @@ export function LiveCaptionStream({
         return;
       }
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
         if (event.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
-        // A small JSON text frame alongside each binary audio chunk — captions-socket.ts
-        // branches on the WebSocket frame's own binary/text flag to tell these apart, so
-        // this must go out as its own `send()` call, not merged into the audio buffer.
-        socket.send(JSON.stringify({ type: "connection-quality", quality: qualityRef.current }));
         void event.data.arrayBuffer().then((buffer) => socket.send(buffer));
       };
       recorder.onerror = () => {

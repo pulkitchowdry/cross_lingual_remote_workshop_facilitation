@@ -8,6 +8,7 @@ import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { SessionStatus } from "@/generated/prisma/client";
 import { parseRoomMetadata } from "@/components/meeting/room-metadata";
+import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
 
 function isSupportedLanguage(value: unknown): value is SupportedLanguage {
   return SUPPORTED_LANGUAGES.some((lang) => lang.value === value);
@@ -87,10 +88,27 @@ export async function POST(request: NextRequest) {
   }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
+  // Central Technical Glossary lookup (issue #131) — mirrors publishTranslatedCaption's
+  // own glossary pass in src/lib/captions.ts and sendChatMessage's in
+  // src/app/sessions/actions.ts. Without this, a facilitator's curated glossary entries
+  // (e.g. a term marked "keep verbatim", or one with a specific preferred zh/es rendering)
+  // were honored in captions/chat but silently ignored the moment the same term appeared
+  // on the whiteboard, so the identical term could translate differently depending on
+  // which surface it was typed into within the same session.
+  const centralGlossary = await prisma.centralGlossaryEntry.findMany({
+    select: { sourceTerm: true, translate: true, translations: true },
+  });
+  const centralGlossaryEntries: CentralGlossaryEntryLike[] = centralGlossary.map((entry) => ({
+    sourceTerm: entry.sourceTerm,
+    translate: entry.translate,
+    translations: (entry.translations as Record<string, string>) ?? {},
+  }));
+  const glossaryMatches = findGlossaryMatches(sourceText, centralGlossaryEntries);
   const translations: Partial<Record<SupportedLanguage, string>> = {};
   await Promise.all(
     SUPPORTED_LANGUAGES.filter((lang) => lang.value !== sourceLanguage).map(async ({ value: target }) => {
-      const result = await translateText(sourceText, sourceLanguage, target, { allowCloudFallback });
+      const glossaryHint = buildGlossaryPromptHint(glossaryMatches, target);
+      const result = await translateText(sourceText, sourceLanguage, target, { allowCloudFallback, glossaryHint });
       if (result) translations[target] = result.text;
     }),
   );

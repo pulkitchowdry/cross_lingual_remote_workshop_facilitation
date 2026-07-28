@@ -115,7 +115,14 @@ export function SessionChatPanel({
             // message (mirrors CaptionComprehensionActions for captions — see
             // TranslationHistoryTab), but not their own words, and never once the
             // composer itself is gone (readOnly: nothing left in the room to answer).
-            const isExplainable = !viewerIsFacilitator && !readOnly && message.sender.id !== viewerUserId;
+            // Also never on a PRIVATE message (message.recipientId set — either the
+            // learner's own private-to-facilitator message, already excluded above by
+            // the sender check, or a facilitator's private reply addressed to this
+            // learner): the generated question always resends the quoted text as a
+            // fully PUBLIC chat message, so offering it here would silently republish
+            // private message content to the entire session.
+            const isExplainable =
+              !viewerIsFacilitator && !readOnly && message.sender.id !== viewerUserId && !message.recipientId;
             const revealed = isExplainable && revealedMessageIds.has(message.id);
             const quotedText = translatedText(message, targetLanguage, translationUnavailable);
             return (
@@ -181,8 +188,14 @@ export function SessionChatPanel({
                       explainSimplyLabel={learnerDict.explainSimply}
                       giveExampleLabel={learnerDict.giveExample}
                       sendingLabel={dict.sending}
-                      explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(quotedText))}
-                      giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(quotedText))}
+                      // Quote message.originalText, not the resolved/translated
+                      // `quotedText` — quotedText can hold the localized "Translation
+                      // unavailable" placeholder (or generally the translated text),
+                      // which should never end up quoted in the generated question.
+                      // Matches the caption flow's use of segment.originalText
+                      // (TranslationHistoryTab.tsx / learn/page.tsx).
+                      explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(message.originalText))}
+                      giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(message.originalText))}
                     />
                   </div>
                 )}

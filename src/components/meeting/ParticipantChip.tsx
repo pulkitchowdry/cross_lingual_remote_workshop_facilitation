@@ -23,8 +23,14 @@ function speakerColor(identity: string) {
   return SPEAKER_COLORS[hash % SPEAKER_COLORS.length];
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+export function initials(name: string) {
+  // Only consider words that actually start with a letter — a trailing
+  // parenthetical like "李伟 (Learner)" or "John (Facilitator)" would otherwise
+  // contribute a stray "(" as the second initial.
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((part) => /\p{L}/u.test(part[0] ?? ""));
   if (parts.length === 0) return "?";
   return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 }
@@ -51,6 +57,19 @@ export function ParticipantChip({
   const { quality } = useConnectionQualityIndicator({ participant });
   const { attributes } = useParticipantAttributes({ participant });
   const dict = getDictionary(uiLang).meeting;
+  // Localized words for LiveKit's raw `ConnectionQuality` enum values, so
+  // `connectionQualityTitle` below never interpolates untranslated English
+  // ("excellent"/"good"/"poor"/"lost") into an otherwise-localized tooltip. Unknown
+  // (the brief pre-first-update state) has no dedicated translation yet — falls back
+  // to the raw enum value, matching this tooltip's prior behavior for every quality.
+  const QUALITY_LABEL: Record<ConnectionQuality, string> = {
+    [ConnectionQuality.Excellent]: dict.connectionQualityExcellent,
+    [ConnectionQuality.Good]: dict.connectionQualityGood,
+    [ConnectionQuality.Poor]: dict.connectionQualityPoor,
+    [ConnectionQuality.Lost]: dict.connectionQualityLost,
+    [ConnectionQuality.Unknown]: ConnectionQuality.Unknown,
+  };
+  const connectionQualityTitle = dict.connectionQualityTitle(QUALITY_LABEL[quality]);
 
   const raisedHand = attributes?.raisedHand === "true";
   const preferredLanguage = resolveLanguage(attributes?.preferredLanguage);
@@ -89,7 +108,7 @@ export function ParticipantChip({
         <span
           className="absolute bottom-1.5 right-1.5 h-2.5 w-2.5 rounded-full border-2"
           style={{ background: QUALITY_COLOR[quality], borderColor: "var(--surface)" }}
-          title={dict.connectionQualityTitle(quality)}
+          title={connectionQualityTitle}
         />
         <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-black/55 px-1.5 py-1">
           {!micEnabled && <MicOffIcon className="h-3 w-3 shrink-0 text-white" />}
@@ -137,7 +156,7 @@ export function ParticipantChip({
         <span
           className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2"
           style={{ background: QUALITY_COLOR[quality], borderColor: "var(--surface)" }}
-          title={dict.connectionQualityTitle(quality)}
+          title={connectionQualityTitle}
         />
       </div>
       <div className={`flex min-w-0 flex-col ${variant === "strip" ? "items-center" : "items-start"}`}>

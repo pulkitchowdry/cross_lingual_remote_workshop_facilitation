@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { LiveTranscriptFeed, type TranscriptFeedEntry } from "@/components/LiveTranscriptFeed";
 import { CaptionComprehensionActions } from "@/components/CaptionComprehensionActions";
+import { ClarificationActions } from "@/components/ClarificationActions";
 import { resolveTranslatedText } from "@/lib/translation-view";
 import { getDictionary } from "@/lib/i18n";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
@@ -42,6 +43,14 @@ export function TranslationHistoryTab({
   const dict = getDictionary(uiLang);
   const learnerDict = dict.learner;
   const timeFormatter = new Intl.DateTimeFormat(uiLang, { hour: "2-digit", minute: "2-digit" });
+  // Precomputed once, not per-line — see ClarificationActions' reasonLabels prop
+  // (mirrors learn/page.tsx's identical precomputation).
+  const clarificationReasonLabels = {
+    "could-not-hear": dict.common.clarificationReasonCouldNotHear,
+    "translation-incorrect": dict.common.clarificationReasonTranslationIncorrect,
+    "please-repeat": dict.common.clarificationReasonPleaseRepeat,
+    "explain-differently": dict.common.clarificationReasonExplainDifferently,
+  } as const;
 
   const entries: TranscriptFeedEntry[] = transcript.map((segment) => {
     const resolved = resolveTranslatedText(segment, uiLang);
@@ -51,6 +60,11 @@ export function TranslationHistoryTab({
     // this identical `transcript` prop shape; this tab was simply never wired up to
     // it, so the badge never appeared in the meeting sidebar's Captions tab.
     const translation = segment.translations.find((item) => item.targetLanguage === uiLang);
+    // Same computation as learn/page.tsx's `needsClarification` — a learner inside
+    // the live meeting room previously never saw "Request clarification" for a
+    // Medium/Low-confidence caption even though the pre-live dashboard already
+    // offered it for the identical segment/translation shape.
+    const needsClarification = !isOriginal && translation?.confidenceLevel && translation.confidenceLevel !== "high";
     return {
       id: segment.id,
       time: timeFormatter.format(new Date(segment.startedAt)),
@@ -80,14 +94,25 @@ export function TranslationHistoryTab({
       // regression this restores for the *live* room (the dashboard already had it).
       actions:
         !viewerIsFacilitator && sendChatAction ? (
-          <CaptionComprehensionActions
-            sendAction={sendChatAction}
-            explainSimplyLabel={learnerDict.explainSimply}
-            giveExampleLabel={learnerDict.giveExample}
-            sendingLabel={dict.chat.sending}
-            explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(segment.originalText))}
-            giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(segment.originalText))}
-          />
+          <div className="flex flex-col gap-2">
+            <CaptionComprehensionActions
+              sendAction={sendChatAction}
+              explainSimplyLabel={learnerDict.explainSimply}
+              giveExampleLabel={learnerDict.giveExample}
+              sendingLabel={dict.chat.sending}
+              explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(segment.originalText))}
+              giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(segment.originalText))}
+            />
+            {needsClarification && (
+              <ClarificationActions
+                sendAction={sendChatAction}
+                originalText={segment.originalText}
+                requestClarificationLabel={dict.common.requestClarification}
+                reasonLabels={clarificationReasonLabels}
+                sendingLabel={dict.chat.sending}
+              />
+            )}
+          </div>
         ) : undefined,
     };
   });
