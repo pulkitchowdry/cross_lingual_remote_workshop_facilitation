@@ -132,7 +132,6 @@ export function LiveSessionRoom({
   canMessageFacilitatorPrivately,
   privateRecipientOptions,
   currentLanguage,
-  facilitatorSourceLanguage,
   ttsConfigured,
   onChangeLanguage,
   languageOptions,
@@ -155,12 +154,6 @@ export function LiveSessionRoom({
   canMessageFacilitatorPrivately?: boolean;
   privateRecipientOptions?: PrivateRecipientOption[];
   currentLanguage: SupportedLanguage;
-  /** The session's own spoken/source language — the facilitator's language regardless
-   * of who's viewing. Used only as `useSpeakerLanguages`' defensive fallback for the
-   * facilitator identity during the narrow staleness window right after a facilitator
-   * language change (see `SyncParticipantLanguageAttribute`'s doc comment); every other
-   * participant's language comes from their own live LiveKit attribute. */
-  facilitatorSourceLanguage: SupportedLanguage;
   /** `textToSpeechProvider.isConfigured`, computed once by the route page (same value
    * that gates its own `TranslatedAudioPlayer` render) and threaded down to
    * `DuckedRoomAudio` — see that component's doc comment for why ducking a
@@ -558,7 +551,7 @@ export function LiveSessionRoom({
         <PublishStateTracker onChange={handlePublishStateChange} />
         <RaisedHandTracker onChange={handleRaisedHandChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
-        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} ttsConfigured={ttsConfigured} />
+        <DuckedRoomAudio myLanguage={currentLanguage} transcript={transcript} ttsConfigured={ttsConfigured} />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>
