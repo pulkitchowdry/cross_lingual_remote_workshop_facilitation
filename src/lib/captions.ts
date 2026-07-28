@@ -185,4 +185,10 @@ export async function publishTranslatedCaption(
       console.error("generateSessionInsights failed", error);
     });
   }
+
+  // Lets a caller drive further work off the same translation results without a second
+  // translate call — currently only `caption-agent.ts`'s dub-audio publishing (see
+  // `dub-audio-publisher.ts`) reads this; the WebSocket path (`captions-socket.ts`)
+  // already awaits this function and simply discards the return value, unaffected.
+  return { segmentId: segment.id, sourceLanguage: input.language, translations: successfulTranslations };
 }

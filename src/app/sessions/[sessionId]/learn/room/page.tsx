@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
-import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
@@ -102,21 +101,11 @@ export default async function LearnerRoomPage({
           de-duplication anywhere in the pipeline). This is always the sole capture path
           for a learner's own speech, so the Start/Stop control always applies. */}
       <LiveCaptionStream sessionId={participant.session.id} lang={lang} />
-      {textToSpeechProvider.isConfigured ? (
-        <TranslatedAudioPlayer
-          segments={participant.session.transcript.map((segment) => ({
-            id: segment.id,
-            hasTranslation:
-              segment.language === participant.preferredLanguage ||
-              segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
-            isTyped: segment.isTyped,
-            language: segment.language,
-          }))}
-          preferredLanguage={participant.preferredLanguage}
-        />
-      ) : (
-        <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>
-      )}
+      {/* The dub audio itself now plays via a real LiveKit track (`DubAudioPlayer`,
+          rendered once inside `LiveSessionRoom`, not per-caption-header) — see
+          `docs/DUB_AUDIO_TRACK_MIGRATION.md`. This just keeps the same "not configured
+          at all" notice for when neither TTS tier is set up. */}
+      {!textToSpeechProvider.isConfigured && <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>}
     </>
   );
 

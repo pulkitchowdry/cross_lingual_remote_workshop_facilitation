@@ -168,6 +168,73 @@ being reverted.
 underlying iOS Safari problem this was trying to fix is still open** — see
 below.
 
+### 8. A same-day regression from the very next fix: the per-speaker duplicate-socket guard could get stuck forever
+
+**Symptom (reported 2026-07-28, live on the Railway deployment):** a
+facilitator or learner keeps seeing "Live captions disconnected. Try again"/
+"Live captions couldn't connect. Try again" — and clicking Retry doesn't
+help, indefinitely, for the rest of the session.
+
+**Root cause:** `823d978` (#149, the same commit as fix #4 above) also added
+`activeCaptionStreamSpeakers`, an in-memory `Set` in `server.ts` guarding
+against two concurrent `/api/captions/stream` sockets for the same speaker
+identity (e.g. two tabs). A speaker's slot is only released by
+`ws.on("close"/"error", releaseSpeakerKey)` — but a `WebSocketServer` with no
+heartbeat has no way to detect a connection that's gone silently dead (a
+backgrounded mobile tab, a WiFi-to-cellular handoff, a laptop sleeping, a
+proxy dropping an idle connection with no close frame) — `close`/`error` may
+not fire for minutes, or ever, depending on the network. Confirmed live in
+Railway logs: repeated `[captions/stream] rejecting after upgrade: Another
+caption stream is already active for this speaker` for the same
+session/speaker, with no successful reconnect between them — from the
+facilitator's or learner's side this is indistinguishable from captions
+being broken outright, since every single retry is rejected by the same
+stuck entry until the whole server process restarts.
+
+**Fix:** added the standard `ws` heartbeat pattern to `server.ts` — ping
+every caption-stream socket every 30s, `terminate()` any that didn't `pong`
+back since the last ping. `terminate()` synchronously emits `close`, which
+runs the existing cleanup (`releaseSpeakerKey`, `sttStream.close()`, the
+facilitator duplicate-capture interval), so a dead connection's slot is now
+freed within one heartbeat interval instead of being stuck until a redeploy.
+
+### 9. "Another caption stream is already active for this speaker" — what it actually is, and what it isn't
+
+Follow-up investigation (2026-07-28) after the heartbeat fix above still
+didn't fully resolve reports of this message on Railway. Written up here
+because it's easy to over-attribute captions problems to this one guard when
+the actual picture is three separate, independently-diagnosable issues:
+
+1. **The guard itself** (fix #8 above) is a legitimate, working duplicate-
+   connection guard, not a bug by itself — it's supposed to reject a second
+   concurrent socket for the same speaker identity. Post-heartbeat, a
+   *stuck-forever* rejection is fixed; a *transient* collision (e.g. a page
+   reload/navigation racing itself — the old tab's socket closing at the same
+   moment a new one for the same identity opens, before the server has
+   processed the old one's closure) can still happen and self-clears within
+   one heartbeat interval (≤30-60s), not instantly. Seeing this message once
+   during a reload is expected, recoverable behavior, not a regression.
+2. **This guard only ever affects the browser-mic *capture* path** (STT
+   ingestion) — it has nothing to do with translation or TTS. A rejection
+   here means one specific socket couldn't (yet) stream this speaker's mic
+   to the STT pipeline; it says nothing about whether captions/translation
+   are broken more broadly.
+3. **The actual bigger contributor in the Railway logs reviewed this
+   session** was repeated `ctx.connect()` `ECONNREFUSED`/`fetch failed`
+   errors from `caption-agent.ts` — the already-documented "Still open"
+   LiveKit Cloud connectivity issue below. When that fails, server-side
+   facilitator auto-capture never starts, so *everyone* falls back to the
+   browser-mic path — which is exactly the path that can then hit the guard
+   above. These two issues compound each other: fixing #8 alone doesn't fix
+   the underlying reason the browser-mic fallback is under more load than
+   intended in the first place.
+
+No further code change from this entry alone — see the "Still open" LiveKit
+Cloud connectivity section below for the remaining root cause, and
+`docs/DUB_AUDIO_TRACK_MIGRATION.md` for the separate (also 2026-07-28) work
+that replaced the translated-**audio** delivery mechanism entirely; that
+migration is unrelated to this guard and doesn't fix or depend on it.
+
 ## Still open
 
 ### Safari / iPhone: live captions never connect
@@ -198,36 +265,6 @@ underlying theory. **Do not re-attempt this blind.** Before shipping a fix:
    own `getUserMedia()` call by one tick (or until LiveKit's own publish is
    confirmed complete) rather than changing *how* the stream is acquired at
    all.
-
-### 8. A same-day regression from the very next fix: the per-speaker duplicate-socket guard could get stuck forever
-
-**Symptom (reported 2026-07-28, live on the Railway deployment):** a
-facilitator or learner keeps seeing "Live captions disconnected. Try again"/
-"Live captions couldn't connect. Try again" — and clicking Retry doesn't
-help, indefinitely, for the rest of the session.
-
-**Root cause:** `823d978` (#149, the same commit as fix #4 above) also added
-`activeCaptionStreamSpeakers`, an in-memory `Set` in `server.ts` guarding
-against two concurrent `/api/captions/stream` sockets for the same speaker
-identity (e.g. two tabs). A speaker's slot is only released by
-`ws.on("close"/"error", releaseSpeakerKey)` — but a `WebSocketServer` with no
-heartbeat has no way to detect a connection that's gone silently dead (a
-backgrounded mobile tab, a WiFi-to-cellular handoff, a laptop sleeping, a
-proxy dropping an idle connection with no close frame) — `close`/`error` may
-not fire for minutes, or ever, depending on the network. Confirmed live in
-Railway logs: repeated `[captions/stream] rejecting after upgrade: Another
-caption stream is already active for this speaker` for the same
-session/speaker, with no successful reconnect between them — from the
-facilitator's or learner's side this is indistinguishable from captions
-being broken outright, since every single retry is rejected by the same
-stuck entry until the whole server process restarts.
-
-**Fix:** added the standard `ws` heartbeat pattern to `server.ts` — ping
-every caption-stream socket every 30s, `terminate()` any that didn't `pong`
-back since the last ping. `terminate()` synchronously emits `close`, which
-runs the existing cleanup (`releaseSpeakerKey`, `sttStream.close()`, the
-facilitator duplicate-capture interval), so a dead connection's slot is now
-freed within one heartbeat interval instead of being stuck until a redeploy.
 
 ### LiveKit Cloud connectivity (Railway → LiveKit Cloud region-redirect)
 

@@ -30,19 +30,25 @@ interface QueueEntry {
 }
 
 /**
- * Translated-audio playback for the learner's caption feed — Part 3 of
- * `docs/TRANSLATION_ARCHITECTURE.md`. A spoken caption in a *different*
- * language than this listener's own auto-plays its dub by default — the
- * raw speaker audio is ducked for them locally (see `DuckedRoomAudio`), so
- * without this they'd hear nothing at all for that speaker. Facilitator- and
- * learner-typed captions are a second, independent always-play case — they
- * stand in for a speaker's voice when they can't/didn't speak, not a
- * translation nicety. `enabled` is now only an opt-*in* for the narrow
- * remaining case of a same-language segment (the listener wants to hear a
- * dub even though they'd understand the original fine) — everything that
- * needs a dub to be heard at all already plays without it. Fetches
- * `/api/captions/[segmentId]/audio` on demand for each new segment and
- * queues playback so overlapping captions don't talk over each other.
+ * Translated-audio playback for a session's post-meeting transcript **recap**
+ * (`facilitator/page.tsx`/`learn/page.tsx`, only inside their `SessionStatus.ENDED`
+ * branch) — Part 3 of `docs/TRANSLATION_ARCHITECTURE.md`, originally. The live,
+ * in-meeting version of this (`facilitator/room/page.tsx`/`learn/room/page.tsx`,
+ * while the session is LIVE) was replaced by `DubAudioPlayer.tsx`, which plays a
+ * real LiveKit audio track published by `caption-agent.ts` instead of fetching
+ * synthesized audio per segment over HTTP — see `docs/DUB_AUDIO_TRACK_MIGRATION.md`
+ * for why. This component is kept, unchanged, for the recap case: there is no live
+ * room to publish a track into once a session has ENDED, so on-demand HTTP
+ * synthesis (`/api/captions/[segmentId]/audio`) is still the only option there.
+ *
+ * A spoken caption in a *different* language than this listener's own auto-plays
+ * its dub by default. Facilitator- and learner-typed captions are a second,
+ * independent always-play case — they stand in for a speaker's voice when they
+ * can't/didn't speak, not a translation nicety. `enabled` is an opt-*in* for the
+ * narrow remaining case of a same-language segment (the listener wants to hear a
+ * dub even though they'd understand the original fine). Fetches
+ * `/api/captions/[segmentId]/audio` on demand for each new segment and queues
+ * playback so overlapping captions don't talk over each other.
  */
 type PlaybackErrorKind = "blocked" | "skipped";
 
