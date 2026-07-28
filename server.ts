@@ -167,7 +167,7 @@ async function main() {
    */
   async function authorizeAndAttachCaptionSocket(req: import("node:http").IncomingMessage, query: import("node:querystring").ParsedUrlQuery, ws: import("ws").WebSocket) {
     console.log("[captions/stream] authorize start");
-    const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;]
+    const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
     console.log("[captions/stream] session", sessionId);
     if (!sessionId) throw new Error("sessionId is required.");
 
