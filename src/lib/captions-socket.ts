@@ -53,7 +53,16 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
  * rejected Promise, so the duplicate-guard-interval cleanup is verifiable
  * without needing to await anything.
  */
-export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: CaptionSpeaker, initialLanguage: SupportedLanguage) {
+export function attachCaptionSocket(
+  ws: WebSocket,
+  session: Session,
+  speaker: CaptionSpeaker,
+  initialLanguage: SupportedLanguage,
+  /** The browser `MediaRecorder` mimeType this client is actually sending (see
+   * LiveCaptionStream.tsx's pickRecorderMimeType) — only consulted by the
+   * local-inference tier; see OpenStreamInput.mimeType in speech-to-text.ts. */
+  mimeType?: string,
+) {
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
 
@@ -93,6 +102,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     sttStream = speechToTextProvider.openStream!({
       expectedLanguage: initialLanguage,
       allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
+      mimeType,
       onSegment: (event) => {
         if (!event.isFinal) return;
         // Capture and advance the timestamp synchronously, in the same tick the

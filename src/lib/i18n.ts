@@ -380,6 +380,7 @@ export interface Dictionary {
     pictureInPicture: string;
     copyInviteLink: string;
     linkCopied: string;
+    copyLinkFailed: string;
   };
   common: {
     speaker: string;
@@ -803,6 +804,7 @@ const en: Dictionary = {
     pictureInPicture: "Picture-in-picture",
     copyInviteLink: "Copy invite link",
     linkCopied: "Link copied!",
+    copyLinkFailed: "Couldn't copy the invite link.",
   },
   common: {
     speaker: "Speaker",
@@ -1206,6 +1208,7 @@ const zh: Dictionary = {
     pictureInPicture: "画中画",
     copyInviteLink: "复制邀请链接",
     linkCopied: "链接已复制！",
+    copyLinkFailed: "复制邀请链接失败。",
   },
   common: {
     speaker: "发言者",
@@ -1609,6 +1612,7 @@ const es: Dictionary = {
     pictureInPicture: "Imagen en imagen",
     copyInviteLink: "Copiar enlace de invitación",
     linkCopied: "¡Enlace copiado!",
+    copyLinkFailed: "No se pudo copiar el enlace de invitación.",
   },
   common: {
     speaker: "Orador",

@@ -9,6 +9,24 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 const CHUNK_INTERVAL_MS = 250;
 
 /**
+ * Explicitly picks a `MediaRecorder` mimeType instead of leaving it to the
+ * browser's own default, in priority order of what the server-side buffering
+ * (`local-speech-buffer.ts`) and Deepgram's container auto-detect both know how
+ * to handle. Chrome/Firefox/Edge support `audio/webm;codecs=opus`; Safari
+ * supports neither WebM variant at all but does support `audio/mp4` (AAC) —
+ * without requesting it explicitly, Safari's un-opinionated default has in the
+ * past varied across versions, which the server has no way to detect after the
+ * fact. Returns `undefined` (browser default, best-effort) only when
+ * `MediaRecorder`/`isTypeSupported` themselves are unavailable or none of the
+ * known-good candidates are supported.
+ */
+function pickRecorderMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+/**
  * Streams mic audio to `/api/captions/stream` over a WebSocket — true
  * streaming STT (Deepgram's live API, or local-inference's chunked
  * equivalent), for facilitator or learner alike. Short `MediaRecorder`
@@ -101,7 +119,12 @@ export function LiveCaptionStream({
     setIsConnecting(true);
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
+      // Chosen once per connection attempt and reused for both the URL (so the server
+      // knows what container to expect — see captions-socket.ts/local-speech-buffer.ts)
+      // and the MediaRecorder instantiation below, so the two can never disagree.
+      const mimeType = pickRecorderMimeType();
+      const mimeTypeParam = mimeType ? `&mimeType=${encodeURIComponent(mimeType)}` : "";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}${mimeTypeParam}`);
       socketRef.current = socket;
       socket.onopen = () => {
         hasOpenedRef.current = true;
@@ -173,7 +196,7 @@ export function LiveCaptionStream({
         return;
       }
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {

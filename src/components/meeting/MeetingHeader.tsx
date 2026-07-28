@@ -41,18 +41,24 @@ export function MeetingHeader({
   languageChangeWarning?: string;
 }) {
   const dict = getDictionary(uiLang).meeting;
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copyLink() {
     if (!inviteLink) return;
     try {
+      // `navigator.clipboard` itself can be entirely absent (an insecure/http
+      // context, or a browser old enough to have no Clipboard API at all — e.g.
+      // Safari before 13.1) rather than merely rejecting `writeText` — calling
+      // `.writeText` directly on `undefined` would throw a plain TypeError instead
+      // of the DOMException this catch block otherwise expects, but either way the
+      // user still needs the same visible "it didn't work" feedback.
+      if (!navigator.clipboard) throw new Error("Clipboard API unavailable.");
       await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopyStatus("copied");
     } catch {
-      // Clipboard access can be denied by the browser — the tooltip still
-      // shows the raw link on hover, so this fails silently.
+      setCopyStatus("failed");
     }
+    setTimeout(() => setCopyStatus("idle"), 2000);
   }
 
   return (
@@ -79,7 +85,7 @@ export function MeetingHeader({
                 sideOffset={6}
                 className="font-data z-50 max-w-[16rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
               >
-                {copied ? dict.linkCopied : dict.copyInviteLink}
+                {copyStatus === "copied" ? dict.linkCopied : copyStatus === "failed" ? dict.copyLinkFailed : dict.copyInviteLink}
                 <Tooltip.Arrow style={{ fill: "var(--surface-raised)" }} />
               </Tooltip.Content>
             </Tooltip.Portal>
