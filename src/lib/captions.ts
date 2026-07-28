@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { safeRevalidatePath } from "@/lib/safe-revalidate";
+import { isHallucinatedCaption } from "@/lib/caption-hallucination";
 import { translateText } from "@/lib/providers/translation";
 import { roomProvider } from "@/lib/providers/room";
 import { generateSessionInsights } from "@/lib/insights";
@@ -46,6 +47,16 @@ export async function publishTranslatedCaption(
     instrumentation?: CaptionInstrumentationContext;
   },
 ) {
+  // Every STT tier (Deepgram's streaming path here, local-inference's Whisper tier on
+  // its own) hallucinates the same stock filler on silence/background noise — "You" is
+  // the most common (see caption-hallucination.ts's doc comment). Both live-caption
+  // callers (captions-socket.ts's browser-mic fallback and caption-agent.ts's LiveKit
+  // worker) route through this single function, so filtering here — rather than
+  // duplicating the check in each — catches it regardless of which one is active.
+  // Typed captions are exempt: a facilitator/learner typing "You" is never a
+  // hallucination, and text-filtering their deliberate input would be a real bug.
+  if (!input.isTyped && isHallucinatedCaption(input.originalText)) return;
+
   const originalCaptionReadyAtMs = input.instrumentation?.originalCaptionReadyAtMs ?? captionLatencyNowMs();
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
   // Confidence Score's terminology signal (issue #130) needs this session's glossary to
