@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LiveKitRoom, useDataChannel, useLocalParticipant, useParticipantAttributes } from "@livekit/components-react";
+import { LiveKitRoom, StartAudio, useDataChannel, useLocalParticipant, useParticipantAttributes } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
@@ -176,6 +176,14 @@ export function LiveSessionRoom({
   /** Facilitator-only "Analytics" sidebar tab (see MeetingSidebar) — omitted entirely for learners. */
   analyticsView?: FacilitatorAnalyticsView;
 }) {
+  console.log("[room] render");
+  useEffect(() => {
+    console.log("[room] mounted");
+
+    return () => {
+      console.log("[room] unmounted");
+    };
+  }, []);
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -334,6 +342,7 @@ export function LiveSessionRoom({
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
       try {
+        console.log("[room] fetchCredentials", { background, time: new Date().toISOString() });
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -370,6 +379,7 @@ export function LiveSessionRoom({
           }
         }
         setCredentials(payload);
+        console.log("[room] token", payload.token.substring(0, 20));
         if (!background) setError(null);
       } catch (reason) {
         // A background refresh failing (e.g. a transient network blip) must not tear
@@ -559,6 +569,20 @@ export function LiveSessionRoom({
         <RaisedHandTracker onChange={handleRaisedHandChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
         <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} ttsConfigured={ttsConfigured} />
+        {/* Chrome/Safari autoplay policy blocks ALL audio output until the page has seen a
+            real user gesture — `attach()`'s `play()` rejects with NotAllowedError and
+            livekit-client emits AudioPlaybackFailed ("could not playback audio"). Nothing
+            here handled that, so a participant who joined without clicking anything sat in
+            a connected room hearing complete silence — both other participants' raw mic
+            audio (DuckedRoomAudio) and the translated dub (TranslatedAudioPlayer) — with
+            no error surfaced anywhere on the page. `StartAudio` renders a button ONLY while
+            `room.canPlaybackAudio` is false and hides itself the moment playback is
+            allowed, so this costs nothing once audio is unblocked. Kept inside
+            <LiveKitRoom> because it reads the room from context. */}
+        <StartAudio
+          label={dict.enableAudio}
+          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-border-strong bg-surface px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground shadow-lg"
+        />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>

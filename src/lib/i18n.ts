@@ -344,6 +344,8 @@ export interface Dictionary {
     cameraUnavailable: string;
     microphoneUnavailable: string;
     rejoin: string;
+    /** Autoplay-policy unblock: browsers refuse all audio output until a user gesture (see StartAudio in LiveSessionRoom). */
+    enableAudio: string;
   };
   meeting: {
     raisedHandTitle: (name: string) => string;
@@ -791,6 +793,7 @@ const en: Dictionary = {
       "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
+    enableAudio: "Click to enable audio",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} raised their hand`,
@@ -1204,6 +1207,7 @@ const zh: Dictionary = {
     cameraUnavailable: "摄像头不可用（权限被拒绝、被占用或未找到）——将不使用摄像头继续。你仍可以只用音频加入。",
     microphoneUnavailable: "麦克风不可用（权限被拒绝、被占用或未找到）——将不使用麦克风继续。",
     rejoin: "重新加入",
+    enableAudio: "点击以启用音频",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} 举手了`,
@@ -1617,6 +1621,7 @@ const es: Dictionary = {
     cameraUnavailable: "Tu cámara no está disponible (permiso denegado, en uso, o no encontrada) — continuando sin ella. Aún puedes unirte solo con audio.",
     microphoneUnavailable: "Tu micrófono no está disponible (permiso denegado, en uso, o no encontrado) — continuando sin él.",
     rejoin: "Reincorporarse",
+    enableAudio: "Haz clic para activar el audio",
   },
   meeting: {
     raisedHandTitle: (name) => `${name} levantó la mano`,

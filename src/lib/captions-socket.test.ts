@@ -76,4 +76,47 @@ describe("attachCaptionSocket", () => {
 
     expect(findUniqueMock).not.toHaveBeenCalled();
   });
+
+  it("releases the STT stream and the duplicate-capture interval when the socket is already closed, instead of leaking both per reconnect", async () => {
+    // The production failure this guards: authorization is async (several DB round trips),
+    // and Railway's logs show the socket closing at age=2ms while `attached` only lands at
+    // age=6ms. `ws` emits `close` exactly once, so the handlers registered at the end of
+    // `attachCaptionSocket` are dead code on an already-closed socket — leaking one STT
+    // stream and one 3s Postgres-polling interval on EVERY 500ms client retry.
+    const close = vi.fn();
+    openStreamMock.mockReturnValue({ sendAudio: vi.fn(), close });
+    const { attachCaptionSocket } = await import("@/lib/captions-socket");
+    const listeners = vi.fn();
+    const ws = {
+      on: listeners,
+      send: vi.fn(),
+      close: vi.fn(),
+      readyState: 3, // CLOSED
+      OPEN: 1,
+    } as unknown as WebSocket;
+    const session = { id: "session-1", sourceLanguage: "en", translationMode: "AUTO" } as unknown as Session;
+
+    attachCaptionSocket(ws, session, { role: "facilitator" }, "en");
+
+    expect(close).toHaveBeenCalledTimes(1);
+    // And the interval is gone, so it can never poll Postgres for a socket nobody holds.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(findUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves a live socket's STT stream open, so the closed-socket guard can't tear down a healthy connection", async () => {
+    const close = vi.fn();
+    openStreamMock.mockReturnValue({ sendAudio: vi.fn(), close });
+    const { attachCaptionSocket } = await import("@/lib/captions-socket");
+    const ws = { on: vi.fn(), send: vi.fn(), close: vi.fn(), readyState: 1, OPEN: 1 } as unknown as WebSocket;
+    const session = { id: "session-1", sourceLanguage: "en", translationMode: "AUTO" } as unknown as Session;
+
+    attachCaptionSocket(ws, session, { role: "facilitator" }, "en");
+
+    expect(close).not.toHaveBeenCalled();
+    // The facilitator duplicate-capture guard is still running, as it should be.
+    findUniqueMock.mockResolvedValue({ captionAgentActive: false });
+    await vi.advanceTimersByTimeAsync(3_500);
+    expect(findUniqueMock).toHaveBeenCalled();
+  });
 });

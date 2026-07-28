@@ -15,6 +15,11 @@ is a hackathon project, not a long-term production system, and the extra
 service/lockfile/HTTP boundary wasn't worth the operational overhead. See
 `docs/TRANSLATION_ARCHITECTURE.md` Part 2 for the full history.)
 
+Note that the LiveKit **server** is not one of these: it's LiveKit Cloud, and browsers
+connect to it directly without passing through Railway. That distinction matters when
+debugging captions — see `docs/CAPTION_TRANSPORT_HOSTING_DECISION.md` for what is hosted
+where, and why "move LiveKit off Railway" is not an available action.
+
 Everything except `DATABASE_URL` is optional at runtime (`src/lib/env.ts` — features
 fall back to mock/cloud providers until their key is set), so none of the steps below
 are all-or-nothing.
