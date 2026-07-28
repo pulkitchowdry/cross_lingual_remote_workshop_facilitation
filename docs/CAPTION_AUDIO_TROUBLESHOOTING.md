@@ -199,6 +199,36 @@ underlying theory. **Do not re-attempt this blind.** Before shipping a fix:
    confirmed complete) rather than changing *how* the stream is acquired at
    all.
 
+### 8. A same-day regression from the very next fix: the per-speaker duplicate-socket guard could get stuck forever
+
+**Symptom (reported 2026-07-28, live on the Railway deployment):** a
+facilitator or learner keeps seeing "Live captions disconnected. Try again"/
+"Live captions couldn't connect. Try again" — and clicking Retry doesn't
+help, indefinitely, for the rest of the session.
+
+**Root cause:** `823d978` (#149, the same commit as fix #4 above) also added
+`activeCaptionStreamSpeakers`, an in-memory `Set` in `server.ts` guarding
+against two concurrent `/api/captions/stream` sockets for the same speaker
+identity (e.g. two tabs). A speaker's slot is only released by
+`ws.on("close"/"error", releaseSpeakerKey)` — but a `WebSocketServer` with no
+heartbeat has no way to detect a connection that's gone silently dead (a
+backgrounded mobile tab, a WiFi-to-cellular handoff, a laptop sleeping, a
+proxy dropping an idle connection with no close frame) — `close`/`error` may
+not fire for minutes, or ever, depending on the network. Confirmed live in
+Railway logs: repeated `[captions/stream] rejecting after upgrade: Another
+caption stream is already active for this speaker` for the same
+session/speaker, with no successful reconnect between them — from the
+facilitator's or learner's side this is indistinguishable from captions
+being broken outright, since every single retry is rejected by the same
+stuck entry until the whole server process restarts.
+
+**Fix:** added the standard `ws` heartbeat pattern to `server.ts` — ping
+every caption-stream socket every 30s, `terminate()` any that didn't `pong`
+back since the last ping. `terminate()` synchronously emits `close`, which
+runs the existing cleanup (`releaseSpeakerKey`, `sttStream.close()`, the
+facilitator duplicate-capture interval), so a dead connection's slot is now
+freed within one heartbeat interval instead of being stuck until a redeploy.
+
 ### LiveKit Cloud connectivity (Railway → LiveKit Cloud region-redirect)
 
 Still intermittent. Railway's container network occasionally can't reach
