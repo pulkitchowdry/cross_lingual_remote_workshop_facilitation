@@ -121,7 +121,7 @@ export function LiveTranscriptFeed({
               const isExpandable = hasSecondary || Boolean(entry.actions);
               const revealed = isExpandable && revealedIds.has(entry.id);
               return (
-                <div key={entry.id}>
+                <div key={entry.id} className="animate-fade-in-up">
                   {/* Time/speaker/text all flow as one wrapping paragraph (not a fixed-width
                       time column) so a short line reads as one tidy sentence and a long one
                       wraps naturally instead of leaving a ragged gap under a lonely time
@@ -180,7 +180,7 @@ export function LiveTranscriptFeed({
           <button
             type="button"
             onClick={scrollToLatest}
-            className="font-data absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow"
+            className="font-data press-scale animate-fade-in absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow transition-colors"
           >
             {jumpToLatestLabel} ↓
           </button>

@@ -80,7 +80,7 @@ export function ConfidenceBadge({
   ];
 
   return (
-    <details className="inline-block align-middle">
+    <details className="inline-block animate-scale-in align-middle">
       <summary
         className="font-data inline-flex cursor-pointer list-none items-center gap-1 px-2 py-1 text-xs"
         style={{ color }}

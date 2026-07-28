@@ -38,7 +38,7 @@ export function LanguageSwitcher({
           key={language.value}
           href={`${basePath}?lang=${language.value}`}
           aria-current={language.value === current ? "true" : undefined}
-          className={`font-data rounded-md border px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider transition-colors ${
+          className={`font-data press-scale rounded-md border px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider transition-colors duration-150 ${
             language.value === current
               ? "border-accent text-foreground"
               : "border-border-strong text-muted-foreground hover:border-accent hover:text-foreground"

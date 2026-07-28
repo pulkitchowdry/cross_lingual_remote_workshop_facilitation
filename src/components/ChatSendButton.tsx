@@ -18,7 +18,7 @@ export function ChatSendButton({ label, sendingLabel }: { label: string; sending
       type="submit"
       disabled={pending}
       aria-disabled={pending}
-      className="font-data w-fit whitespace-nowrap rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      className="font-data press-scale w-fit whitespace-nowrap rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? sendingLabel : label}
     </button>

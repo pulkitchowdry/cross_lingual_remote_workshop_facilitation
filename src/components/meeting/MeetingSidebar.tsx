@@ -123,7 +123,7 @@ export function MeetingSidebar({
           // clears the wrapped toolbar's full height (~128px) with room to spare;
           // above that width the toolbar fits on one line and the extra gap here is
           // harmless.
-          className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95 max-[430px]:bottom-36"
+          className="animate-scale-in fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95 max-[430px]:bottom-36"
           style={{ background: "var(--accent)" }}
         >
           <ChatIcon className="h-5 w-5" />
@@ -135,7 +135,7 @@ export function MeetingSidebar({
         type="button"
         onClick={() => setSidebarOpen(true)}
         aria-label={dict.expandSidebar}
-        className="font-data flex h-24 w-9 shrink-0 flex-col items-center justify-center gap-2 rounded-l-lg border border-r-0 border-border-subtle bg-surface-raised text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+        className="font-data press-scale animate-slide-in-right flex h-24 w-9 shrink-0 flex-col items-center justify-center gap-2 rounded-l-lg border border-r-0 border-border-subtle bg-surface-raised text-muted-foreground shadow-sm transition-colors hover:text-foreground"
       >
         <ChatIcon className="h-4 w-4 shrink-0" />
         <span className="text-[0.625rem] font-medium uppercase tracking-wide" style={{ writingMode: "vertical-rl" }}>
@@ -188,7 +188,7 @@ export function MeetingSidebar({
               tabIndex={tab === value ? 0 : -1}
               onClick={() => setTab(value)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
-              className={`font-data flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide ${
+              className={`font-data press-scale flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors ${
                 tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -200,7 +200,7 @@ export function MeetingSidebar({
           type="button"
           onClick={() => setSidebarOpen(false)}
           aria-label={dict.collapseSidebar}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+          className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
         >
           <CloseIcon className="h-4 w-4" />
         </button>
@@ -270,7 +270,7 @@ export function MeetingSidebar({
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-30 bg-black/50"
         />
-        <div className="fixed inset-x-0 bottom-0 z-40 flex h-[85vh] flex-col overflow-hidden rounded-t-xl border border-border-subtle bg-surface-raised shadow-lg">
+        <div className="animate-fade-in-up fixed inset-x-0 bottom-0 z-40 flex h-[85vh] flex-col overflow-hidden rounded-t-xl border border-border-subtle bg-surface-raised shadow-lg">
           {panel}
         </div>
       </>
@@ -279,7 +279,7 @@ export function MeetingSidebar({
 
   return (
     <div
-      className="relative flex h-full shrink-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface-raised transition-[width] duration-150"
+      className="animate-slide-in-right relative flex h-full shrink-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface-raised transition-[width] duration-150"
       style={{ width: sidebarWidth }}
     >
       <div

@@ -40,7 +40,7 @@ export function CaptionPublishForm({
         placeholder={dict.captionPlaceholder}
       />
       {state.error && (
-        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {state.error}
         </p>
       )}

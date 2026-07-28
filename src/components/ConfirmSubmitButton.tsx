@@ -79,7 +79,7 @@ export function ConfirmSubmitButton({
         disabled={pending}
         aria-disabled={pending}
         onClick={() => dialogRef.current?.showModal()}
-        className={`font-data w-fit rounded-md border px-5 py-2 text-xs font-medium uppercase tracking-wider transition-colors disabled:opacity-40 ${
+        className={`font-data w-fit rounded-md border px-5 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors duration-150 disabled:opacity-40 ${
           variant === "danger"
             ? "border-border-strong text-foreground hover:border-[var(--tick-low)] hover:text-[var(--tick-low)]"
             : "border-border-strong text-foreground hover:bg-background"
@@ -109,7 +109,7 @@ export function ConfirmSubmitButton({
               disabled={pending}
               aria-disabled={pending}
               onClick={() => dialogRef.current?.close()}
-              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground press-scale transition-colors duration-150 hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
             >
               {cancelLabel}
             </button>
@@ -118,7 +118,7 @@ export function ConfirmSubmitButton({
               disabled={pending}
               aria-disabled={pending}
               onClick={confirm}
-              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white press-scale transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60"
               // --tick-low/--accent are tuned for use as text against a dark surface, not
               // as a solid fill behind white button-label text (fails WCAG AA there) —
               // --danger-fill/--accent-fill are the button-fill-safe equivalents.

@@ -292,6 +292,107 @@ body {
   }
 }
 
+/* ---------------------------------------------------------------------
+   Shared micro-interaction utilities, used app-wide (join/setup flow,
+   live session room, dashboard side-panels, buttons/badges/modals).
+   All entrance animations are one-shot (not `infinite`) so they never
+   compete with `.animate-live-pulse` / the video-loading spinner above,
+   and every one is neutralized under prefers-reduced-motion below. */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s ease-out both;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.35s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out both;
+}
+
+/* Applied to a list's items (e.g. transcript lines, chat messages) via
+   inline `animation-delay` for a light stagger — see components using
+   `animate-fade-in-up` in a loop. Capped so a long list doesn't produce a
+   multi-second cascade. */
+.animate-stagger {
+  animation-delay: calc(min(var(--stagger-index, 0), 6) * 40ms);
+}
+
+/* Generic press/hover feedback for interactive elements that don't already
+   define their own transition. Safe to combine with existing hover: color
+   utilities. */
+.press-scale {
+  transition:
+    transform 0.15s ease-out,
+    opacity 0.15s ease-out;
+}
+
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-fade-in-down,
+  .animate-scale-in,
+  .animate-slide-in-right,
+  .animate-live-pulse {
+    animation: none;
+  }
+
+  .press-scale {
+    transition: none;
+  }
+
+  .press-scale:active {
+    transform: none;
+  }
+}
+
 /* @livekit/components-styles sets `.lk-button-group { height: 100% }` (meant for its own
    single-line, non-wrapping control bar layout) — inside LiveSessionRoom's control-bar row
    (`flex flex-wrap`, needed so mic/camera/screenshare/CC/leave wrap onto a second line on

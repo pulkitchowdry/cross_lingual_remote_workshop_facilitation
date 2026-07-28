@@ -236,7 +236,7 @@ export function LiveCaptionStream({
     return (
       <div className="flex items-center gap-2">
         <span
-          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          className="font-data animate-fade-in shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
           style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
           role="status"
         >
@@ -252,7 +252,7 @@ export function LiveCaptionStream({
     <div className="flex items-center gap-2">
       {isStreaming && (
         <span
-          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          className="font-data animate-fade-in shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
           style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
           role="status"
         >
@@ -261,7 +261,7 @@ export function LiveCaptionStream({
       )}
       {error && (
         <>
-          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
             {error}
           </p>
           {/* Mic is still on (the `!isMicrophoneEnabled` early return above already
@@ -272,7 +272,7 @@ export function LiveCaptionStream({
             type="button"
             onClick={() => void start()}
             disabled={isConnecting}
-            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
+            className="font-data press-scale shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground transition-colors disabled:opacity-50"
           >
             {dict.retry}
           </button>

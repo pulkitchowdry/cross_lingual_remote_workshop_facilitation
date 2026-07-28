@@ -50,7 +50,7 @@ function ToolbarButton({
           disabled={disabled}
           aria-label={label}
           aria-pressed={active}
-          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          className="press-scale flex h-11 w-11 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             background: active ? "var(--accent)" : "var(--surface-raised)",
             color: active ? "var(--accent-foreground)" : "var(--foreground)",
@@ -254,7 +254,7 @@ export function MeetingToolbar({
             <button
               type="button"
               aria-label={dict.settings}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground"
+              className="press-scale flex h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground transition-colors"
             >
               <SettingsIcon />
             </button>
@@ -319,7 +319,7 @@ export function MeetingToolbar({
                 <button
                   type="button"
                   onClick={() => pipController.current?.enter()}
-                  className="font-data rounded-md border border-border-strong px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-foreground hover:border-accent"
+                  className="font-data press-scale rounded-md border border-border-strong px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent"
                 >
                   {dict.pictureInPicture}
                 </button>
@@ -337,7 +337,7 @@ export function MeetingToolbar({
               onClick={handleLeave}
               disabled={leaveButtonProps.disabled}
               aria-label={dict.leave}
-              className="flex h-11 w-11 items-center justify-center rounded-full"
+              className="press-scale flex h-11 w-11 items-center justify-center rounded-full transition-colors"
               style={{ background: "var(--tick-low)", color: "#fff" }}
             >
               <LeaveIcon />
