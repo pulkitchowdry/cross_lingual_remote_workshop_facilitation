@@ -286,6 +286,13 @@ class DeepgramStreamingSession implements SpeechToTextStream {
   private readonly socket: WebSocket;
   /** Set before we initiate our own close, so the `close` handler below can tell "we hung up" apart from Deepgram's side closing on us. */
   private closedByUs = false;
+  /** Resolves once `socket` reaches OPEN, rejects if it errors/closes first —
+   * `local-speech-buffer.ts`'s `waitUntilReady` (structurally, not by import;
+   * see that file's `SpeechToTextStream.ready` doc comment) awaits this,
+   * bounded, before flushing audio recovered from a failed local-inference
+   * window into this fallback, instead of sending into a still-CONNECTING
+   * socket that silently no-ops every send until OPEN. */
+  private readonly openPromise: Promise<void>;
 
   constructor(
     apiKey: string,
@@ -330,6 +337,16 @@ class DeepgramStreamingSession implements SpeechToTextStream {
       this.socket.terminate();
     }, DEEPGRAM_CONNECT_TIMEOUT_MS);
     this.socket.on("open", () => clearTimeout(connectTimeout));
+    this.openPromise = new Promise((resolve, reject) => {
+      this.socket.once("open", resolve);
+      this.socket.once("error", reject);
+      this.socket.once("close", () => reject(new Error("Deepgram socket closed before opening.")));
+    });
+    // Never let a rejection here become an unhandled rejection — every real
+    // caller goes through `ready()`, which already `.catch()`s via
+    // `waitUntilReady`, but the promise itself starts settling immediately on
+    // construction, before anything has called `ready()` yet.
+    this.openPromise.catch(() => undefined);
     this.socket.on("message", (data) => {
       const event = parseDeepgramStreamingMessage(data.toString());
       if (event) onSegment(event);
@@ -350,6 +367,10 @@ class DeepgramStreamingSession implements SpeechToTextStream {
       if (this.closedByUs) return;
       onError(new Error(`Deepgram streaming connection closed unexpectedly (code ${code}${reason.length > 0 ? `: ${reason.toString()}` : ""}).`));
     });
+  }
+
+  ready(): Promise<void> {
+    return this.openPromise;
   }
 
   sendAudio(chunk: Uint8Array): void {

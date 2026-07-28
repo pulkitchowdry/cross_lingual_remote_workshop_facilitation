@@ -9,6 +9,17 @@ export interface RoomCredentialRequest {
   identity: string;
   displayName: string;
   preferredLanguage: SupportedLanguage;
+  /**
+   * The participant's current raised-hand state, to preserve across a token remint.
+   * issueCredential is the single path behind every token mint — the participant's very
+   * first join *and* every background refresh (LiveSessionRoom's fetchCredentials, on a
+   * timer/'visibilitychange'/'online') alike. Defaults to `false`, which is only correct
+   * for a genuine first join; a caller reminting a token for an already-connected
+   * participant (a background refresh) must pass that participant's live value here, or
+   * the reconnect this token triggers will silently lower an already-raised hand for
+   * everyone in the room.
+   */
+  raisedHand?: boolean;
 }
 
 export interface RoomCredential {
@@ -73,6 +84,7 @@ class LiveKitRoomProvider implements RoomProvider {
     identity,
     displayName,
     preferredLanguage,
+    raisedHand = false,
   }: RoomCredentialRequest): Promise<RoomCredential> {
     const serverUrl = process.env.LIVEKIT_URL;
     const apiKey = process.env.LIVEKIT_API_KEY;
@@ -91,9 +103,11 @@ class LiveKitRoomProvider implements RoomProvider {
       // participant manually reloads the page. 6h comfortably covers a live
       // workshop session; a real refresh flow (livekit-client's TokenSource)
       // would be the more thorough fix but is a larger, untested change for
-      // this prototype's scope. raisedHand starts false; only the owning participant can
-      // change it later, via canUpdateOwnMetadata below.
-      attributes: { preferredLanguage, raisedHand: "false" },
+      // this prototype's scope. raisedHand defaults to false (a genuine first join) but
+      // must reflect the caller-supplied current value on a background refresh — see
+      // RoomCredentialRequest.raisedHand's doc comment; canUpdateOwnMetadata below is
+      // still how the owning participant changes it live thereafter.
+      attributes: { preferredLanguage, raisedHand: String(raisedHand) },
       ttl: "6h",
     });
     token.addGrant({
@@ -164,10 +178,14 @@ class LiveKitRoomProvider implements RoomProvider {
     const payload = new TextEncoder().encode(JSON.stringify({ type: "whiteboard-elements", elements }));
     try {
       await client.sendData(`workshop-${sessionId}`, payload, DataPacket_Kind.RELIABLE, { topic: "whiteboard" });
-    } catch {
+    } catch (error) {
       // Best-effort, same reasoning as notifyCaptionsChanged — the next
       // client-side snapshot save still captures this element's translation
-      // eventually via a future edit/re-render, this is just latency.
+      // eventually via a future edit/re-render, this is just latency. Still log it,
+      // though: a *persistently* failing push would otherwise silently degrade every
+      // whiteboard translation for the rest of the session with nothing in the logs
+      // to explain why.
+      console.error(`sendWhiteboardUpdate: LiveKit sendData failed for session ${sessionId}:`, error);
     }
   }
 }

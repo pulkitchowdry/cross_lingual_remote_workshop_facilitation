@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LiveKitRoom, useDataChannel, useLocalParticipant } from "@livekit/components-react";
+import { LiveKitRoom, useDataChannel, useLocalParticipant, useParticipantAttributes } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
@@ -94,6 +94,25 @@ function PublishStateTracker({ onChange }: { onChange: (patch: PublishState) => 
   useEffect(() => {
     onChange({ audio: isMicrophoneEnabled, video: isCameraEnabled, screen: isScreenShareEnabled });
   }, [isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled, onChange]);
+  return null;
+}
+
+/**
+ * Mirrors the local participant's `raisedHand` attribute (toggled via
+ * MeetingToolbar's `toggleRaiseHand`, deep inside `<MeetingRoom>`) back up to
+ * `LiveSessionRoom`, the same way `PublishStateTracker` mirrors mic/camera/
+ * screen-share state — every freshly issued token defaults `raisedHand` to
+ * "false" (room.ts's `issueCredential`), so without this, a background token
+ * refresh's forced reconnect silently lowered an already-raised hand for
+ * everyone in the room. Must render inside `<LiveKitRoom>` to reach room
+ * context; renders nothing itself.
+ */
+function RaisedHandTracker({ onChange }: { onChange: (raisedHand: boolean) => void }) {
+  const { localParticipant } = useLocalParticipant();
+  const { attributes } = useParticipantAttributes({ participant: localParticipant });
+  useEffect(() => {
+    onChange(attributes?.raisedHand === "true");
+  }, [attributes?.raisedHand, onChange]);
   return null;
 }
 
@@ -197,6 +216,14 @@ export function LiveSessionRoom({
   useEffect(() => {
     publishStateRef.current = publishState;
   }, [publishState]);
+  // Same ref-not-state rationale as publishStateRef above — kept in sync by
+  // RaisedHandTracker, read by fetchCredentials at the moment a token refresh
+  // fires so the freshly issued token's `raisedHand` attribute (room.ts) matches
+  // whatever the participant's hand state actually is, instead of always "false".
+  const raisedHandRef = useRef(false);
+  const handleRaisedHandChange = useCallback((value: boolean) => {
+    raisedHandRef.current = value;
+  }, []);
   const [screenShareInterrupted, setScreenShareInterrupted] = useState(false);
   // Stable identity (empty deps — `setPublishState` itself is already stable, and this
   // closes over nothing else) avoids giving any downstream consumer (PublishStateTracker,
@@ -310,7 +337,7 @@ export function LiveSessionRoom({
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, role }),
+          body: JSON.stringify({ sessionId, role, raisedHand: raisedHandRef.current }),
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
@@ -512,6 +539,7 @@ export function LiveSessionRoom({
           analyticsView={analyticsView}
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
+        <RaisedHandTracker onChange={handleRaisedHandChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
         <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} ttsConfigured={ttsConfigured} />
         <CaptionChannelRefresher />

@@ -104,6 +104,76 @@ describe("LocalBufferingSpeechToTextStream", () => {
     expect(fallbackStream.close).toHaveBeenCalledTimes(1);
   });
 
+  it("queues sends behind a fallback stream's optional ready() instead of forwarding into it before it's ready", async () => {
+    localTranscribeMock.mockRejectedValue(new Error("local down"));
+    let resolveReady!: () => void;
+    const fallbackStream = {
+      sendAudio: vi.fn(),
+      close: vi.fn(),
+      ready: vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveReady = resolve;
+        }),
+      ),
+    };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+    });
+
+    stream.sendAudio(new Uint8Array([1]));
+    await vi.advanceTimersByTimeAsync(2_500); // flush() fails locally and switches to fallback
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    // Arrives while still waiting on ready() — must be queued, not dropped or sent early
+    // into a transport (e.g. a WebSocket mid-handshake) that would silently swallow it.
+    stream.sendAudio(new Uint8Array([2]));
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    resolveReady();
+    await vi.waitFor(() => expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(1));
+    // The recovered (failed-window) audio and the queued send are flushed together, in order.
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[0][0] as Uint8Array)).toEqual([1, 2]);
+
+    // Once ready, further sends go straight through instead of queuing.
+    stream.sendAudio(new Uint8Array([3]));
+    expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(2);
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[1][0] as Uint8Array)).toEqual([3]);
+
+    stream.close();
+  });
+
+  it("proceeds to send after a bounded timeout if the fallback stream's ready() never resolves", async () => {
+    localTranscribeMock.mockRejectedValue(new Error("local down"));
+    const fallbackStream = {
+      sendAudio: vi.fn(),
+      close: vi.fn(),
+      ready: vi.fn().mockReturnValue(new Promise<void>(() => {})), // never resolves
+    };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+    });
+
+    stream.sendAudio(new Uint8Array([1]));
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    // FALLBACK_READY_TIMEOUT_MS — a hung ready() must not block audio forever.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(1);
+
+    stream.close();
+  });
+
   it("forwards the failed window's audio plus anything buffered while the failing call was pending, instead of dropping it", async () => {
     let rejectLocal!: (error: Error) => void;
     localTranscribeMock.mockReturnValue(

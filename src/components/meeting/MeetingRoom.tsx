@@ -68,7 +68,7 @@ function MeetingRoomInner({
   analyticsView?: FacilitatorAnalyticsView;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { workspaceMode } = useMeetingShell();
+  const { workspaceMode, captionsVisible } = useMeetingShell();
   const { metadata } = useRoomInfo();
   const { allowLearnerPresenting } = parseRoomMetadata(metadata);
   const canPresent = role === "facilitator" || allowLearnerPresenting;
@@ -128,9 +128,28 @@ function MeetingRoomInner({
         languageChangeWarning={languageChangeWarning}
       />
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle">
+        {/* `min-w-[200px]` mirrors ParticipantGrid's own `minmax(200px, 1fr)` column floor —
+            defense in depth alongside MeetingShellContext's viewport-aware sidebar-width
+            cap, so ordinary flex shrinking can't squeeze this pane narrower than its own
+            grid can lay out, even if the sidebar's width ever comes from somewhere else. */}
+        <div className="flex min-h-0 min-w-[200px] flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle">
           {focusMode && <ParticipantStrip uiLang={uiLang} cameraTracks={cameraTracks} micTracks={micTracks} />}
-          <div className="relative min-h-0 flex-1">
+          <div
+            className={`relative min-h-0 flex-1 ${
+              // Reserves room for CaptionOverlay's own floating content (caption
+              // bubbles + font-size buttons, `bottom-16` from this same box) so it
+              // never has to render on top of video-tile content. Without this, a
+              // short/narrow viewport with multiple participants — where
+              // ParticipantGrid's tiles stack into more than one row and each row
+              // still needs at least its own `minmax(140px, ...)` height — has no
+              // guaranteed gap at the bottom for the grid to shrink into: the
+              // overlay's fixed pixel offset from this box's bottom edge can land
+              // in the middle of the last row's tile instead of below it. Matches
+              // CaptionOverlay's own early-return condition exactly, so this only
+              // shrinks the video area when the overlay is actually going to render.
+              captionsVisible && transcript.length > 0 ? "pb-24" : ""
+            }`}
+          >
             {workspaceMode === "whiteboard" ? (
               <Whiteboard sessionId={sessionId} uiLang={uiLang} canPresent={canPresent} />
             ) : screenShareTrack ? (
@@ -204,7 +223,7 @@ export function MeetingRoom(props: {
   analyticsView?: FacilitatorAnalyticsView;
 }) {
   return (
-    <MeetingShellProvider>
+    <MeetingShellProvider sessionId={props.sessionId}>
       <MeetingRoomInner {...props} />
     </MeetingShellProvider>
   );

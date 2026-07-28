@@ -178,7 +178,13 @@ export function MeetingToolbar({
     if (!node) return;
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (
+        target &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+          target.isContentEditable ||
+          target.closest('[role="listbox"],[role="combobox"],[role="dialog"]'))
+      )
+        return;
       const { mic, camera, toggleRaiseHand, setCaptionsVisible, workspaceMode } = latest.current;
       // The whiteboard (Excalidraw) has its own built-in tool shortcuts on these same
       // keys ('v' = selection tool, 'h' = hand/pan tool) — while it's the active
@@ -268,7 +274,7 @@ export function MeetingToolbar({
             <Popover.Content
               side="top"
               sideOffset={8}
-              className="z-50 flex w-72 flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
+              className="z-50 flex w-72 max-w-[90vw] flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
             >
               <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.settings}</p>
 

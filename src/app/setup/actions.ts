@@ -15,10 +15,19 @@ import { translateText } from "@/lib/providers/translation";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
+/** Zero-width/invisible Unicode characters (U+200B ZERO WIDTH SPACE and similar) —
+ * `String.prototype.trim()` doesn't strip these, so a name made up only of them
+ * passed the `!trimmed` emptiness check below unchanged and was persisted as a
+ * functionally-blank display name (renders as a blank label everywhere it's shown:
+ * session header, participant list, chat, video tile). Stripped from the whole
+ * value, not just for the check, so none can survive embedded elsewhere in a name
+ * either. Mirrors the identical fix in join/[token]/actions.ts's joinSession. */
+const ZERO_WIDTH_CHARS = new RegExp("[\\u200B-\\u200D\\uFEFF\\u2060]", "g");
+
 function requiredText(formData: FormData, field: string, maximum: number) {
   const value = formData.get(field);
   if (typeof value !== "string") throw new Error(`${field} is required.`);
-  const trimmed = value.trim();
+  const trimmed = value.replace(ZERO_WIDTH_CHARS, "").trim();
   if (!trimmed || trimmed.length > maximum) throw new Error(`Enter a valid ${field}.`);
   return trimmed;
 }

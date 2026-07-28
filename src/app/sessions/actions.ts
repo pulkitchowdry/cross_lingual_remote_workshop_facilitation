@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { RoomServiceClient } from "livekit-server-sdk";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
@@ -11,6 +12,8 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { isPrivateMessageRequest, validateFacilitatorPrivateRecipient } from "@/lib/message-visibility";
 import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
 import { isSessionRetentionExpired } from "@/lib/session-retention";
+import { getDictionary, type Dictionary } from "@/lib/i18n";
+import { parseRoomMetadata } from "@/components/meeting/room-metadata";
 
 type ChatRole = "facilitator" | "learner";
 
@@ -26,22 +29,23 @@ export async function sendChatMessage(
   formData: FormData,
 ): Promise<FormActionResult> {
   const text = formData.get("message");
-  if (typeof text !== "string" || !text.trim() || text.trim().length > CHAT_MESSAGE_MAX_LENGTH) {
-    return { error: `Enter a message of up to ${CHAT_MESSAGE_MAX_LENGTH.toLocaleString()} characters.` };
-  }
   const kind = formData.get("kind") === "QUESTION" ? "QUESTION" : "CHAT";
   const isAnonymous = role === "learner" && formData.get("isAnonymous") === "true";
   const isPrivateMessage = isPrivateMessageRequest(role, formData);
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) redirect("/setup");
-  if (session.status !== SessionStatus.LIVE) {
-    return { error: "This session is not live — messages can only be sent while it is in progress." };
-  }
 
   let senderId: string;
   let sourceLanguage: SupportedLanguage;
   let recipientId: string | null = null;
+  // Localized via the *sender's own* resolved language, not the viewer's page language
+  // — a facilitator and a learner in the same room can be on different languages, and
+  // each should see their own action's errors in their own, not always English (see
+  // dict.chatErrors's own doc comment in i18n.ts). Set as soon as sourceLanguage is
+  // known in each branch below, so it's available for that branch's own error returns
+  // too (e.g. the private-recipient checks), not just the ones after this if/else.
+  let chatErrors: Dictionary["chatErrors"];
   if (role === "facilitator") {
     if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
     const participant = await prisma.sessionParticipant.findFirst({
@@ -51,17 +55,18 @@ export async function sendChatMessage(
     if (!participant) redirect("/setup");
     senderId = session.facilitatorId;
     sourceLanguage = session.sourceLanguage as SupportedLanguage;
+    chatErrors = getDictionary(sourceLanguage).chatErrors;
     if (isPrivateMessage) {
       const recipientParticipantId = formData.get("recipientParticipantId");
       if (typeof recipientParticipantId !== "string" || !recipientParticipantId.trim()) {
-        return { error: "Choose a learner in this session for a private reply." };
+        return { error: chatErrors.choosePrivateRecipient };
       }
       const recipientParticipant = await prisma.sessionParticipant.findFirst({
         where: { id: recipientParticipantId, sessionId },
         select: { id: true, userId: true, role: true, sessionId: true },
       });
       const validated = validateFacilitatorPrivateRecipient({ participant: recipientParticipant, sessionId });
-      if (validated.error) return { error: validated.error };
+      if (!validated.recipientId) return { error: chatErrors.choosePrivateRecipient };
       recipientId = validated.recipientId;
     }
   } else {
@@ -73,20 +78,28 @@ export async function sendChatMessage(
     if (!participant) redirect("/setup");
     senderId = participant.userId;
     sourceLanguage = participant.preferredLanguage as SupportedLanguage;
+    chatErrors = getDictionary(sourceLanguage).chatErrors;
     if (isPrivateMessage) {
       const requestedRecipient = formData.get("recipientParticipantId");
       if (typeof requestedRecipient === "string" && requestedRecipient.trim()) {
-        return { error: "Learners can only message the facilitator privately." };
+        return { error: chatErrors.learnerPrivateRecipientRestricted };
       }
       recipientId = session.facilitatorId;
     }
+  }
+
+  if (session.status !== SessionStatus.LIVE) {
+    return { error: chatErrors.sessionNotLive };
+  }
+  if (typeof text !== "string" || !text.trim() || text.trim().length > CHAT_MESSAGE_MAX_LENGTH) {
+    return { error: chatErrors.messageTooLong(CHAT_MESSAGE_MAX_LENGTH) };
   }
 
   // Keyed by the real, already-authenticated sender identity (not a raw cookie or IP),
   // so it throttles a single script hammering this action as one specific
   // facilitator/learner rather than needing to guess a request-level identity.
   if (isRateLimited(`chat:${senderId}`, CHAT_RATE_LIMIT.max, CHAT_RATE_LIMIT.windowMs)) {
-    return { error: "You're sending messages too quickly. Please wait a moment and try again." };
+    return { error: chatErrors.rateLimited };
   }
 
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
@@ -128,7 +141,7 @@ export async function sendChatMessage(
   // the time this runs.
   const stillLive = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
   if (!stillLive || stillLive.status !== SessionStatus.LIVE) {
-    return { error: "This session is not live — messages can only be sent while it is in progress." };
+    return { error: chatErrors.sessionNotLive };
   }
 
   await prisma.message.create({
@@ -154,6 +167,29 @@ export async function sendChatMessage(
 }
 
 /**
+ * Whether a learner currently has presenting rights — mirrors the identical check
+ * src/app/api/whiteboard/translate/route.ts makes for the same threat (a learner
+ * without presenting rights bypassing the client-side gate by calling a whiteboard
+ * write path directly). `allowLearnerPresenting` is a live LiveKit room-metadata
+ * toggle (see roomProvider.setPresenterAccess in src/lib/providers/room.ts), not a
+ * Prisma column, so it has to be read from LiveKit directly here too.
+ */
+async function learnerCanPresent(sessionId: string): Promise<boolean> {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const serverUrl = process.env.LIVEKIT_AGENT_URL || process.env.LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !serverUrl) return false;
+  try {
+    const client = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+    const [room] = await client.listRooms([`workshop-${sessionId}`]);
+    return parseRoomMetadata(room?.metadata).allowLearnerPresenting;
+  } catch (error) {
+    console.error(`learnerCanPresent: LiveKit listRooms failed for session ${sessionId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Debounced full-scene snapshot save (see Whiteboard.tsx) — purely for
  * late-joiners/page reloads, not the live-sync path (the "whiteboard"
  * LiveKit DataChannel topic). Upserted, one row per session.
@@ -162,6 +198,15 @@ export async function saveWhiteboardSnapshot(sessionId: string, elements: unknow
   const isFacilitator = await hasFacilitatorAccess(sessionId);
   const isLearner = Boolean(await learnerParticipantId(sessionId));
   if (!isFacilitator && !isLearner) redirect("/setup");
+  // Whiteboard.tsx only lets a learner without presenting rights view the board
+  // (viewModeEnabled, never edit), and its live DataChannel path discards a broadcast
+  // from a non-presenting learner — without this check, a learner could bypass both
+  // entirely by calling this Server Action directly with an arbitrary `elements` array,
+  // silently overwriting the single persisted snapshot the facilitator locked them out
+  // of editing. No-op rather than redirect, matching the retention check below — this
+  // is called fire-and-forget from a client-side debounce timer with no navigation to
+  // redirect.
+  if (!isFacilitator && !(await learnerCanPresent(sessionId))) return;
 
   // Matches the SessionStatus.LIVE + retention check the sibling whiteboard API routes
   // already apply (src/app/api/whiteboard/[sessionId]/route.ts and .../translate/route.ts)

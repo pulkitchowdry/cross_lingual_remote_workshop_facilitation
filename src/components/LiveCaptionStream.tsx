@@ -74,6 +74,15 @@ export function LiveCaptionStream({
   // connection already in flight or established" without depending on (and re-firing
   // for) those state values themselves.
   const activeRef = useRef(false);
+  // Monotonically increasing token identifying each start() attempt. The catch/onerror/
+  // onclose handlers below capture their own attempt's value and compare it against the
+  // live counter before tearing anything down — without this, a stale attempt's late
+  // failure (e.g. getUserMedia's permission prompt resolving well after a newer attempt
+  // has already taken over and is actively streaming) would call the shared `stop()` and
+  // kill that newer, healthy session out from under it. Bumped by `stop()` too, so an
+  // explicit stop (mic toggled off, unmount) also invalidates whatever attempt is still
+  // in flight at that moment.
+  const attemptTokenRef = useRef(0);
   /** Whether the current socket ever reached `OPEN` — see caption-socket-client.ts's "opaque" case. */
   const hasOpenedRef = useRef(false);
   // The full, untruncated error text from a server `{ type: "error", message }` data
@@ -85,6 +94,7 @@ export function LiveCaptionStream({
   const lastServerMessageRef = useRef<string | null>(null);
 
   const stop = useCallback(() => {
+    attemptTokenRef.current += 1;
     activeRef.current = false;
     stoppedByUserRef.current = true;
     hasOpenedRef.current = false;
@@ -111,6 +121,7 @@ export function LiveCaptionStream({
   }, [agentCapturing, isStreaming, stop]);
 
   const start = useCallback(async () => {
+    const attemptToken = ++attemptTokenRef.current;
     activeRef.current = true;
     setError(null);
     stoppedByUserRef.current = false;
@@ -158,6 +169,10 @@ export function LiveCaptionStream({
       // those cases used to be indistinguishable from a real server rejection), and a
       // "dropped" connection that opened and streamed before failing.
       socket.onclose = (event) => {
+        // A newer start() attempt has already superseded this one (see attemptTokenRef's
+        // doc comment) — this socket is no longer the active one, so its close must not
+        // touch the newer attempt's error state or tear down its live socket/recorder/stream.
+        if (attemptTokenRef.current !== attemptToken) return;
         if (!stoppedByUserRef.current && event.code !== CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
           const failure = classifyCaptionSocketClose(event, hasOpenedRef.current);
           // `event.reason` is capped at 123 bytes (the WebSocket close-frame limit —
@@ -204,6 +219,9 @@ export function LiveCaptionStream({
         void event.data.arrayBuffer().then((buffer) => socket.send(buffer));
       };
       recorder.onerror = () => {
+        // Same staleness guard as socket.onclose above — a superseded attempt's recorder
+        // failing late must not kill whatever newer attempt is now actually streaming.
+        if (attemptTokenRef.current !== attemptToken) return;
         setError(dict.micRecordingFailed);
         stop();
       };
@@ -211,6 +229,11 @@ export function LiveCaptionStream({
       recorder.start(CHUNK_INTERVAL_MS);
       setIsStreaming(true);
     } catch {
+      // Same staleness guard — e.g. this attempt's own `getUserMedia` permission prompt
+      // resolving (with a denial/error) well after a newer attempt has already taken over
+      // and is actively recording; without this check, stop() here would tear down that
+      // newer, healthy session instead of doing nothing for this superseded one.
+      if (attemptTokenRef.current !== attemptToken) return;
       setError(dict.micDenied);
       stop();
     } finally {

@@ -11,6 +11,15 @@ import { isRateLimited } from "@/lib/rate-limit";
 
 const languageValues = new Set<string>(SUPPORTED_LANGUAGES.map((language) => language.value));
 
+/** Zero-width/invisible Unicode characters (U+200B ZERO WIDTH SPACE and similar) —
+ * `String.prototype.trim()` doesn't strip these, so a displayName made up only of
+ * them passed the `!displayName.trim()` emptiness check below unchanged, letting a
+ * learner join with a functionally-blank, invisible name no one else in the room
+ * could identify them by. Mirrors the identical fix in setup/actions.ts's
+ * requiredText(). Stripped from the whole value, not just for the check, so none
+ * can survive embedded elsewhere in a name either. */
+const ZERO_WIDTH_CHARS = new RegExp("[\\u200B-\\u200D\\uFEFF\\u2060]", "g");
+
 /** Secondary, defense-in-depth layer only — `x-forwarded-for`'s leftmost value is
  * client-controlled unless a trusted proxy strips/overwrites it (this app's own
  * topology doesn't guarantee that; see docker-compose.yml, which exposes `web`
@@ -36,7 +45,8 @@ export async function joinSession(formData: FormData) {
   if (typeof token !== "string" || typeof displayName !== "string" || typeof preferredLanguage !== "string") {
     throw new Error("Your session details are incomplete.");
   }
-  if (!displayName.trim() || displayName.trim().length > 80 || !languageValues.has(preferredLanguage)) {
+  const cleanDisplayName = displayName.replace(ZERO_WIDTH_CHARS, "").trim();
+  if (!cleanDisplayName || cleanDisplayName.length > 80 || !languageValues.has(preferredLanguage)) {
     throw new Error("Enter a name and supported preferred language.");
   }
   if (formData.get("consent") !== "on") {
@@ -124,7 +134,7 @@ export async function joinSession(formData: FormData) {
     }
     const user = await transaction.user.create({
       data: {
-        displayName: displayName.trim(),
+        displayName: cleanDisplayName,
         preferredLanguage: preferredLanguage as SupportedLanguage,
       },
     });

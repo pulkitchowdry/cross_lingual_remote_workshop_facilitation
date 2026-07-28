@@ -270,7 +270,10 @@ export function MeetingSidebar({
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-30 bg-black/50"
         />
-        <div className="animate-fade-in-up fixed inset-x-0 bottom-0 z-40 flex h-[85vh] flex-col overflow-hidden rounded-t-xl border border-border-subtle bg-surface-raised shadow-lg">
+        {/* `dvh` after `vh` (not instead of): `dvh` tracks the actually-visible viewport
+            (shrinks for iOS Safari's chrome/on-screen keyboard) where supported, with the
+            plain `vh` value as the fallback for engines that don't support it. */}
+        <div className="animate-fade-in-up fixed inset-x-0 bottom-0 z-40 flex h-[85vh] h-[85dvh] flex-col overflow-hidden rounded-t-xl border border-border-subtle bg-surface-raised shadow-lg">
           {panel}
         </div>
       </>

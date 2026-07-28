@@ -92,7 +92,15 @@ export function MeetingHeader({
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
-      <div className="ml-auto flex items-center gap-2">
+      {/* flex-wrap here too — the outer row's own flex-wrap only wraps *between*
+          the title/copy-link and this whole controls group; once this group is on
+          its own line, it still needs to wrap its own 3 buttons (Aa, Contrast,
+          Theme, plus this page's own LanguageMenu slot) rather than overflow the
+          viewport at narrow widths. Same class of bug as AppShell.tsx's identical
+          control row, which portals into a different slot (invisible on this
+          full-viewport room takeover — see this component's own file doc comment)
+          but has the exact same 3-vs-4-button overflow at 320-375px. */}
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         <AccessibilityPanel />
         <ThemeToggle />
         <div id={MEETING_HEADER_LANGUAGE_SLOT_ID} />

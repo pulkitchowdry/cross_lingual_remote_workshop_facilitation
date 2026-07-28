@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { detectCandidateTerms } from "@/lib/glossary";
 
@@ -26,20 +27,32 @@ export async function recordUnknownGlossaryTerms(
  * meeting, so an existing APPROVED/IGNORED row is left untouched.
  */
 async function upsertPendingSuggestion(sessionId: string, term: string): Promise<void> {
+  // Case-insensitive, same as CentralGlossaryEntry dedup (see glossary.ts's
+  // findGlossaryMatches) — without this, e.g. "GPT4" and "Gpt4" across two captions in
+  // the same session created two separate suggestion rows instead of accumulating into one.
+  const sourceTerm = term.toLowerCase();
   try {
-    const { count } = await prisma.glossarySuggestion.updateMany({
-      where: { sessionId, sourceTerm: term, status: "PENDING" },
-      data: { occurrenceCount: { increment: 1 }, lastSeenAt: new Date() },
-    });
-    if (count === 0) {
-      await prisma.glossarySuggestion.upsert({
-        where: { sessionId_sourceTerm: { sessionId, sourceTerm: term } },
-        update: {},
-        create: { sessionId, sourceTerm: term },
-      });
-    }
+    // `create` first, not the old check-then-act (updateMany, then conditionally
+    // upsert) — two concurrent calls for the same brand-new term both used to see 0
+    // rows from that updateMany (the row didn't exist yet), then race each other's
+    // upsert: the loser's `create` branch hit the unique constraint and fell into a
+    // no-op `update: {}`, silently losing its increment. A `create` is atomic at the DB
+    // level, so at most one caller wins it; the other catches the unique-constraint
+    // violation below and does the increment instead.
+    await prisma.glossarySuggestion.create({ data: { sessionId, sourceTerm } });
   } catch (error) {
-    // Best-effort — a suggestion-tracking failure must never break live captioning.
-    console.error(`recordUnknownGlossaryTerms failed for "${term}"`, error);
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+      // Best-effort — a suggestion-tracking failure must never break live captioning.
+      console.error(`recordUnknownGlossaryTerms failed for "${term}"`, error);
+      return;
+    }
+    try {
+      await prisma.glossarySuggestion.updateMany({
+        where: { sessionId, sourceTerm, status: "PENDING" },
+        data: { occurrenceCount: { increment: 1 }, lastSeenAt: new Date() },
+      });
+    } catch (updateError) {
+      console.error(`recordUnknownGlossaryTerms failed for "${term}"`, updateError);
+    }
   }
 }

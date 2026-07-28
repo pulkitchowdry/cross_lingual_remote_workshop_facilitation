@@ -318,6 +318,11 @@ model Message {
 
   @@index([sessionId, recipientId])
   @@index([sessionId, senderId])
+  // Every message list query (facilitator/learner dashboard + room pages) fetches this
+  // model via `where: { sessionId, ... }, orderBy: { sentAt: 'desc' }, take: <limit>` —
+  // mirrors the TranscriptSegment/Insight indexes above; without this Postgres can't
+  // satisfy that ORDER BY + LIMIT via an index scan.
+  @@index([sessionId, sentAt])
 }
 
 model MessageTranslation {

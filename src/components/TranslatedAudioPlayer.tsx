@@ -144,6 +144,12 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       (segment) => segment.hasTranslation && !seenIdsRef.current.has(segment.id),
     );
     newlyTranslated.forEach((segment) => seenIdsRef.current.add(segment.id));
+    // Prune ids no longer present so a long session's set doesn't grow unbounded — same
+    // bookkeeping shape as CaptionOverlay's own firstSeenAt map (see that file's comment).
+    const currentIds = new Set(segments.map((segment) => segment.id));
+    for (const id of seenIdsRef.current) {
+      if (!currentIds.has(id)) seenIdsRef.current.delete(id);
+    }
     // Skip the initial mount's batch — otherwise every typed caption already
     // in the transcript before this learner loaded the page would replay as
     // audio the instant the component mounts.

@@ -90,7 +90,11 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
   return (
     <div
       className={`pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-1.5 px-6 ${
-        captionPosition === "bottom" ? "bottom-4" : "top-4"
+        // bottom-4 used to sit directly on top of each tile's own bottom name/mic-status
+        // bar (ParticipantChip's "tile" variant, `absolute inset-x-0 bottom-0`) — the
+        // font-size buttons below landed squarely on top of participant names. bottom-16
+        // clears that bar (and its sm: breakpoint variant) with room to spare.
+        captionPosition === "bottom" ? "bottom-16" : "top-4"
       }`}
     >
       <div

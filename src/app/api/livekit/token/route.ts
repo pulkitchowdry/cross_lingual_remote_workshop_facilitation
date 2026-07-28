@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "LiveKit is not configured." }, { status: 503 });
   }
 
-  let body: { sessionId?: unknown; role?: unknown };
+  let body: { sessionId?: unknown; role?: unknown; raisedHand?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -66,6 +66,12 @@ export async function POST(request: NextRequest) {
     identity,
     displayName: name,
     preferredLanguage: resolveLanguage(preferredLanguage),
+    // The client sends back whatever its local participant's raisedHand attribute
+    // currently is (see LiveSessionRoom.tsx's RaisedHandTracker) — a background
+    // token refresh mints a brand-new token, and without this every refresh
+    // silently reset raisedHand to issueCredential's own "false" default even if
+    // the participant's hand was actually still up.
+    raisedHand: body.raisedHand === true,
   });
 
   return Response.json(credential);

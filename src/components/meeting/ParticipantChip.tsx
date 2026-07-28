@@ -109,6 +109,8 @@ export function ParticipantChip({
           className="absolute bottom-1.5 right-1.5 h-2.5 w-2.5 rounded-full border-2"
           style={{ background: QUALITY_COLOR[quality], borderColor: "var(--surface)" }}
           title={connectionQualityTitle}
+          role="img"
+          aria-label={connectionQualityTitle}
         />
         <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-black/55 px-1.5 py-1">
           {!micEnabled && <MicOffIcon className="h-3 w-3 shrink-0 text-white" />}
@@ -157,6 +159,8 @@ export function ParticipantChip({
           className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2"
           style={{ background: QUALITY_COLOR[quality], borderColor: "var(--surface)" }}
           title={connectionQualityTitle}
+          role="img"
+          aria-label={connectionQualityTitle}
         />
       </div>
       <div className={`flex min-w-0 flex-col ${variant === "strip" ? "items-center" : "items-start"}`}>

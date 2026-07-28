@@ -47,7 +47,7 @@ describe("message visibility", () => {
           sessionId: "session-1",
         },
       }),
-    ).toEqual({ error: null, recipientId: "learner-a" });
+    ).toEqual({ recipientId: "learner-a" });
 
     expect(
       validateFacilitatorPrivateRecipient({
@@ -58,8 +58,8 @@ describe("message visibility", () => {
           role: ParticipantRole.LEARNER,
           sessionId: "session-2",
         },
-      }).error,
-    ).toBe("Choose a learner in this session for a private reply.");
+      }).recipientId,
+    ).toBeNull();
 
     expect(
       validateFacilitatorPrivateRecipient({
@@ -70,7 +70,7 @@ describe("message visibility", () => {
           role: ParticipantRole.FACILITATOR,
           sessionId: "session-1",
         },
-      }).error,
-    ).toBe("Choose a learner in this session for a private reply.");
+      }).recipientId,
+    ).toBeNull();
   });
 });
