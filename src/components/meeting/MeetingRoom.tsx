@@ -9,6 +9,7 @@ import { ParticipantStrip } from "@/components/meeting/ParticipantStrip";
 import { ParticipantGrid } from "@/components/meeting/ParticipantGrid";
 import { MeetingSidebar } from "@/components/meeting/MeetingSidebar";
 import { CaptionOverlay } from "@/components/meeting/CaptionOverlay";
+import { DuckedRoomAudio } from "@/components/meeting/DuckedRoomAudio";
 import { RaisedHandAnnouncer } from "@/components/meeting/RaisedHandAnnouncer";
 import { Whiteboard } from "@/components/meeting/Whiteboard";
 import { AutoPictureInPicture } from "@/components/meeting/AutoPictureInPicture";
@@ -44,6 +45,7 @@ function MeetingRoomInner({
   captionsHeader,
   captionComposer,
   analyticsView,
+  ttsConfigured,
 }: {
   sessionId: string;
   role: Role;
@@ -66,6 +68,7 @@ function MeetingRoomInner({
   captionsHeader?: ReactNode;
   captionComposer?: ReactNode;
   analyticsView?: FacilitatorAnalyticsView;
+  ttsConfigured: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { workspaceMode, captionsVisible } = useMeetingShell();
@@ -118,6 +121,10 @@ function MeetingRoomInner({
     <div ref={containerRef} className="flex h-full min-h-0 flex-col" tabIndex={-1}>
       <AutoPictureInPicture primaryTrack={primaryTrack} />
       <RaisedHandAnnouncer uiLang={uiLang} />
+      {/* Must render inside this component (i.e. inside `MeetingShellProvider`, not as a
+          provider-less sibling of `<MeetingRoom>` in LiveSessionRoom) so it can read this
+          listener's own `captionsVisible` toggle — see DuckedRoomAudio's doc comment. */}
+      <DuckedRoomAudio myLanguage={currentLanguage} transcript={transcript} ttsConfigured={ttsConfigured} />
       <MeetingHeader
         title={title}
         inviteLink={inviteLink}
@@ -221,6 +228,7 @@ export function MeetingRoom(props: {
   captionsHeader?: ReactNode;
   captionComposer?: ReactNode;
   analyticsView?: FacilitatorAnalyticsView;
+  ttsConfigured: boolean;
 }) {
   return (
     <MeetingShellProvider sessionId={props.sessionId}>

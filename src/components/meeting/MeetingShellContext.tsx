@@ -40,7 +40,12 @@ const DEFAULT_SHELL_SNAPSHOT: PersistedShellSnapshot = {
   workspaceMode: "video",
   sidebarOpen: true,
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
-  captionsVisible: true,
+  // Off by default so every participant hears everyone else's raw mic audio
+  // regardless of language the moment they join (see DuckedRoomAudio /
+  // TranslatedAudioPlayer, which both key their "duck the raw mic in favor
+  // of a TTS dub" behavior off this same flag) — dubbing is an opt-in a
+  // participant reaches for by turning captions on, not a silent default.
+  captionsVisible: false,
   captionMode: "both",
   captionFontScale: 1,
   captionPosition: "bottom",
@@ -84,7 +89,12 @@ interface MeetingShellState {
   pipController: MutableRefObject<{ enter: () => void } | null>;
 }
 
-const MeetingShellContext = createContext<MeetingShellState | null>(null);
+// Exported (not just the throwing `useMeetingShell` hook below) so a component that's
+// sometimes rendered inside a live meeting and sometimes standalone (e.g.
+// TranslatedAudioPlayer, also used on the dashboard's read-only transcript review, with
+// no `MeetingShellProvider` ancestor there) can read from it with a fallback instead of
+// crashing outside a room.
+export const MeetingShellContext = createContext<MeetingShellState | null>(null);
 
 export function MeetingShellProvider({ sessionId, children }: { sessionId: string; children: ReactNode }) {
   const initialSnapshot =
