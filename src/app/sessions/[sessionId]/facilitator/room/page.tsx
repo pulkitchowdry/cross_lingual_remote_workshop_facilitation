@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
-import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
@@ -88,19 +87,11 @@ export default async function FacilitatorRoomPage({
   const captionsHeader = (
     <>
       <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={session.captionAgentActive} />
-      {textToSpeechProvider.isConfigured ? (
-        <TranslatedAudioPlayer
-          segments={session.transcript.map((segment) => ({
-            id: segment.id,
-            hasTranslation:
-              segment.language === session.sourceLanguage ||
-              segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
-            isTyped: segment.isTyped,
-            language: segment.language,
-          }))}
-          preferredLanguage={session.sourceLanguage}
-        />
-      ) : (
+      {/* The dub audio itself now plays via a real LiveKit track (`DubAudioPlayer`,
+          rendered once inside `LiveSessionRoom`, not per-caption-header) — see
+          `docs/DUB_AUDIO_TRACK_MIGRATION.md`. This just keeps the same "not configured
+          at all" notice for when neither TTS tier is set up. */}
+      {!textToSpeechProvider.isConfigured && (
         <p className="text-xs text-muted-foreground">{getDictionary(lang).learner.audioUnavailable}</p>
       )}
     </>

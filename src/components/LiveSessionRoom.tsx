@@ -7,6 +7,7 @@ import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
 import { DuckedRoomAudio } from "@/components/meeting/DuckedRoomAudio";
+import { DubAudioPlayer } from "@/components/meeting/DubAudioPlayer";
 import { SyncParticipantLanguageAttribute } from "@/components/SyncParticipantLanguageAttribute";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
 import type { PrivateRecipientOption } from "@/components/SessionChatPanel";
@@ -490,6 +491,7 @@ export function LiveSessionRoom({
         <PublishStateTracker onChange={handlePublishStateChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
         <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} />
+        <DubAudioPlayer myLanguage={currentLanguage} />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>

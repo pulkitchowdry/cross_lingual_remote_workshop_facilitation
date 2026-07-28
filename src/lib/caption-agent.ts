@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
+import { createDubAudioPublisher, type DubAudioPublisher } from "@/lib/providers/dub-audio-publisher";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
@@ -82,6 +83,7 @@ async function streamParticipantAudio(
   // resolveSpeakerContext being re-resolved per segment rather than reused from
   // `initialSpeaker`.
   connectionQualityByIdentity: Map<string, string>,
+  dubPublisher: DubAudioPublisher,
 ) {
   if (!speechToTextProvider.openStream) {
     console.warn(`[caption-agent] STT provider has no streaming support; not capturing session ${sessionId}.`);
@@ -163,7 +165,7 @@ async function streamParticipantAudio(
             console.warn(`[caption-agent] could not resolve speaker context for ${identity} in session ${sessionId}; dropping segment.`);
             return;
           }
-          await publishTranslatedCaption(session, {
+          const published = await publishTranslatedCaption(session, {
             speakerId: speaker.speakerId,
             originalText: event.text,
             language: speaker.language,
@@ -177,6 +179,14 @@ async function streamParticipantAudio(
               originalCaptionReadyAtMs,
             },
           });
+          // Dub into every OTHER target language — no one needs a same-language dub of
+          // themselves. Fire-and-forget: `enqueue` never throws and must never block this
+          // segment handler (or the STT stream) from moving on to the next segment.
+          const allowCloudFallback = translationMode !== "LOCAL_ONLY";
+          for (const translation of published.translations) {
+            if (translation.targetLanguage === speaker.language) continue;
+            dubPublisher.enqueue(translation.targetLanguage, translation.text, allowCloudFallback);
+          }
         })().catch((error) => console.error(`[caption-agent] failed to publish a segment for ${sessionId}:`, error));
       },
       // A console.error alone used to leave the pipeline running: the for-await loop
@@ -311,6 +321,22 @@ export default defineAgent({
       throw error;
     }
 
+    // Publishes one `dub-<language>` audio track per target language for this room —
+    // see `dub-audio-publisher.ts`'s own doc comment. Never allowed to take down the
+    // whole worker: captions/STT (this file's original purpose) must keep working even
+    // if track-publishing itself fails for some LiveKit-specific reason — degrade to a
+    // no-op publisher and log loudly instead.
+    let dubPublisher: DubAudioPublisher;
+    try {
+      dubPublisher = await createDubAudioPublisher(ctx.room);
+    } catch (error) {
+      console.error(
+        `[caption-agent] failed to publish dub-audio tracks for session ${sessionId}; captions will still work, dubbed audio will not:`,
+        error,
+      );
+      dubPublisher = { enqueue: () => {}, closeAll: async () => {} };
+    }
+
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
@@ -378,6 +404,7 @@ export default defineAgent({
         activeTracks,
         participant.identity,
         connectionQualityByIdentity,
+        dubPublisher,
       ).catch((error) => console.error(`[caption-agent] streamParticipantAudio failed for ${sessionId}:`, error));
     };
     ctx.room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
@@ -434,6 +461,7 @@ export default defineAgent({
     ctx.addShutdownCallback(async () => {
       const facilitatorActive = [...activeTracks.keys()].some((id) => id.startsWith(FACILITATOR_IDENTITY_PREFIX));
       if (facilitatorActive) await clearCaptionAgentCapturing(sessionId);
+      await dubPublisher.closeAll();
     });
   },
 });

@@ -212,7 +212,19 @@ overlapping speech within one track.
 
 ## Part 3 — Voice translation (TTS)
 
-**Shipped so far:** `TextToSpeechProvider` (`text-to-speech.ts`) with a mock
+**Revision (2026-07-28):** the live in-meeting path now ships the
+per-target-language track design this section originally called for — see
+`docs/DUB_AUDIO_TRACK_MIGRATION.md` for the full detail. The per-listener
+on-demand HTTP design described below (`TranslatedAudioPlayer`) turned out to
+be a real source of fragility (unsynchronized against the raw-mic-ducking
+path, silent-failure modes, a reconnect-loop regression — see
+`docs/CAPTION_AUDIO_TROUBLESHOOTING.md`), and was retired **for the live
+meeting only**; it's kept, unchanged, for the post-session transcript recap
+replay (`facilitator/page.tsx`/`learn/page.tsx`'s `ENDED` branch), which has
+no live LiveKit room to publish a track into. The rest of this section is
+left as historical context for that decision.
+
+**Shipped originally:** `TextToSpeechProvider` (`text-to-speech.ts`) with a mock
 (no audio, until `TTS_API_KEY` is set) and an ElevenLabs adapter. The
 learner page shows an opt-in "Play translated audio for new captions"
 checkbox (`TranslatedAudioPlayer`) only when the provider is configured —
@@ -223,25 +235,32 @@ for sequential playback so overlapping captions don't talk over each other.
 
 - **Opt-in only, never auto-play** — matches the issue's privacy question
   directly. A learner enables "translated audio"; nothing is synthesized for
-  them until they do. **Shipped as designed.**
+  them until they do. **Shipped as designed**, and still true for the recap
+  player; the live path (below) auto-plays a cross-language dub by default,
+  same as it always did — only *how* that audio reaches the listener changed.
 - **Delivery is per-listener, not the designed per-language interpreter
-  participant.** The doc's original design was one `interpreter-<lang>` bot
-  participant per distinct target language publishing a synthesized LiveKit
-  audio track, reusing LiveKit's publish/subscribe fan-out instead of
-  transcoding per listener. What's shipped instead: synthesize-on-request per
+  participant** *(original tradeoff — since revised, live-meeting only)*. The
+  doc's original design was one `interpreter-<lang>` bot participant per
+  distinct target language publishing a synthesized LiveKit audio track,
+  reusing LiveKit's publish/subscribe fan-out instead of transcoding per
+  listener. What shipped instead, for a while: synthesize-on-request per
   segment per listener, streamed back over a plain HTTP route. This was a
   deliberate scope cut — the interpreter-participant design needs the same
   always-on-process tradeoff as `src/lib/caption-agent.ts`'s track-subscription worker (a
   persistent bot participant per language, running as its own long-lived
   process), and building a second piece of always-on infrastructure in the
-  same phase as the first wasn't worth it yet. The per-listener version is a
-  plain HTTP route on the main app, ships now, and can be swapped for the
-  bot-participant design later without changing `TextToSpeechProvider`'s
-  interface.
+  same phase as the first wasn't worth it yet.
+  **Now revised:** rather than a *separate* bot-per-language (its own LiveKit
+  Cloud connection, multiplying exposure to this deployment's documented
+  intermittent connectivity failures), the already-connected
+  `caption-agent.ts` worker itself publishes one `dub-<language>` track per
+  target language — see `docs/DUB_AUDIO_TRACK_MIGRATION.md`.
 - **Self-hosted option:** Piper, behind the same `TextToSpeechProvider`
   interface — **shipped** in `local-inference/` (Part 5) and now the default,
   tried before ElevenLabs. ElevenLabs is the automatic cloud fallback on local
-  failure.
+  failure. Both tiers now return raw PCM (Piper's WAV natively; ElevenLabs
+  requested as `output_format=pcm_*`) rather than MP3 — this app has no MP3
+  decoder, and the dub-track pipeline needs raw samples regardless.
 - Voice output shipped *after* captions were hardened (streaming STT +
   DataChannel delivery, #56/#57/#58) — captions alone satisfied the "is
   translated audio required" open question for the MVP; audio is additive.
@@ -349,7 +368,7 @@ languages costs the same as a 20-learner room with 3 languages.
 | Should translated audio be available to every participant? | No — opt-in per learner (Part 3) |
 | DataChannels for captions? | Yes (Part 2) |
 | Central or distributed caption generation? | Centralized, one consumer per active speaker |
-| Translated audio as a separate LiveKit participant? | Yes, one bot per target language, not per listener |
+| Translated audio as a separate LiveKit participant? | One track per target language, yes — but published from the existing `caption-agent.ts` worker's own connection, not a separate bot-per-language participant (see Part 3's 2026-07-28 revision and `docs/DUB_AUDIO_TRACK_MIGRATION.md`) |
 | Should users opt-in before receiving generated speech? | Yes, explicit per-learner preference, never default-on |
 | Self-hosted or hybrid default? | Self-hosted by default (Part 5) — every translation/caption/voice request tries `local-inference/` first; managed providers (Claude/Deepgram/ElevenLabs) are an automatic fallback on local failure, disable-able per-session via `translationMode: LOCAL_ONLY` |
 | Should translated messages be stored permanently? | Same retention policy as the session's transcript, not permanent by default |
