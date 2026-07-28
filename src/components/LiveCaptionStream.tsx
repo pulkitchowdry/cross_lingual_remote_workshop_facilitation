@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/components-react";
-import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
+import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, decideCaptionSocketReconnect } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CHUNK_INTERVAL_MS = 250;
+
+// A caption socket that drops for a reason the user didn't ask for (a Railway/proxy idle
+// drop, a `web` service redeploy, a laptop waking from sleep, a transient STT-tier error)
+// used to be terminal: the error rendered and capture stayed dead until the facilitator
+// noticed and clicked Retry. Mid-workshop, that reads as "live captions just don't work."
+// `decideCaptionSocketReconnect` (caption-socket-client.ts) owns the policy — which closes
+// are transient enough to retry, and the backoff ladder — so it stays unit-testable
+// without a live socket.
 
 /**
  * Streams mic audio to `/api/captions/stream` over a WebSocket — true
@@ -76,11 +84,37 @@ export function LiveCaptionStream({
   // `onclose` below prefers this over the truncated `event.reason` when both exist for
   // the same connection, so a message cut off mid-sentence never clobbers the clear one.
   const lastServerMessageRef = useRef<string | null>(null);
+  /** Pending automatic-reconnect timer, so `stop()` can cancel a retry that's already scheduled. */
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Consecutive failed connections, reset on every socket that reaches `OPEN`. */
+  const reconnectAttemptsRef = useRef(0);
+  /**
+   * Lets `onclose` (registered inside `start`) call back into the latest `start` without
+   * `start` having to depend on itself — a plain reference would be a circular
+   * `useCallback` dependency.
+   */
+  const startRef = useRef<() => void>(() => {});
+  /**
+   * Whether capture *should* still be running, mirrored for the same reason `qualityRef`
+   * is: `onclose` is registered once per `start()` call, so reading these values directly
+   * would test whatever they were when that socket opened. A reconnect must be decided
+   * against live state — the mic being muted (or the server-side agent taking over) while
+   * a socket was dying is exactly when a stale "yes, reconnect" would resurrect capture
+   * the user just turned off.
+   */
+  const shouldCaptureRef = useRef(false);
+  useEffect(() => {
+    shouldCaptureRef.current = isMicrophoneEnabled && !agentCapturing;
+  }, [isMicrophoneEnabled, agentCapturing]);
 
   const stop = useCallback(() => {
     activeRef.current = false;
     stoppedByUserRef.current = true;
     hasOpenedRef.current = false;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -115,12 +149,24 @@ export function LiveCaptionStream({
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
       socketRef.current = socket;
       socket.onopen = () => {
+        // Same staleness guard as `onclose` below: a superseded socket reaching OPEN must
+        // not claim `hasOpenedRef` (which decides "opaque" vs. "dropped" for the *current*
+        // socket) or reset the current socket's backoff ladder.
+        if (socketRef.current !== socket) return;
         hasOpenedRef.current = true;
+        // Reaching OPEN is the only real proof the path works end to end, so the backoff
+        // ladder resets here rather than on a successful `start()` call — otherwise a
+        // socket that opens and drops repeatedly would burn its 5 attempts once and never
+        // reconnect again for the rest of the session.
+        reconnectAttemptsRef.current = 0;
       };
       // `onclose` always fires right after and carries the actual signal (a
       // server-provided reason, or an abnormal closure) — nothing to add here.
       socket.onerror = () => {};
       socket.onmessage = (event) => {
+        // A superseded socket's final error frame must not surface on the UI the newer,
+        // healthy socket is now driving.
+        if (socketRef.current !== socket) return;
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: string };
           if (payload.type === "error") {
@@ -146,8 +192,39 @@ export function LiveCaptionStream({
       // those cases used to be indistinguishable from a real server rejection), and a
       // "dropped" connection that opened and streamed before failing.
       socket.onclose = (event) => {
-        if (!stoppedByUserRef.current && event.code !== CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
-          const failure = classifyCaptionSocketClose(event, hasOpenedRef.current);
+        // A stale socket's close must never touch shared state. `stop()` acts on
+        // `socketRef`/`recorderRef`/`streamRef`, which by the time an *older* socket closes
+        // already belong to a NEWER one — so without this guard, handling the old socket's
+        // close tears down the new socket and its `MediaRecorder`. That was observed in
+        // production as a livelock: server.ts evicts A in favour of B (`superseding an older
+        // caption stream …`), A's close then kills B, a remount opens C, B's close kills C,
+        // and so on. Captions never survive a cycle — no error is shown (an eviction is
+        // silent by design), no "captions active" indicator, and no audio ever reaches STT.
+        if (socketRef.current !== socket) return;
+        if (stoppedByUserRef.current || event.code === CAPTION_SOCKET_NORMAL_CLOSURE_CODE) {
+          stop();
+          return;
+        }
+        const recovery = decideCaptionSocketReconnect({
+          event,
+          hasOpened: hasOpenedRef.current,
+          attempts: reconnectAttemptsRef.current,
+          shouldCapture: shouldCaptureRef.current,
+        });
+
+        if (recovery.kind === "reconnect") {
+          reconnectAttemptsRef.current += 1;
+          // `stop()` first (it clears any previously scheduled retry), then schedule —
+          // ordering matters, since `stop()` would otherwise cancel the timer set here.
+          stop();
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            startRef.current();
+          }, recovery.delayMs);
+          return;
+        }
+
+        if (recovery.kind === "surface") {
           // `event.reason` is capped at 123 bytes (the WebSocket close-frame limit —
           // see captions-socket.ts's closeWithReason) and can be a mid-sentence
           // truncation of the fuller message `onmessage` already set moments earlier
@@ -157,13 +234,15 @@ export function LiveCaptionStream({
           // frame, e.g. "Not authorized"/"session not live" from server.ts's
           // pre-handshake rejections, which never went through onmessage at all.
           setError(
-            failure.kind === "server-reason"
-              ? (lastServerMessageRef.current ?? failure.reason)
-              : failure.kind === "opaque"
+            recovery.failure.kind === "server-reason"
+              ? (lastServerMessageRef.current ?? recovery.failure.reason)
+              : recovery.failure.kind === "opaque"
                 ? dict.connectionBlocked
                 : dict.connectionFailed,
           );
         }
+        // `recovery.kind === "superseded"` falls through to here: a newer socket for this
+        // speaker already owns the stream, so tear this one down with no error shown.
         stop();
       };
 
@@ -209,6 +288,11 @@ export function LiveCaptionStream({
       setIsConnecting(false);
     }
   }, [sessionId, stop, dict.connectionFailed, dict.connectionBlocked, dict.sttError, dict.micRecordingFailed, dict.micDenied]);
+
+  // Keeps the indirection `onclose` reconnects through pointing at the current `start`.
+  useEffect(() => {
+    startRef.current = start;
+  }, [start]);
 
   // The single trigger for this whole component: unmuting is already the one action
   // every participant takes to be heard at all, so tying capture to it directly means
@@ -262,7 +346,13 @@ export function LiveCaptionStream({
               toggled off and back on again. */}
           <button
             type="button"
-            onClick={() => void start()}
+            onClick={() => {
+              // A deliberate user retry earns a fresh backoff ladder — without this, a
+              // session that already exhausted its automatic attempts would get exactly
+              // one more try per click forever after, with no self-healing in between.
+              reconnectAttemptsRef.current = 0;
+              void start();
+            }}
             disabled={isConnecting}
             className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
           >

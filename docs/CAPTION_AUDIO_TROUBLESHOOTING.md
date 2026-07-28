@@ -198,42 +198,95 @@ runs the existing cleanup (`releaseSpeakerKey`, `sttStream.close()`, the
 facilitator duplicate-capture interval), so a dead connection's slot is now
 freed within one heartbeat interval instead of being stuck until a redeploy.
 
-### 9. "Another caption stream is already active for this speaker" — what it actually is, and what it isn't
+### 9. The heartbeat fix (#8) wasn't sufficient — the real bug was reject-vs-evict semantics, plus a livelock the naive fix would have introduced
 
 Follow-up investigation (2026-07-28) after the heartbeat fix above still
-didn't fully resolve reports of this message on Railway. Written up here
-because it's easy to over-attribute captions problems to this one guard when
-the actual picture is three separate, independently-diagnosable issues:
+didn't resolve reports of "Another caption stream is already active for this
+speaker" repeating constantly on Railway — `[captions/stream] upgrade request
+received` / `rejecting after upgrade` in a tight, continuous loop, not the
+occasional/self-clearing pattern the heartbeat alone predicts.
 
-1. **The guard itself** (fix #8 above) is a legitimate, working duplicate-
-   connection guard, not a bug by itself — it's supposed to reject a second
-   concurrent socket for the same speaker identity. Post-heartbeat, a
-   *stuck-forever* rejection is fixed; a *transient* collision (e.g. a page
-   reload/navigation racing itself — the old tab's socket closing at the same
-   moment a new one for the same identity opens, before the server has
-   processed the old one's closure) can still happen and self-clears within
-   one heartbeat interval (≤30-60s), not instantly. Seeing this message once
-   during a reload is expected, recoverable behavior, not a regression.
-2. **This guard only ever affects the browser-mic *capture* path** (STT
-   ingestion) — it has nothing to do with translation or TTS. A rejection
-   here means one specific socket couldn't (yet) stream this speaker's mic
-   to the STT pipeline; it says nothing about whether captions/translation
-   are broken more broadly.
-3. **The actual bigger contributor in the Railway logs reviewed this
-   session** was repeated `ctx.connect()` `ECONNREFUSED`/`fetch failed`
-   errors from `caption-agent.ts` — the already-documented "Still open"
-   LiveKit Cloud connectivity issue below. When that fails, server-side
-   facilitator auto-capture never starts, so *everyone* falls back to the
-   browser-mic path — which is exactly the path that can then hit the guard
-   above. These two issues compound each other: fixing #8 alone doesn't fix
-   the underlying reason the browser-mic fallback is under more load than
-   intended in the first place.
+**Root cause the heartbeat missed:** the guard's *rejecting* semantic itself
+was wrong, independent of any liveness-detection gap. `LiveCaptionStream.tsx`
+remounts (and reopens this socket) on every captions-tab switch or component
+re-render triggered by unrelated state changes. `WebSocket.close()` only
+*initiates* a close — the server's own `close` event (the only thing that
+released the guard's entry) lands a network round-trip later. Any remount
+faster than that round-trip hit the guard's reject path immediately, every
+time, producing exactly the continuous "upgrade received → rejecting" loop
+seen in Railway's logs — this had nothing to do with a socket being *dead*
+(which #8's heartbeat detects), only with a *live* socket being superseded
+faster than a reject-based guard could recognize that.
 
-No further code change from this entry alone — see the "Still open" LiveKit
-Cloud connectivity section below for the remaining root cause, and
-`docs/DUB_AUDIO_TRACK_MIGRATION.md` for the separate (also 2026-07-28) work
-that replaced the translated-**audio** delivery mechanism entirely; that
-migration is unrelated to this guard and doesn't fix or depend on it.
+**The fix:** change the guard from *reject* to *evict* — a newer connection
+for the same speaker identity now closes the older one (code `1012`,
+"Superseded by a newer caption stream for this speaker") and immediately
+claims the slot, rather than being turned away. `server.ts`'s
+`activeCaptionStreamSockets` is now a `Map<speakerKey, WebSocket>`, not a
+`Set<speakerKey>`; `releaseSpeakerKey` only deletes an entry if it still
+points at the closing socket, so an evicted socket's own (delayed) `close`
+event can never delete the *newer* socket's entry.
+
+**The trap this fix alone would have caused — and did, until fixed
+together:** `LiveCaptionStream.tsx`'s `stop()` acts on shared refs
+(`socketRef`/`recorderRef`/`streamRef`), not on the specific `socket` a given
+`onclose` closure was registered for. Switching the server to evict-and-close
+the *older* socket means that older socket's `onclose` now fires (with the
+1012 code) *after* the client has already opened a newer one — and without a
+staleness guard, handling that stale close tears down the refs the *newer*
+socket is using. Reproduced as a livelock: server evicts A in favor of B →
+A's close (unguarded) kills B → a remount opens C → B's close kills C → and
+so on, forever, with no error ever shown (an eviction is silent by design)
+and no audio ever reaching STT. Every one of `LiveCaptionStream.tsx`'s
+`onopen`/`onmessage`/`onclose` handlers now starts with
+`if (socketRef.current !== socket) return;` to make a stale socket's events
+inert.
+
+**Also added, same pass:** automatic reconnect with exponential backoff
+(`decideCaptionSocketReconnect` in `caption-socket-client.ts`, capped at 5
+attempts / 8s) for the close reasons worth retrying (`opaque`/`dropped`, not
+a `server-reason` verdict like "session not live") — a transient drop (proxy
+idle timeout, a `web` redeploy, a laptop waking up) used to require the
+facilitator to notice and click Retry manually; now it self-heals. A
+`CAPTION_SOCKET_SUPERSEDED_CODE` (1012) close is explicitly never retried —
+retrying it would evict the very socket that just superseded this one,
+recreating the livelock above by a different path.
+
+**This guard only ever affects the browser-mic *capture* path** (STT
+ingestion) — it has nothing to do with translation or TTS; see
+`docs/DUB_AUDIO_TRACK_MIGRATION.md` for that separate (also 2026-07-28) work,
+which doesn't fix or depend on anything in this entry.
+
+### 10. The "LiveKit Cloud connectivity" ECONNREFUSED was partly a red herring — some of it was Next.js's own server-action redirect self-fetch
+
+While investigating #9, Railway logs also showed constant
+`failed to get redirect response [TypeError: fetch failed] { code:
+'ECONNREFUSED' }` entries interleaved with the captions noise, previously
+assumed to be more instances of the "Still open" LiveKit Cloud connectivity
+issue below. They are not the same thing: `caption-agent.ts`'s own
+`ctx.connect()` failures are logged with an explicit `[caption-agent]
+ctx.connect() failed for session …` wrapper (see that file); the bare
+`failed to get redirect response` message traces (confirmed by reading
+`next/dist/esm/server/app-render/action-handler.js`) to Next.js's own Server
+Actions machinery — any Server Action that ends in a `redirect()` tries to
+self-fetch the redirect target's RSC payload first, so the client gets it
+inlined instead of a second network round trip. That self-fetch's origin is
+derived from the *inbound* request's own Host header (`initURL`) unless
+`process.env.__NEXT_PRIVATE_ORIGIN` is set — on Railway that's the public
+domain, and a container fetching its own public URL from inside itself
+("hairpin" self-connection) is refused by many container networks. Next
+catches the failure and falls back to an ordinary redirect, so this was
+non-fatal — noisy, not a cause of broken captions/translation — but real
+log spam masking the actual signal.
+
+**Fix:** `server.ts` now sets `process.env.__NEXT_PRIVATE_ORIGIN =
+`http://127.0.0.1:${port}`` (only if not already set) before `next({dev})` is
+constructed, pointing every such self-fetch at the loopback address this same
+process listens on, sidestepping the container network entirely.
+
+This doesn't touch the genuine, still-open LiveKit Cloud connectivity issue
+below — a real `[caption-agent] ctx.connect() failed …` still means the
+server-side facilitator capture didn't start for that session.
 
 ## Still open
 
