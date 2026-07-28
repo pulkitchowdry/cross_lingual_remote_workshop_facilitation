@@ -54,6 +54,7 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
  * without needing to await anything.
  */
 export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: CaptionSpeaker, initialLanguage: SupportedLanguage) {
+  console.log("[captions] attachCaptionSocket()");
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
   // Latest connection-quality report from the browser (LiveCaptionStream.tsx sends a
@@ -96,6 +97,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
   // so without this try/catch the interval above would never get cleared.
   let sttStream: SpeechToTextStream;
   try {
+    console.log("[captions] creating STT stream");
     sttStream = speechToTextProvider.openStream!({
       expectedLanguage: initialLanguage,
       allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
@@ -167,6 +169,8 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
     throw error;
   }
+  console.log("[captions] STT stream created");
+
 
   ws.on("message", (data, isBinary) => {
     // LiveCaptionStream.tsx sends its `MediaRecorder` audio chunks as binary frames and

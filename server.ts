@@ -166,11 +166,14 @@ async function main() {
    * `ws` with a reason instead of failing the handshake itself.
    */
   async function authorizeAndAttachCaptionSocket(req: import("node:http").IncomingMessage, query: import("node:querystring").ParsedUrlQuery, ws: import("ws").WebSocket) {
-    const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
+    console.log("[captions/stream] authorize start");
+    const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;]
+    console.log("[captions/stream] session", sessionId);
     if (!sessionId) throw new Error("sessionId is required.");
 
     const cookies = parseCookies(req.headers.cookie);
     const speaker = await resolveCaptionSpeaker(sessionId, cookies);
+    console.log("[captions/stream] speaker", speaker);
     if (!speaker) throw new Error("Not authorized for this session.");
 
     if (!speechToTextProvider.isConfigured || !speechToTextProvider.openStream) {
@@ -178,6 +181,11 @@ async function main() {
     }
 
     const found = await prisma.session.findUnique({ where: { id: sessionId } });
+    console.log("[captions/stream] session found", {
+        exists: !!found,
+        status: found?.status,
+        captionAgentActive: found?.captionAgentActive,
+    });
     if (!found || found.status !== SessionStatus.LIVE) {
       throw new Error("Start the session before streaming captions.");
     }
@@ -234,7 +242,12 @@ async function main() {
     ws.on("close", releaseSpeakerKey);
     ws.on("error", releaseSpeakerKey);
 
+    console.log("[captions/stream] attaching socket", {
+        speaker: speaker.role,
+        language: initialLanguage,
+    });
     attachCaptionSocket(ws, found, speaker, initialLanguage);
+    console.log("[captions/stream] attachCaptionSocket returned");
   }
 
   server.on("upgrade", async (req, socket, head) => {
@@ -270,6 +283,7 @@ async function main() {
       ws.on("pong", () => captionSocketAlive.add(ws));
       ws.on("message", () => captionSocketAlive.add(ws));
       void authorizeAndAttachCaptionSocket(req, query, ws).catch((error) => {
+        console.error("[captions/stream] authorize failed", error);
         // Completing the handshake and closing with a reason (rather than destroying the
         // raw TCP socket) lets the browser's `WebSocket.onclose` report *why* the
         // connection didn't start (e.g. "session not live", "not authorized", "STT not
