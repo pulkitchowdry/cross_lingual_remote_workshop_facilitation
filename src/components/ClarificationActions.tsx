@@ -66,7 +66,7 @@ export function ClarificationActions({
         ))}
       </div>
       {state.error && (
-        <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="animate-fade-in break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {state.error}
         </p>
       )}

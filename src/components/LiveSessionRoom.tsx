@@ -462,26 +462,43 @@ export function LiveSessionRoom({
   }, [credentials, fatalError, fetchCredentials]);
 
   if (error) {
-    return <p className="text-sm" style={{ color: "var(--tick-low)" }}>{error}</p>;
+    return (
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6">
+        <div className="max-w-md rounded-lg border border-border-strong bg-surface-raised p-4 shadow-sm">
+          <p className="break-words text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
+            {error}
+          </p>
+        </div>
+      </div>
+    );
   }
   if (fatalError) {
     return (
-      <div className="flex flex-col items-start gap-2">
-        <p className="text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
-          {fatalError}
-        </p>
-        <button
-          type="button"
-          onClick={handleRejoin}
-          className="press-scale rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground transition-colors"
-        >
-          {dict.rejoin}
-        </button>
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6">
+        <div className="flex max-w-md flex-col items-start gap-3 rounded-lg border border-border-strong bg-surface-raised p-4 shadow-sm">
+          <p className="break-words text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
+            {fatalError}
+          </p>
+          <button
+            type="button"
+            onClick={handleRejoin}
+            className="font-data press-scale rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {dict.rejoin}
+          </button>
+        </div>
       </div>
     );
   }
   if (!credentials) {
-    return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
+    return (
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6" role="status">
+        <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-raised px-4 py-3 shadow-sm">
+          <span className="h-2.5 w-2.5 shrink-0 animate-live-pulse rounded-full bg-accent" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">{dict.connecting}</p>
+        </div>
+      </div>
+    );
   }
 
   const dashboardHref = `/sessions/${sessionId}/${role === "facilitator" ? "facilitator" : "learn"}`;
@@ -489,12 +506,12 @@ export function LiveSessionRoom({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       {deviceWarning && (
-        <p role="status" className="animate-fade-in px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in break-words px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {deviceWarning}
         </p>
       )}
       {screenShareInterrupted && (
-        <p role="status" className="animate-fade-in px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in break-words px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {dict.screenShareInterrupted}
         </p>
       )}

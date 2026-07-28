@@ -29,7 +29,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
   const dict = getDictionary(lang);
 
   return (
-    <form className="animate-fade-in-up flex max-w-xl flex-col gap-4" action={createSession}>
+    <form className="animate-fade-in-up flex max-w-xl min-w-0 flex-col gap-4" action={createSession}>
       <RequiredFieldMessages message={dict.common.requiredFieldMessage} />
       {/* The facilitator's language is whatever they've already toggled the
           UI to (see the LanguageSwitcher above this form) — no need to ask
@@ -38,7 +38,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.yourName}
         <input
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="facilitatorName"
           required
           maxLength={80}
@@ -48,7 +48,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.sessionTitle}
         <input
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="title"
           required
           maxLength={120}
@@ -58,7 +58,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.workshopGoal}
         <textarea
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           rows={4}
           required
           name="goal"
@@ -69,7 +69,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.retention}
         <select
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="retentionDays"
           defaultValue="7"
         >

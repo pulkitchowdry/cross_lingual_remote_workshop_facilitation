@@ -227,12 +227,12 @@ export default async function LearnerSessionPage({
           read as oddly sparse stretched across a wide monitor with nothing else to fill
           it. The video room and transcript grid further down keep the full page width. */}
       <div className="flex max-w-2xl flex-col gap-6">
-        <div>
+        <div className="min-w-0">
           <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {learnerDict.welcome(participant.user.displayName)}
           </p>
           <h1
-            className="font-heading text-2xl font-semibold"
+            className="font-heading break-words text-2xl font-semibold"
             lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}
           >
             {resolvedTitle.hasTranslation ? resolvedTitle.text : dict.common.translationUnavailable}
@@ -244,7 +244,7 @@ export default async function LearnerSessionPage({
               actually trying to achieve, before, during, or after it, unlike the person
               running it. */}
           {participant.session.goal && (
-            <p className="text-sm text-muted-foreground" lang={resolvedGoal.hasTranslation ? resolvedGoal.lang : lang}>
+            <p className="break-words text-sm text-muted-foreground" lang={resolvedGoal.hasTranslation ? resolvedGoal.lang : lang}>
               {resolvedGoal.hasTranslation ? resolvedGoal.text : dict.common.translationUnavailable}
             </p>
           )}
@@ -274,7 +274,7 @@ export default async function LearnerSessionPage({
           <p className="text-muted-foreground">{dict.common.liveNowHint}</p>
           <Link
             href={`/sessions/${sessionId}/learn/room`}
-            className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+            className="font-data press-scale mt-3 inline-block w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {dict.common.joinLiveSession}
           </Link>

@@ -32,7 +32,7 @@ export function EndSessionForm({
         variant="danger"
       />
       {state.error && (
-        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="max-w-sm break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {state.error}
         </p>
       )}

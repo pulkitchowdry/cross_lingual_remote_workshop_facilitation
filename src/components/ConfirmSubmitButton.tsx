@@ -79,7 +79,7 @@ export function ConfirmSubmitButton({
         disabled={pending}
         aria-disabled={pending}
         onClick={() => dialogRef.current?.showModal()}
-        className={`font-data w-fit rounded-md border px-5 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors duration-150 disabled:opacity-40 ${
+        className={`font-data w-fit rounded-md border px-5 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${
           variant === "danger"
             ? "border-border-strong text-foreground hover:border-[var(--tick-low)] hover:text-[var(--tick-low)]"
             : "border-border-strong text-foreground hover:bg-background"
@@ -96,12 +96,12 @@ export function ConfirmSubmitButton({
         // open <dialog> (normally `margin: auto` from the UA stylesheet) — Tailwind's
         // preflight resets margin to 0 on every element, which otherwise leaves the
         // dialog pinned to the top-left corner instead of centered on screen.
-        className="fixed inset-0 m-auto w-[min(26rem,90vw)] rounded-lg border border-border-strong bg-surface-raised p-0 text-foreground backdrop:bg-black/60"
+        className="fixed inset-0 m-auto w-[min(26rem,90vw)] rounded-lg border border-border-strong bg-surface-raised p-0 text-foreground shadow-lg backdrop:bg-black/60"
       >
         <div className="flex flex-col gap-4 p-5">
           <div>
-            <p id={titleId} className="font-heading text-base font-semibold">{title}</p>
-            <p id={bodyId} className="mt-1 text-sm text-muted-foreground">{body}</p>
+            <p id={titleId} className="font-heading break-words text-base font-semibold">{title}</p>
+            <p id={bodyId} className="mt-1 break-words text-sm text-muted-foreground">{body}</p>
           </div>
           <div className="flex justify-end gap-2">
             <button
@@ -109,7 +109,7 @@ export function ConfirmSubmitButton({
               disabled={pending}
               aria-disabled={pending}
               onClick={() => dialogRef.current?.close()}
-              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground press-scale transition-colors duration-150 hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground press-scale transition-colors duration-150 hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               {cancelLabel}
             </button>
@@ -118,7 +118,7 @@ export function ConfirmSubmitButton({
               disabled={pending}
               aria-disabled={pending}
               onClick={confirm}
-              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white press-scale transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60"
+              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white press-scale transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
               // --tick-low/--accent are tuned for use as text against a dark surface, not
               // as a solid fill behind white button-label text (fails WCAG AA there) —
               // --danger-fill/--accent-fill are the button-fill-safe equivalents.

@@ -50,9 +50,9 @@ function SessionCard({
       accent={session.status === SessionStatus.LIVE ? "var(--tick-high)" : undefined}
     >
       <div className="flex flex-col gap-3">
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
-          <p className="text-muted-foreground">{session.goal}</p>
-          <p className="font-data text-xs text-muted-foreground sm:text-right">{dateText}</p>
+        <div className="grid min-w-0 gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto]">
+          <p className="min-w-0 break-words text-muted-foreground">{session.goal}</p>
+          <p className="font-data min-w-0 break-words text-xs text-muted-foreground sm:text-right">{dateText}</p>
         </div>
         <Link
           href={href}
@@ -107,13 +107,13 @@ export default async function SessionsOverviewPage({
       <SyncUiLanguage lang={lang} />
       <LanguageSwitcher current={lang} basePath="/sessions" />
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold">{dict.heading}</h1>
+        <div className="min-w-0">
+          <h1 className="font-heading break-words text-2xl font-semibold">{dict.heading}</h1>
           <p className="text-sm text-muted-foreground">{dict.subtitle}</p>
         </div>
         <Link
           href="/setup"
-          className="font-data rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="font-data press-scale rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {dict.newSession}
         </Link>

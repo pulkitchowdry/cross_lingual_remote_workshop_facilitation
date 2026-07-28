@@ -78,7 +78,7 @@ export function AnalyticsPanelContent({
                   eyebrow={isConfusion ? labels.confusionLabel : labels.blockerLabel}
                   accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
                 >
-                  <p>{item.summary}</p>
+                  <p className="break-words">{item.summary}</p>
                   {item.evidenceText && (
                     <p
                       className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
@@ -88,7 +88,7 @@ export function AnalyticsPanelContent({
                     </p>
                   )}
                   <form action={item.resolveAction} className="mt-2">
-                    <button className="font-data press-scale min-h-11 min-w-11 rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                    <button className="font-data press-scale min-h-11 min-w-11 rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-[var(--tick-high)] hover:text-[var(--tick-high)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                       {labels.resolveBlockerLabel}
                     </button>
                   </form>
@@ -134,18 +134,18 @@ export function AnalyticsPanelContent({
             </ul>
           </Card>
           <Card eyebrow={labels.analyticsBlockersHeading}>
-            <p className="text-xs">{blockersSummary}</p>
+            <p className="break-words text-xs">{blockersSummary}</p>
           </Card>
           {(analytics.confidence.mediumCount > 0 || analytics.confidence.lowCount > 0) && (
             <Card eyebrow={labels.analyticsConfidenceHeading}>
-              <p className="text-xs">{confidenceSummary}</p>
+              <p className="break-words text-xs">{confidenceSummary}</p>
             </Card>
           )}
           {analytics.languages.length > 0 && (
             <Card eyebrow={labels.analyticsLanguagesHeading}>
               <ul className="flex flex-col gap-1">
                 {analytics.languages.map((entry, index) => (
-                  <li key={entry.language} className="text-xs">
+                  <li key={entry.language} className="break-words text-xs">
                     {languageRows[index]}
                   </li>
                 ))}
@@ -167,7 +167,7 @@ export function AnalyticsDrawer(props: AnalyticsPanelProps) {
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
-        className="font-data press-scale min-h-11 min-w-11 w-fit rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]"
+        className="font-data press-scale min-h-11 min-w-11 w-fit rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-[var(--tick-high)] hover:text-[var(--tick-high)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         {isOpen ? props.labels.analyticsDrawerClose : props.labels.analyticsDrawerOpen}
       </button>
