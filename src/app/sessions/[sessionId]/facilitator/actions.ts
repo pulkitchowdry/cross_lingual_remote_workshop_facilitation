@@ -12,6 +12,13 @@ import { generateAndPersistSessionSummary } from "@/lib/insights";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import { isSupportedLanguage } from "@/lib/i18n";
+import { isRateLimited } from "@/lib/rate-limit";
+
+/** Mirrors sendChatMessage's CHAT_RATE_LIMIT (src/app/sessions/actions.ts) — this action
+ * fans out to the same paid per-language translation providers (via publishTranslatedCaption)
+ * plus, when configured, an unawaited Claude insight-generation call on every caption, but
+ * unlike sendChatMessage had no throttle of its own before this. */
+const CAPTION_RATE_LIMIT = { max: 10, windowMs: 10_000 };
 
 export async function updateFacilitatorLanguage(sessionId: string, lang: SupportedLanguage) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
@@ -103,6 +110,14 @@ export async function publishCaption(
   });
   if (!session || session.status !== SessionStatus.LIVE) {
     return { error: "Start the session before publishing captions." };
+  }
+
+  // Keyed by the already-authenticated facilitator's id (not a raw cookie or IP) —
+  // bounds a script that bypasses the UI's disabled-while-pending button and POSTs
+  // directly to this action from fanning out unlimited paid per-language translation
+  // (and, when configured, insight-generation) calls.
+  if (isRateLimited(`caption:${session.facilitatorId}`, CAPTION_RATE_LIMIT.max, CAPTION_RATE_LIMIT.windowMs)) {
+    return { error: "You're publishing captions too quickly. Please wait a moment and try again." };
   }
 
   const now = new Date();

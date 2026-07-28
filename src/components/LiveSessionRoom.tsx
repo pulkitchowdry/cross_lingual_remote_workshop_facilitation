@@ -114,6 +114,7 @@ export function LiveSessionRoom({
   privateRecipientOptions,
   currentLanguage,
   facilitatorSourceLanguage,
+  ttsConfigured,
   onChangeLanguage,
   languageOptions,
   captionsHeader,
@@ -141,6 +142,12 @@ export function LiveSessionRoom({
    * language change (see `SyncParticipantLanguageAttribute`'s doc comment); every other
    * participant's language comes from their own live LiveKit attribute. */
   facilitatorSourceLanguage: SupportedLanguage;
+  /** `textToSpeechProvider.isConfigured`, computed once by the route page (same value
+   * that gates its own `TranslatedAudioPlayer` render) and threaded down to
+   * `DuckedRoomAudio` — see that component's doc comment for why ducking a
+   * cross-language speaker's raw mic audio is only safe when a dub is actually
+   * going to be available to replace it. */
+  ttsConfigured: boolean;
   onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   /** Above the captions feed — the "play translated audio" opt-in control. */
@@ -506,7 +513,7 @@ export function LiveSessionRoom({
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
-        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} />
+        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} ttsConfigured={ttsConfigured} />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>

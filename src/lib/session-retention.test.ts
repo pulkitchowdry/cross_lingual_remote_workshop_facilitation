@@ -75,14 +75,24 @@ describe("isSessionRetentionExpired", () => {
     ).toBe(true);
   });
 
-  it("never expires a DRAFT session that was never started, no matter how old createdAt is", () => {
-    const wellPastWhatCreatedAtWouldImply = new Date(createdAt.getTime() + 365 * DAY_MS);
+  it("is not expired for a DRAFT session younger than the 30-day fallback deadline anchored to createdAt (mirrors the join link's own 30-day expiry — a learner can join/consent to a DRAFT session before it's started)", () => {
+    const justBeforeFallbackDeadline = new Date(createdAt.getTime() + 30 * DAY_MS - 1_000);
     expect(
       isSessionRetentionExpired(
         { status: SessionStatus.DRAFT, createdAt, startedAt: null, endedAt: null, retentionDays: 7 },
-        wellPastWhatCreatedAtWouldImply,
+        justBeforeFallbackDeadline,
       ),
     ).toBe(false);
+  });
+
+  it("is expired for a DRAFT session older than the 30-day fallback deadline — an abandoned session (facilitator never clicked Start) must not retain already-joined learners' PII forever", () => {
+    const atFallbackDeadline = new Date(createdAt.getTime() + 30 * DAY_MS);
+    expect(
+      isSessionRetentionExpired(
+        { status: SessionStatus.DRAFT, createdAt, startedAt: null, endedAt: null, retentionDays: 7 },
+        atFallbackDeadline,
+      ),
+    ).toBe(true);
   });
 
   it("defaults `now` to the current time", () => {

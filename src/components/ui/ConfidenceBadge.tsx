@@ -37,7 +37,10 @@ const LEVEL_SYMBOL: Record<Confidence, string> = {
  * which almost no real caption uses, so it read as a permanently-pinned, uninformative
  * 100% rather than a useful signal. Audio quality isn't shown either — nothing in this
  * app measures microphone/input-audio quality yet, and a fake, unmeasured 100% would
- * misrepresent that as a confirmed "no problem" reading.
+ * misrepresent that as a confirmed "no problem" reading. `reasonText` below matches this:
+ * `computeOverallConfidence` never selects `"terminology"` as `rootCause` either (see its
+ * doc comment), so there's no reason string that would reference a row this breakdown
+ * doesn't show.
  */
 export function ConfidenceBadge({
   score,
@@ -115,8 +118,6 @@ function reasonText(
       return dict.confidenceReasonSpeechRecognition;
     case "translation":
       return dict.confidenceReasonTranslation;
-    case "terminology":
-      return dict.confidenceReasonTerminology;
     case "network":
       return dict.confidenceReasonNetwork;
     default:

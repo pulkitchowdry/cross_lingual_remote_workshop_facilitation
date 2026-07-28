@@ -50,3 +50,28 @@ describe("learner caption comprehension templates", () => {
     }
   });
 });
+
+describe("analyticsParticipationRow", () => {
+  // Reproduced live in UAT round 15: the facilitator analytics drawer read "1 messages" for a
+  // single-message participant because the English/Spanish templates never varied for count === 1.
+  it("uses the singular form for exactly one message/question in English", () => {
+    const row = getDictionary("en").facilitator.analyticsParticipationRow("Learner", 1, 1, false);
+    expect(row).toContain("1 message ·");
+    expect(row).toContain("1 question");
+    expect(row).not.toContain("1 messages");
+    expect(row).not.toContain("1 questions");
+  });
+
+  it("uses the plural form for zero or many messages/questions in English", () => {
+    expect(getDictionary("en").facilitator.analyticsParticipationRow("Learner", 0, 2, false)).toContain("0 messages");
+    expect(getDictionary("en").facilitator.analyticsParticipationRow("Learner", 2, 0, false)).toContain("0 questions");
+  });
+
+  it("uses the singular form for exactly one message/question in Spanish", () => {
+    const row = getDictionary("es").facilitator.analyticsParticipationRow("Alumno", 1, 1, false);
+    expect(row).toContain("1 mensaje ·");
+    expect(row).toContain("1 pregunta");
+    expect(row).not.toContain("1 mensajes");
+    expect(row).not.toContain("1 preguntas");
+  });
+});

@@ -68,9 +68,14 @@ export function CaptionComprehensionActions({
           {examplePending ? sendingLabel : giveExampleLabel}
         </button>
       </form>
-      {(explainState.error ?? exampleState.error) && (
+      {explainState.error && (
         <p className="w-full text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
-          {explainState.error ?? exampleState.error}
+          {explainState.error}
+        </p>
+      )}
+      {exampleState.error && (
+        <p className="w-full text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          {exampleState.error}
         </p>
       )}
     </div>

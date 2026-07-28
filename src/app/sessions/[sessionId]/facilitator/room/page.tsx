@@ -130,6 +130,7 @@ export default async function FacilitatorRoomPage({
           privateRecipientOptions={privateRecipientOptions}
           currentLanguage={lang}
           facilitatorSourceLanguage={lang}
+          ttsConfigured={textToSpeechProvider.isConfigured}
           onChangeLanguage={changeLanguageAction}
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}

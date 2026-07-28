@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
+import { scheduleCoordinatedRefresh } from "@/lib/coordinated-refresh";
 
 const HEADER_SLOT_ID = "header-language-slot";
 
@@ -171,7 +172,13 @@ export function LanguageMenu({
     if (lang === current) return;
     startTransition(async () => {
       await onSelect(lang);
-      router.refresh();
+      // Routed through the shared coordinator (see its doc comment in
+      // coordinated-refresh.ts) instead of calling router.refresh() directly — this
+      // menu is co-rendered alongside SessionAutoRefresh's 2s poll and, in the live
+      // room, CaptionChannelRefresher, both of which already go through this same
+      // gate. An independent, uncoordinated router.refresh() here could otherwise
+      // race one of those and tear LiveTranscriptFeed's rendered list.
+      scheduleCoordinatedRefresh(() => router.refresh());
     });
   }
 

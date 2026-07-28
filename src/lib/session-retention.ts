@@ -2,6 +2,12 @@ import { SessionStatus } from "@/generated/prisma/client";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Fallback retention cap for a DRAFT session that was never started — matches the
+ * join link's own 30-day expiry (see src/app/join/[token]/actions.ts), since a
+ * learner can join and consent to a DRAFT session (creating real User +
+ * SessionParticipant rows with PII) well before the facilitator ever clicks Start. */
+const DRAFT_RETENTION_DAYS = 30;
+
 /** When a session's transcript/chat data must be purged, per its own retentionDays choice. */
 export function retentionDeadline(endedAt: Date, retentionDays: number): Date {
   return new Date(endedAt.getTime() + retentionDays * DAY_MS);
@@ -26,13 +32,17 @@ export function isSessionRetentionExpired(
   session: { status: SessionStatus; createdAt: Date; startedAt: Date | null; endedAt: Date | null; retentionDays: number },
   now: Date = new Date(),
 ): boolean {
-  // A DRAFT session that was never started (startedAt still null) has no lifecycle
-  // to anchor retention to yet, despite what the docstring above already promises
-  // ("started but never explicitly ended") — falling back to `createdAt` here used
-  // to give every not-yet-started session a hard deletion deadline anyway, so a
-  // workshop prepared ahead of time (and any learners already waiting in it) could
-  // get permanently deleted before it ever ran.
-  if (session.startedAt === null) return false;
+  // A DRAFT session that was never started (startedAt still null) has no normal
+  // lifecycle to anchor retention to yet, despite what the docstring above already
+  // promises ("started but never explicitly ended") — but it's still not exempt
+  // outright: a learner can join and consent to a DRAFT session before it's started
+  // (see src/app/join/[token]/actions.ts), creating real User + SessionParticipant
+  // rows with PII. If the facilitator then abandons the session (never clicks
+  // Start), that data would otherwise be retained forever with no cleanup path.
+  // Anchoring to `createdAt` with the same 30-day cap as the join link's own expiry
+  // bounds that instead, while still giving a workshop prepared well ahead of time
+  // (and any learners already waiting in it) a generous window before it ever runs.
+  if (session.startedAt === null) return isRetentionExpired(session.createdAt, DRAFT_RETENTION_DAYS, now);
   // A currently-LIVE session is never "expired", full stop — its participants are
   // actively using it right now, and a workshop simply running longer than its own
   // retentionDays choice (a transcript-retention preference, not a session-length

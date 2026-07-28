@@ -84,7 +84,7 @@ export function AnalyticsPanelContent({
                   </p>
                 )}
                 <form action={item.resolveAction} className="mt-2">
-                  <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                  <button className="font-data min-h-11 min-w-11 rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
                     {labels.resolveBlockerLabel}
                   </button>
                 </form>
@@ -162,7 +162,7 @@ export function AnalyticsDrawer(props: AnalyticsPanelProps) {
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
-        className="font-data w-fit rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]"
+        className="font-data min-h-11 min-w-11 w-fit rounded-md border border-border-strong px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]"
       >
         {isOpen ? props.labels.analyticsDrawerClose : props.labels.analyticsDrawerOpen}
       </button>

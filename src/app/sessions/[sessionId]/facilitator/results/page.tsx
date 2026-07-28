@@ -74,6 +74,15 @@ export default async function FacilitatorSessionResultsPage({
     .slice(0, 5)
     .map((item) => ({ id: item.id, summary: item.summary }));
 
+  // Mirrors facilitator/page.tsx's insightsUnavailableReason: generateAndPersistSessionSummary
+  // (insights.ts) never generates a summary for a Strict Privacy Mode (LOCAL_ONLY) session,
+  // regardless of whether an insight API key is configured — so this page must distinguish
+  // that case too, or a facilitator with a configured key who ran a LOCAL_ONLY session sees
+  // the generic "unavailable" copy instead of the actually-correct "disabled by privacy mode"
+  // explanation.
+  const insightsUnavailableReason: "privacyMode" | "notConfigured" | null =
+    session.translationMode === "LOCAL_ONLY" ? "privacyMode" : !insightProvider.isConfigured ? "notConfigured" : null;
+
   const analyticsView =
     session.status === SessionStatus.ENDED ? await buildFacilitatorAnalyticsView(sessionId, session, lang) : null;
 
@@ -167,8 +176,10 @@ export default async function FacilitatorSessionResultsPage({
                 <p className="whitespace-pre-wrap">{session.summary}</p>
               ) : (
                 <p className="text-muted-foreground">
-                  {!insightProvider.isConfigured
-                    ? dict.insightsNotConfigured
+                  {insightsUnavailableReason
+                    ? insightsUnavailableReason === "privacyMode"
+                      ? dict.insightsDisabledPrivacyMode
+                      : dict.insightsNotConfigured
                     : recentlyEnded
                       ? dict.sessionSummaryPending
                       : dict.sessionSummaryUnavailable}

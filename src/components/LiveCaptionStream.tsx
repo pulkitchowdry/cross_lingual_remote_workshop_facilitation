@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/components-react";
+import { useLocalParticipant } from "@livekit/components-react";
 import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, classifyCaptionSocketClose } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
@@ -42,18 +42,7 @@ export function LiveCaptionStream({
   agentCapturing?: boolean;
 }) {
   const dict = getDictionary(lang).captions;
-  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
-  // The Confidence Score's network signal (issue #130's "Future Enhancements") for this
-  // participant's own captions — same live, reactive quality ParticipantChip already
-  // shows in the meeting UI, just also reported to the server here. Read via a ref (not
-  // `quality` directly) inside `recorder.ondataavailable` below: that callback is set up
-  // once per `start()` call and would otherwise keep sending whatever quality was
-  // current at that moment, not the live value.
-  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
-  const qualityRef = useRef(quality);
-  useEffect(() => {
-    qualityRef.current = quality;
-  }, [quality]);
+  const { isMicrophoneEnabled } = useLocalParticipant();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,10 +178,6 @@ export function LiveCaptionStream({
 
       recorder.ondataavailable = (event) => {
         if (event.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
-        // A small JSON text frame alongside each binary audio chunk — captions-socket.ts
-        // branches on the WebSocket frame's own binary/text flag to tell these apart, so
-        // this must go out as its own `send()` call, not merged into the audio buffer.
-        socket.send(JSON.stringify({ type: "connection-quality", quality: qualityRef.current }));
         void event.data.arrayBuffer().then((buffer) => socket.send(buffer));
       };
       recorder.onerror = () => {
