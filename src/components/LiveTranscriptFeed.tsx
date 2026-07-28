@@ -141,9 +141,9 @@ export function LiveTranscriptFeed({
                       disabled={!isExpandable}
                       aria-expanded={isExpandable ? revealed : undefined}
                       onClick={isExpandable ? () => toggleRevealed(entry.id) : undefined}
-                      className={`min-w-0 flex-1 text-left ${isExpandable ? "cursor-pointer" : ""}`}
+                      className={`min-w-0 flex-1 rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${isExpandable ? "cursor-pointer" : ""}`}
                     >
-                      <p className="text-sm leading-snug">
+                      <p className="min-w-0 break-words text-sm leading-snug">
                         <span className="font-data mr-1.5 text-[10px] tabular-nums text-muted-foreground">
                           {entry.time}
                         </span>
@@ -161,7 +161,7 @@ export function LiveTranscriptFeed({
                         </span>
                       </p>
                       {revealed && hasSecondary && (
-                        <p className="mt-0.5 text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
+                        <p className="mt-0.5 whitespace-pre-wrap break-words text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
                           {entry.secondaryText}
                         </p>
                       )}
@@ -180,7 +180,7 @@ export function LiveTranscriptFeed({
           <button
             type="button"
             onClick={scrollToLatest}
-            className="font-data press-scale animate-fade-in absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow transition-colors"
+            className="font-data press-scale animate-fade-in absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {jumpToLatestLabel} ↓
           </button>

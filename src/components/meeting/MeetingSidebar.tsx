@@ -123,7 +123,7 @@ export function MeetingSidebar({
           // clears the wrapped toolbar's full height (~128px) with room to spare;
           // above that width the toolbar fits on one line and the extra gap here is
           // harmless.
-          className="animate-scale-in fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform active:scale-95 max-[430px]:bottom-36"
+          className="animate-scale-in fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full text-accent-foreground shadow-lg transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent active:scale-95 max-[430px]:bottom-36"
           style={{ background: "var(--accent)" }}
         >
           <ChatIcon className="h-5 w-5" />
@@ -135,7 +135,7 @@ export function MeetingSidebar({
         type="button"
         onClick={() => setSidebarOpen(true)}
         aria-label={dict.expandSidebar}
-        className="font-data press-scale animate-slide-in-right flex h-24 w-9 shrink-0 flex-col items-center justify-center gap-2 rounded-l-lg border border-r-0 border-border-subtle bg-surface-raised text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+        className="font-data press-scale animate-slide-in-right flex h-24 w-9 shrink-0 flex-col items-center justify-center gap-2 rounded-l-lg border border-r-0 border-border-subtle bg-surface-raised text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         <ChatIcon className="h-4 w-4 shrink-0" />
         <span className="text-[0.625rem] font-medium uppercase tracking-wide" style={{ writingMode: "vertical-rl" }}>
@@ -188,11 +188,11 @@ export function MeetingSidebar({
               tabIndex={tab === value ? 0 : -1}
               onClick={() => setTab(value)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
-              className={`font-data press-scale flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors ${
+              className={`font-data press-scale min-w-0 flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {label}
+              <span className="block truncate">{label}</span>
             </button>
           ))}
         </div>
@@ -200,7 +200,7 @@ export function MeetingSidebar({
           type="button"
           onClick={() => setSidebarOpen(false)}
           aria-label={dict.collapseSidebar}
-          className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+          className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           <CloseIcon className="h-4 w-4" />
         </button>
@@ -286,7 +286,6 @@ export function MeetingSidebar({
       style={{ width: sidebarWidth }}
     >
       <div
-        className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-accent/40"
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={onResizePointerUp}
@@ -298,6 +297,7 @@ export function MeetingSidebar({
         aria-valuenow={sidebarWidth}
         aria-valuemin={SIDEBAR_MIN_WIDTH}
         aria-valuemax={SIDEBAR_MAX_WIDTH}
+        className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       />
       {panel}
     </div>

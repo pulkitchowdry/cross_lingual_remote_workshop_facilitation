@@ -240,8 +240,8 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
             checked={enabled}
@@ -262,7 +262,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           className="hidden"
         />
         {error && (
-          <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          <p className="animate-fade-in break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
             {error}
           </p>
         )}
@@ -270,7 +270,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
           <button
             type="button"
             onClick={playBlockedSegment}
-            className="font-data press-scale animate-fade-in flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground transition-colors"
+            className="font-data press-scale animate-fade-in flex min-h-11 shrink-0 items-center rounded-md border border-border-strong px-3 text-xs font-medium uppercase tracking-wider text-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {dict.playBlockedAudio}
           </button>

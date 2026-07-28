@@ -136,11 +136,11 @@ export default async function JoinPage({
           ariaLabel={dict.join.languagePickerLabel}
         />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {dict.join.invitedTo}
         </p>
-        <h1 className="font-heading text-2xl font-semibold" lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}>
+        <h1 className="font-heading break-words text-2xl font-semibold" lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}>
           {resolvedTitle.hasTranslation ? resolvedTitle.text : dict.common.translationUnavailable}
         </h1>
         <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
@@ -155,7 +155,7 @@ export default async function JoinPage({
         <label className="flex flex-col gap-2 text-sm font-medium">
           {dict.join.yourName}
           <input
-            className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
             name="displayName"
             required
             maxLength={80}

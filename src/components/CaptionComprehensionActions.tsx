@@ -69,12 +69,12 @@ export function CaptionComprehensionActions({
         </button>
       </form>
       {explainState.error && (
-        <p className="animate-fade-in w-full text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="animate-fade-in w-full break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {explainState.error}
         </p>
       )}
       {exampleState.error && (
-        <p className="animate-fade-in w-full text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="animate-fade-in w-full break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {exampleState.error}
         </p>
       )}

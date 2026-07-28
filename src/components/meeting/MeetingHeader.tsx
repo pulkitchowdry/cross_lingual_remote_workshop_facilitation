@@ -63,7 +63,7 @@ export function MeetingHeader({
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5 gap-y-2 border-b border-border-subtle bg-surface px-4 py-2.5">
-      <h1 className="font-heading min-w-0 truncate text-sm font-semibold text-foreground" title={title}>
+      <h1 className="font-heading min-w-[8rem] max-w-full flex-1 truncate text-sm font-semibold text-foreground" title={title}>
         {title}
       </h1>
       {inviteLink && (
@@ -74,7 +74,7 @@ export function MeetingHeader({
                 type="button"
                 onClick={() => void copyLink()}
                 aria-label={dict.copyInviteLink}
-                className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+                className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <CopyIcon className="h-4 w-4" />
               </button>
