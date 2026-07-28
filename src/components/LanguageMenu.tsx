@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
+import { scheduleCoordinatedRefresh } from "@/lib/coordinated-refresh";
 
 const HEADER_SLOT_ID = "header-language-slot";
 
@@ -171,7 +172,13 @@ export function LanguageMenu({
     if (lang === current) return;
     startTransition(async () => {
       await onSelect(lang);
-      router.refresh();
+      // Routed through the shared coordinator (see its doc comment in
+      // coordinated-refresh.ts) instead of calling router.refresh() directly — this
+      // menu is co-rendered alongside SessionAutoRefresh's 2s poll and, in the live
+      // room, CaptionChannelRefresher, both of which already go through this same
+      // gate. An independent, uncoordinated router.refresh() here could otherwise
+      // race one of those and tear LiveTranscriptFeed's rendered list.
+      scheduleCoordinatedRefresh(() => router.refresh());
     });
   }
 
@@ -201,13 +208,13 @@ export function LanguageMenu({
         // AccessibilityPanel.tsx: this trigger sits in the same header row as the
         // font-size toggle, so it needs to stay immune to the font-size preference or it
         // shifts sideways the moment text size changes.
-        className="font-data flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-60"
+        className="font-data press-scale flex items-center gap-[6px] whitespace-nowrap rounded-md border border-border-strong px-[10px] py-[4px] text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors duration-150 hover:border-accent hover:text-foreground disabled:opacity-60"
       >
         <TranslateIcon />
         {dict.language}
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] max-w-[16rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-lg">
+        <div className="animate-scale-in absolute right-0 top-full z-50 mt-1 min-w-[9rem] max-w-[16rem] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-lg">
         {liveWarning && (
           <p className="border-b border-border-subtle px-3 py-2 text-[11px] text-muted-foreground">{liveWarning}</p>
         )}
@@ -226,12 +233,14 @@ export function LanguageMenu({
               id={optionId(language.value)}
               role="option"
               aria-selected={language.value === current}
+              className="animate-stagger"
+              style={{ "--stagger-index": index } as React.CSSProperties}
             >
               <button
                 type="button"
                 tabIndex={-1}
                 onClick={() => selectLanguage(language.value)}
-                className={`font-data flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${
+                className={`font-data press-scale flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors duration-150 ${
                   language.value === current
                     ? "bg-accent/10 text-foreground"
                     : "text-muted-foreground hover:bg-accent/10 hover:text-foreground"

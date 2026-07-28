@@ -71,7 +71,7 @@ export function SessionSidePanel({
             tabIndex={tab === value ? 0 : -1}
             onClick={() => setTab(value)}
             onKeyDown={(event) => onTabKeyDown(event, index)}
-            className={`font-data flex-1 rounded-md px-3 py-1.5 text-xs font-medium uppercase tracking-wider ${
+            className={`font-data press-scale flex-1 rounded-md px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-colors duration-150 ${
               tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -79,7 +79,14 @@ export function SessionSidePanel({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1" id={panelId(tab)} role="tabpanel" aria-labelledby={tabId(tab)} tabIndex={0}>
+      <div
+        key={tab}
+        className="animate-fade-in min-h-0 flex-1"
+        id={panelId(tab)}
+        role="tabpanel"
+        aria-labelledby={tabId(tab)}
+        tabIndex={0}
+      >
         {tab === "chat" ? (
           <SessionChatPanel {...chat} />
         ) : (

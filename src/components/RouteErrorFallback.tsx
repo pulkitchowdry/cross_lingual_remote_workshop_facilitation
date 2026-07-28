@@ -61,15 +61,15 @@ export function RouteErrorFallback({
   const displayMessage = isRedactedMessage ? dict.message : knownTranslation || error.message || dict.message;
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
+    <div className="mx-auto flex max-w-xl animate-fade-in flex-col items-center gap-3 py-16 text-center">
       <h1 ref={headingRef} tabIndex={-1} className="font-heading text-xl font-semibold">
         {dict.title}
       </h1>
-      <p className="text-sm text-muted-foreground">{displayMessage}</p>
+      <p className="max-w-full break-words text-sm text-muted-foreground">{displayMessage}</p>
       <button
         type="button"
         onClick={unstable_retry}
-        className="font-data w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+        className="font-data w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors duration-150 text-accent-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         {dict.retry}
       </button>

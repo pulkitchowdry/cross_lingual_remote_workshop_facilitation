@@ -245,4 +245,88 @@ describe("translateText", () => {
     expect(result).toEqual({ text: "hola", provider: "claude", qualitySignal: "provider-confirmed", confidence: 96 });
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("empty translation"));
   });
+
+  it("tries Claude first when a glossary hint is present and cloud fallback is allowed, skipping local-inference on success", async () => {
+    process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
+    process.env.LOCAL_INFERENCE_SECRET = "s3cret";
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ content: [{ type: "text", text: "hola (glosario)" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es", { glossaryHint: '- "hello" -> "hola (glosario)"' });
+
+    expect(result).toEqual({
+      text: "hola (glosario)",
+      provider: "claude",
+      qualitySignal: "provider-confirmed",
+      confidence: 96,
+    });
+    // Claude succeeded on the first (and only) call — local-inference, though configured,
+    // must never be touched once the glossary-preferred Claude translation comes back.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to local-inference when a glossary hint is present but Claude is unconfigured (no API key)", async () => {
+    process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
+    process.env.LOCAL_INFERENCE_SECRET = "s3cret";
+    delete process.env.CLAUDE_API_KEY;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ text: "hola local" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es", { glossaryHint: '- "hello" -> "hola"' });
+
+    expect(result).toEqual({ text: "hola local", provider: "nllb", qualitySignal: "provider-confirmed", confidence: 88 });
+    // translateWithClaude returns null immediately (no fetch call at all) when
+    // CLAUDE_API_KEY is unset, so the only fetch here is the successful local-inference call —
+    // a facilitator running local-inference only must not lose the whole message just because
+    // it happened to contain a glossary term.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to local-inference when a glossary hint is present and Claude fails", async () => {
+    process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
+    process.env.LOCAL_INFERENCE_SECRET = "s3cret";
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("local.example.com")) return { ok: true, json: async () => ({ text: "hola local" }) };
+      return { ok: false, status: 401, text: async () => "invalid api key" };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es", { glossaryHint: '- "hello" -> "hola"' });
+
+    expect(result).toEqual({ text: "hola local", provider: "nllb", qualitySignal: "provider-confirmed", confidence: 88 });
+    // 1 Claude attempt (a non-transient 401 doesn't retry) + 1 successful local-inference
+    // attempt — a transiently-down or misconfigured Claude must not sink glossary-matched
+    // text when local-inference is healthy and would have succeeded.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("still returns null (never calls Claude) when cloud fallback is disallowed, even with a glossary hint present", async () => {
+    process.env.LOCAL_INFERENCE_URL = "https://local.example.com";
+    process.env.LOCAL_INFERENCE_SECRET = "s3cret";
+    process.env.CLAUDE_API_KEY = "claude-key";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { translateText } = await import("./translation");
+    const result = await translateText("hello", "en", "es", {
+      allowCloudFallback: false,
+      glossaryHint: '- "hello" -> "hola"',
+    });
+
+    expect(result).toBeNull();
+    // Identical to the no-glossary LOCAL_ONLY case: both local-inference retry attempts run
+    // and Claude is never touched — a glossaryHint only changes tier ordering when cloud
+    // fallback is actually allowed.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

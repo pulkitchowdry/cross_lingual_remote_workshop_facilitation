@@ -41,23 +41,29 @@ export function MeetingHeader({
   languageChangeWarning?: string;
 }) {
   const dict = getDictionary(uiLang).meeting;
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copyLink() {
     if (!inviteLink) return;
     try {
+      // `navigator.clipboard` itself can be entirely absent (an insecure/http
+      // context, or a browser old enough to have no Clipboard API at all — e.g.
+      // Safari before 13.1) rather than merely rejecting `writeText` — calling
+      // `.writeText` directly on `undefined` would throw a plain TypeError instead
+      // of the DOMException this catch block otherwise expects, but either way the
+      // user still needs the same visible "it didn't work" feedback.
+      if (!navigator.clipboard) throw new Error("Clipboard API unavailable.");
       await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopyStatus("copied");
     } catch {
-      // Clipboard access can be denied by the browser — the tooltip still
-      // shows the raw link on hover, so this fails silently.
+      setCopyStatus("failed");
     }
+    setTimeout(() => setCopyStatus("idle"), 2000);
   }
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5 gap-y-2 border-b border-border-subtle bg-surface px-4 py-2.5">
-      <h1 className="font-heading min-w-0 truncate text-sm font-semibold text-foreground" title={title}>
+      <h1 className="font-heading min-w-[8rem] max-w-full flex-1 truncate text-sm font-semibold text-foreground" title={title}>
         {title}
       </h1>
       {inviteLink && (
@@ -68,7 +74,7 @@ export function MeetingHeader({
                 type="button"
                 onClick={() => void copyLink()}
                 aria-label={dict.copyInviteLink}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+                className="press-scale flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <CopyIcon className="h-4 w-4" />
               </button>
@@ -79,14 +85,22 @@ export function MeetingHeader({
                 sideOffset={6}
                 className="font-data z-50 max-w-[16rem] rounded-md border border-border-strong bg-surface-raised px-2 py-1 text-center text-[0.6875rem] uppercase tracking-wider text-foreground shadow-sm"
               >
-                {copied ? dict.linkCopied : dict.copyInviteLink}
+                {copyStatus === "copied" ? dict.linkCopied : copyStatus === "failed" ? dict.copyLinkFailed : dict.copyInviteLink}
                 <Tooltip.Arrow style={{ fill: "var(--surface-raised)" }} />
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
-      <div className="ml-auto flex items-center gap-2">
+      {/* flex-wrap here too — the outer row's own flex-wrap only wraps *between*
+          the title/copy-link and this whole controls group; once this group is on
+          its own line, it still needs to wrap its own 3 buttons (Aa, Contrast,
+          Theme, plus this page's own LanguageMenu slot) rather than overflow the
+          viewport at narrow widths. Same class of bug as AppShell.tsx's identical
+          control row, which portals into a different slot (invisible on this
+          full-viewport room takeover — see this component's own file doc comment)
+          but has the exact same 3-vs-4-button overflow at 320-375px. */}
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         <AccessibilityPanel />
         <ThemeToggle />
         <div id={MEETING_HEADER_LANGUAGE_SLOT_ID} />

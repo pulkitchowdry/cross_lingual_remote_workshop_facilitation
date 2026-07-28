@@ -51,7 +51,7 @@ export function CaptionComprehensionActions({
           type="submit"
           disabled={explainPending}
           aria-disabled={explainPending}
-          className="font-data rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+          className="font-data press-scale rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {explainPending ? sendingLabel : explainSimplyLabel}
         </button>
@@ -63,14 +63,19 @@ export function CaptionComprehensionActions({
           type="submit"
           disabled={examplePending}
           aria-disabled={examplePending}
-          className="font-data rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+          className="font-data press-scale rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {examplePending ? sendingLabel : giveExampleLabel}
         </button>
       </form>
-      {(explainState.error ?? exampleState.error) && (
-        <p className="w-full text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
-          {explainState.error ?? exampleState.error}
+      {explainState.error && (
+        <p className="animate-fade-in w-full break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          {explainState.error}
+        </p>
+      )}
+      {exampleState.error && (
+        <p className="animate-fade-in w-full break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          {exampleState.error}
         </p>
       )}
     </div>

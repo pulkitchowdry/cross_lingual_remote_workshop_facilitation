@@ -1,13 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/components-react";
+import { useLocalParticipant } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { CAPTION_SOCKET_NORMAL_CLOSURE_CODE, decideCaptionSocketReconnect } from "@/lib/caption-socket-client";
 import { getDictionary } from "@/lib/i18n";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 
 const CHUNK_INTERVAL_MS = 250;
+
+/**
+ * Explicitly picks a `MediaRecorder` mimeType instead of leaving it to the
+ * browser's own default, in priority order of what the server-side buffering
+ * (`local-speech-buffer.ts`) and Deepgram's container auto-detect both know how
+ * to handle. Chrome/Firefox/Edge support `audio/webm;codecs=opus`; Safari
+ * supports neither WebM variant at all but does support `audio/mp4` (AAC) —
+ * without requesting it explicitly, Safari's un-opinionated default has in the
+ * past varied across versions, which the server has no way to detect after the
+ * fact. Returns `undefined` (browser default, best-effort) only when
+ * `MediaRecorder`/`isTypeSupported` themselves are unavailable or none of the
+ * known-good candidates are supported.
+ */
+function pickRecorderMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+}
 
 // A caption socket that drops for a reason the user didn't ask for (a Railway/proxy idle
 // drop, a `web` service redeploy, a laptop waking from sleep, a transient STT-tier error)
@@ -59,17 +77,6 @@ export function LiveCaptionStream({
   }, []);
   const dict = getDictionary(lang).captions;
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
-  // The Confidence Score's network signal (issue #130's "Future Enhancements") for this
-  // participant's own captions — same live, reactive quality ParticipantChip already
-  // shows in the meeting UI, just also reported to the server here. Read via a ref (not
-  // `quality` directly) inside `recorder.ondataavailable` below: that callback is set up
-  // once per `start()` call and would otherwise keep sending whatever quality was
-  // current at that moment, not the live value.
-  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
-  const qualityRef = useRef(quality);
-  useEffect(() => {
-    qualityRef.current = quality;
-  }, [quality]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +110,16 @@ export function LiveCaptionStream({
    */
   const startRef = useRef<() => void>(() => {});
   const startingRef = useRef(false);
+  /**
+   * Monotonically increasing token identifying each `start()` attempt (from `main`). The
+   * socket callbacks below already guard on socket identity (`socketRef.current !== socket`),
+   * but `recorder.onerror` and the `catch` have no socket to compare against — so a stale
+   * attempt failing late there (classically `getUserMedia`'s permission prompt resolving
+   * long after a newer attempt has taken over and is actively streaming) would call the
+   * shared `stop()` and kill that newer, healthy session. Bumped by `stop()` too, so an
+   * explicit stop (mic toggled off, unmount) invalidates whatever attempt is still in flight.
+   */
+  const attemptTokenRef = useRef(0);
   // ─── TEMPORARY DIAGNOSTICS (remove alongside server.ts's `[captions/diag]` block) ───
   // The existing logs show START → SOCKET CLOSED with no timing at all, so there is no way
   // to tell a socket that died in 200ms (a handshake/auth-shaped failure) from one that
@@ -123,8 +140,8 @@ export function LiveCaptionStream({
   }));
   // ─── end temporary diagnostics ───
   /**
-   * Whether capture *should* still be running, mirrored for the same reason `qualityRef`
-   * is: `onclose` is registered once per `start()` call, so reading these values directly
+   * Whether capture *should* still be running, mirrored for the same reason
+   * `localParticipantRef` is: `onclose` is registered once per `start()` call, so reading these values directly
    * would test whatever they were when that socket opened. A reconnect must be decided
    * against live state — the mic being muted (or the server-side agent taking over) while
    * a socket was dying is exactly when a stale "yes, reconnect" would resurrect capture
@@ -177,6 +194,7 @@ export function LiveCaptionStream({
   const stop = useCallback(() => {
     console.log("[captions] STOP");
 
+    attemptTokenRef.current += 1;
     activeRef.current = false;
     stoppedByUserRef.current = true;
     hasOpenedRef.current = false;
@@ -232,6 +250,7 @@ export function LiveCaptionStream({
     }
 
     startingRef.current = true;
+    const attemptToken = ++attemptTokenRef.current;
 
     startedAtRef.current = Date.now();
     openedAtRef.current = 0;
@@ -249,7 +268,12 @@ export function LiveCaptionStream({
     try {
       // Existing code...
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}`);
+      // Chosen once per connection attempt and reused for both the URL (so the server
+      // knows what container to expect — see captions-socket.ts/local-speech-buffer.ts)
+      // and the MediaRecorder instantiation below, so the two can never disagree.
+      const mimeType = pickRecorderMimeType();
+      const mimeTypeParam = mimeType ? `&mimeType=${encodeURIComponent(mimeType)}` : "";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream?sessionId=${sessionId}${mimeTypeParam}`);
       socketRef.current = socket;
       socket.onopen = () => {
         // Same staleness guard as `onclose` below: a superseded socket reaching OPEN must
@@ -393,7 +417,7 @@ export function LiveCaptionStream({
         return;
       }
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -408,13 +432,12 @@ export function LiveCaptionStream({
         if (chunksSentRef.current === 1 || chunksSentRef.current % 20 === 0) {
           console.log("[captions] CHUNK SENT", diagRef.current());
         }
-        // A small JSON text frame alongside each binary audio chunk — captions-socket.ts
-        // branches on the WebSocket frame's own binary/text flag to tell these apart, so
-        // this must go out as its own `send()` call, not merged into the audio buffer.
-        socket.send(JSON.stringify({ type: "connection-quality", quality: qualityRef.current }));
         void event.data.arrayBuffer().then((buffer) => socket.send(buffer));
       };
       recorder.onerror = (e) => {
+        // A superseded attempt's recorder failing late must not tear down whatever newer
+        // attempt is now actually streaming — see attemptTokenRef.
+        if (attemptTokenRef.current !== attemptToken) return;
         console.log("[captions] recorder error", e);
         setError(dict.micRecordingFailed);
         stop();
@@ -424,6 +447,12 @@ export function LiveCaptionStream({
       console.log("[captions] RECORDER STARTED", { mimeType: recorder.mimeType, state: recorder.state, ...diagRef.current() });
       setIsStreaming(true);
     } catch (err) {
+      // Same staleness guard: this attempt's own failure (e.g. a denied permission prompt
+      // resolving after a newer attempt already took over) must not stop that newer one.
+      if (attemptTokenRef.current !== attemptToken) {
+        console.log("[captions] START FAILED (superseded, ignoring)", err);
+        return;
+      }
       console.log("[captions] START FAILED", err);
       setError(dict.micDenied);
       stop();
@@ -463,7 +492,7 @@ export function LiveCaptionStream({
     return (
       <div className="flex items-center gap-2">
         <span
-          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          className="font-data animate-fade-in min-w-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider whitespace-normal"
           style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
           role="status"
         >
@@ -479,7 +508,7 @@ export function LiveCaptionStream({
     <div className="flex items-center gap-2">
       {isStreaming && (
         <span
-          className="font-data shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          className="font-data animate-fade-in shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
           style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
           role="status"
         >
@@ -488,7 +517,7 @@ export function LiveCaptionStream({
       )}
       {error && (
         <>
-          <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+          <p className="animate-fade-in text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
             {error}
           </p>
           {/* Mic is still on (the `!isMicrophoneEnabled` early return above already
@@ -505,7 +534,7 @@ export function LiveCaptionStream({
               void start();
             }}
             disabled={isConnecting}
-            className="font-data shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground disabled:opacity-50"
+            className="font-data press-scale shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground transition-colors disabled:opacity-50"
           >
             {dict.retry}
           </button>

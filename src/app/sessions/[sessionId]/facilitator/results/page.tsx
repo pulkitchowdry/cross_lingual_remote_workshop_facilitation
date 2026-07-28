@@ -74,6 +74,15 @@ export default async function FacilitatorSessionResultsPage({
     .slice(0, 5)
     .map((item) => ({ id: item.id, summary: item.summary }));
 
+  // Mirrors facilitator/page.tsx's insightsUnavailableReason: generateAndPersistSessionSummary
+  // (insights.ts) never generates a summary for a Strict Privacy Mode (LOCAL_ONLY) session,
+  // regardless of whether an insight API key is configured — so this page must distinguish
+  // that case too, or a facilitator with a configured key who ran a LOCAL_ONLY session sees
+  // the generic "unavailable" copy instead of the actually-correct "disabled by privacy mode"
+  // explanation.
+  const insightsUnavailableReason: "privacyMode" | "notConfigured" | null =
+    session.translationMode === "LOCAL_ONLY" ? "privacyMode" : !insightProvider.isConfigured ? "notConfigured" : null;
+
   const analyticsView =
     session.status === SessionStatus.ENDED ? await buildFacilitatorAnalyticsView(sessionId, session, lang) : null;
 
@@ -82,11 +91,11 @@ export default async function FacilitatorSessionResultsPage({
       <SyncUiLanguage lang={lang} />
       {recentlyEnded && <SessionAutoRefresh durationMs={POST_SESSION_SUMMARY_GRACE_MS} />}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3" aria-live="polite">
-            <h1 className="font-heading text-2xl font-semibold">{dict.sessionResultsHeading}</h1>
+            <h1 className="font-heading break-words text-2xl font-semibold">{dict.sessionResultsHeading}</h1>
             <span
-              className="font-data rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground"
+              className="font-data shrink-0 rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground"
             >
               {statusLabel}
             </span>
@@ -95,7 +104,7 @@ export default async function FacilitatorSessionResultsPage({
         </div>
         <Link
           href={dashboardHref}
-          className="font-data rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-accent"
+          className="font-data press-scale rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {dict.returnToDashboard}
         </Link>
@@ -108,7 +117,7 @@ export default async function FacilitatorSessionResultsPage({
       ) : (
         <>
           <Card eyebrow={dict.sessionResultsCardEyebrow} title={session.title} accent="var(--tick-high)">
-            <p className="text-muted-foreground">{dict.sessionResultsSummary}</p>
+            <p className="font-data text-xs font-medium uppercase tracking-wider text-[var(--tick-high)]">{statusLabel}</p>
           </Card>
 
           <Card eyebrow={dict.basicSessionInfo}>
@@ -117,7 +126,7 @@ export default async function FacilitatorSessionResultsPage({
                 <dt className="font-data text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {dict.sessionGoal}
                 </dt>
-                <dd>{session.goal}</dd>
+                <dd className="break-words">{session.goal}</dd>
               </div>
               <div>
                 <dt className="font-data text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -147,8 +156,7 @@ export default async function FacilitatorSessionResultsPage({
           <Card eyebrow={dict.sessionSummaryHeading}>
             <p className="font-data text-xs text-muted-foreground">
               {durationMinutes !== null && `${dict.sessionSummaryDuration(durationMinutes)} · `}
-              {messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {questionCount}{" "}
-              {dict.sessionSummaryQuestions.toLowerCase()}
+              {dict.sessionSummaryMessages(messageCount)} · {dict.sessionSummaryQuestions(questionCount)}
             </p>
             {misunderstoodTopics.length > 0 && (
               <div className="mt-2">
@@ -157,18 +165,20 @@ export default async function FacilitatorSessionResultsPage({
                 </p>
                 <ul className="mt-1 list-inside list-disc text-sm">
                   {misunderstoodTopics.map((topic) => (
-                    <li key={topic.id}>{topic.summary}</li>
+                    <li key={topic.id} className="break-words">{topic.summary}</li>
                   ))}
                 </ul>
               </div>
             )}
             <div className="mt-2 border-t border-border-subtle pt-2">
               {session.summary ? (
-                <p className="whitespace-pre-wrap">{session.summary}</p>
+                <p className="whitespace-pre-wrap break-words">{session.summary}</p>
               ) : (
                 <p className="text-muted-foreground">
-                  {!insightProvider.isConfigured
-                    ? dict.insightsNotConfigured
+                  {insightsUnavailableReason
+                    ? insightsUnavailableReason === "privacyMode"
+                      ? dict.insightsDisabledPrivacyMode
+                      : dict.insightsNotConfigured
                     : recentlyEnded
                       ? dict.sessionSummaryPending
                       : dict.sessionSummaryUnavailable}

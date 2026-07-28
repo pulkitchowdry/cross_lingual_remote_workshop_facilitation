@@ -8,10 +8,19 @@ import { isSessionRetentionExpired } from "@/lib/session-retention";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/session-contracts";
 import { SessionStatus } from "@/generated/prisma/client";
 import { parseRoomMetadata } from "@/components/meeting/room-metadata";
+import { buildGlossaryPromptHint, findGlossaryMatches, type CentralGlossaryEntryLike } from "@/lib/glossary";
+import { isRateLimited } from "@/lib/rate-limit";
 
 function isSupportedLanguage(value: unknown): value is SupportedLanguage {
   return SUPPORTED_LANGUAGES.some((lang) => lang.value === value);
 }
+
+/** Mirrors sendChatMessage/publishCaption's per-sender rate limit (CHAT_RATE_LIMIT /
+ * CAPTION_RATE_LIMIT in sessions/actions.ts and facilitator|learn/actions.ts) — this
+ * route fans out one paid translateText call per supported language on every POST,
+ * normally throttled only by Whiteboard.tsx's 800ms client-side debounce, which a
+ * script bypassing the UI and POSTing directly here can ignore entirely. */
+const WHITEBOARD_TRANSLATE_RATE_LIMIT = { max: 10, windowMs: 10_000 };
 
 /**
  * Whether a learner currently has presenting rights — the same `allowLearnerPresenting`
@@ -63,8 +72,8 @@ export async function POST(request: NextRequest) {
   const { sessionId, elementId, sourceText, sourceLanguage } = body;
 
   const isFacilitator = await hasFacilitatorAccess(sessionId);
-  const isLearner = Boolean(await learnerParticipantId(sessionId));
-  if (!isFacilitator && !isLearner) {
+  const learnerId = await learnerParticipantId(sessionId);
+  if (!isFacilitator && !learnerId) {
     return Response.json({ error: "Not authorized for this session." }, { status: 403 });
   }
   // Whiteboard.tsx only lets a learner without presenting rights view text (never edit it),
@@ -86,11 +95,37 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "This session is no longer available." }, { status: 404 });
   }
 
+  // Keyed by the already-authenticated requester's identity (not a raw cookie or IP) —
+  // same convention as the captions-audio route's `requesterId`. Checked before the
+  // glossary read and translation fan-out below so a script hammering this route
+  // doesn't even pay for those once throttled.
+  const rateLimitKey = isFacilitator ? `facilitator:${sessionId}` : `learner:${learnerId}`;
+  if (isRateLimited(`whiteboard-translate:${rateLimitKey}`, WHITEBOARD_TRANSLATE_RATE_LIMIT.max, WHITEBOARD_TRANSLATE_RATE_LIMIT.windowMs)) {
+    return Response.json({ error: "You're editing too quickly. Please wait a moment and try again." }, { status: 429 });
+  }
+
   const allowCloudFallback = session.translationMode !== "LOCAL_ONLY";
+  // Central Technical Glossary lookup (issue #131) — mirrors publishTranslatedCaption's
+  // own glossary pass in src/lib/captions.ts and sendChatMessage's in
+  // src/app/sessions/actions.ts. Without this, a facilitator's curated glossary entries
+  // (e.g. a term marked "keep verbatim", or one with a specific preferred zh/es rendering)
+  // were honored in captions/chat but silently ignored the moment the same term appeared
+  // on the whiteboard, so the identical term could translate differently depending on
+  // which surface it was typed into within the same session.
+  const centralGlossary = await prisma.centralGlossaryEntry.findMany({
+    select: { sourceTerm: true, translate: true, translations: true },
+  });
+  const centralGlossaryEntries: CentralGlossaryEntryLike[] = centralGlossary.map((entry) => ({
+    sourceTerm: entry.sourceTerm,
+    translate: entry.translate,
+    translations: (entry.translations as Record<string, string>) ?? {},
+  }));
+  const glossaryMatches = findGlossaryMatches(sourceText, centralGlossaryEntries);
   const translations: Partial<Record<SupportedLanguage, string>> = {};
   await Promise.all(
     SUPPORTED_LANGUAGES.filter((lang) => lang.value !== sourceLanguage).map(async ({ value: target }) => {
-      const result = await translateText(sourceText, sourceLanguage, target, { allowCloudFallback });
+      const glossaryHint = buildGlossaryPromptHint(glossaryMatches, target);
+      const result = await translateText(sourceText, sourceLanguage, target, { allowCloudFallback, glossaryHint });
       if (result) translations[target] = result.text;
     }),
   );

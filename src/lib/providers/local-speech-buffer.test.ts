@@ -9,6 +9,22 @@ import { LocalBufferingSpeechToTextStream } from "./local-speech-buffer";
 
 const localTranscribeMock = localTranscribe as unknown as ReturnType<typeof vi.fn>;
 
+/** Builds one ISO-BMFF box: 4-byte big-endian size + 4-byte ASCII type + payload. */
+function mp4Box(type: string, payload: number[] = []): number[] {
+  const size = 8 + payload.length;
+  return [
+    (size >>> 24) & 0xff,
+    (size >>> 16) & 0xff,
+    (size >>> 8) & 0xff,
+    size & 0xff,
+    type.charCodeAt(0),
+    type.charCodeAt(1),
+    type.charCodeAt(2),
+    type.charCodeAt(3),
+    ...payload,
+  ];
+}
+
 describe("LocalBufferingSpeechToTextStream", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -86,6 +102,76 @@ describe("LocalBufferingSpeechToTextStream", () => {
 
     stream.close();
     expect(fallbackStream.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues sends behind a fallback stream's optional ready() instead of forwarding into it before it's ready", async () => {
+    localTranscribeMock.mockRejectedValue(new Error("local down"));
+    let resolveReady!: () => void;
+    const fallbackStream = {
+      sendAudio: vi.fn(),
+      close: vi.fn(),
+      ready: vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveReady = resolve;
+        }),
+      ),
+    };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+    });
+
+    stream.sendAudio(new Uint8Array([1]));
+    await vi.advanceTimersByTimeAsync(2_500); // flush() fails locally and switches to fallback
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    // Arrives while still waiting on ready() — must be queued, not dropped or sent early
+    // into a transport (e.g. a WebSocket mid-handshake) that would silently swallow it.
+    stream.sendAudio(new Uint8Array([2]));
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    resolveReady();
+    await vi.waitFor(() => expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(1));
+    // The recovered (failed-window) audio and the queued send are flushed together, in order.
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[0][0] as Uint8Array)).toEqual([1, 2]);
+
+    // Once ready, further sends go straight through instead of queuing.
+    stream.sendAudio(new Uint8Array([3]));
+    expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(2);
+    expect(Array.from(fallbackStream.sendAudio.mock.calls[1][0] as Uint8Array)).toEqual([3]);
+
+    stream.close();
+  });
+
+  it("proceeds to send after a bounded timeout if the fallback stream's ready() never resolves", async () => {
+    localTranscribeMock.mockRejectedValue(new Error("local down"));
+    const fallbackStream = {
+      sendAudio: vi.fn(),
+      close: vi.fn(),
+      ready: vi.fn().mockReturnValue(new Promise<void>(() => {})), // never resolves
+    };
+    const openCloudFallback = vi.fn().mockReturnValue(fallbackStream);
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback,
+    });
+
+    stream.sendAudio(new Uint8Array([1]));
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(fallbackStream.sendAudio).not.toHaveBeenCalled();
+
+    // FALLBACK_READY_TIMEOUT_MS — a hung ready() must not block audio forever.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fallbackStream.sendAudio).toHaveBeenCalledTimes(1);
+
+    stream.close();
   });
 
   it("forwards the failed window's audio plus anything buffered while the failing call was pending, instead of dropping it", async () => {
@@ -301,6 +387,40 @@ describe("LocalBufferingSpeechToTextStream", () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(openCloudFallback).not.toHaveBeenCalled();
+    stream.close();
+  });
+
+  it("captures the fragmented-MP4 header from the first window and prepends it to later headerless windows when mimeType is audio/mp4", async () => {
+    // Safari's MediaRecorder produces fragmented MP4, not WebM — the boundary
+    // finder must walk ISO-BMFF box sizes (ftyp/moov/moof), not search for
+    // WebM's Cluster ID byte pattern.
+    localTranscribeMock.mockResolvedValue({ text: "" });
+    const stream = new LocalBufferingSpeechToTextStream({
+      expectedLanguage: "en",
+      onSegment: vi.fn(),
+      onError: vi.fn(),
+      allowCloudFallback: true,
+      openCloudFallback: vi.fn(),
+      mimeType: "audio/mp4",
+    });
+
+    const ftyp = mp4Box("ftyp", [0, 0, 0, 0]);
+    const moov = mp4Box("moov", [1, 2, 3, 4]);
+    const header = [...ftyp, ...moov];
+    const firstWindow = new Uint8Array([...header, ...mp4Box("moof", [9]), ...mp4Box("mdat", [0xaa])]);
+
+    stream.sendAudio(firstWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+    const [firstBytes, firstMimeType] = localTranscribeMock.mock.calls[0].slice(0, 2) as [Uint8Array, string];
+    expect(firstMimeType).toBe("audio/mp4");
+    expect(Array.from(firstBytes)).toEqual(Array.from(firstWindow));
+
+    // A real second-or-later MediaRecorder chunk is headerless: just more fragments.
+    const secondWindow = new Uint8Array([...mp4Box("moof", [9]), ...mp4Box("mdat", [0xbb])]);
+    stream.sendAudio(secondWindow);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(Array.from(localTranscribeMock.mock.calls[1][0] as Uint8Array)).toEqual([...header, ...Array.from(secondWindow)]);
+
     stream.close();
   });
 

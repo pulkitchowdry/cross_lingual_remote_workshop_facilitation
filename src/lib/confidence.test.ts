@@ -27,15 +27,23 @@ describe("computeOverallConfidence", () => {
     expect(result.rootCause).toBe("translation");
   });
 
-  it("is Medium with a terminology root cause when only terminology is weak (scenario 4)", () => {
+  it("is Medium with no displayed root cause when only terminology is weak (scenario 4) — terminology still drags the level down but is never itself surfaced as the reason", () => {
     const result = computeOverallConfidence({ audioQuality: 98, translation: 96, terminology: 42 });
     expect(result.level).toBe("medium");
-    expect(result.rootCause).toBe("terminology");
+    expect(result.rootCause).toBeNull();
   });
 
   it("prefers a severe (audio/translation/network) root cause over terminology", () => {
     const result = computeOverallConfidence({ audioQuality: 40, terminology: 30 });
     expect(result.rootCause).toBe("audio");
+  });
+
+  it("picks the worst (lowest-scoring) signal as root cause when two are simultaneously below threshold, not just the first in declared order", () => {
+    // speechRecognition (55) comes before translation (40) in severeCauses' declared
+    // order, but translation is the numerically lower/more severe signal and must win.
+    const result = computeOverallConfidence({ speechRecognition: 55, translation: 40 });
+    expect(result.level).toBe("low");
+    expect(result.rootCause).toBe("translation");
   });
 
   it("treats missing signals as no evidence of a problem, not zero", () => {

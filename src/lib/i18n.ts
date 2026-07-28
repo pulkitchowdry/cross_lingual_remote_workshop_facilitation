@@ -55,6 +55,11 @@ export interface Dictionary {
     strictPrivacyLabel: string;
     strictPrivacyHint: string;
     submit: string;
+    // Pending-state label for the "Create session" button (mirrors join.submitting/
+    // facilitator.startingSession) — createSession fans out a per-language
+    // translateText call before it ever touches the DB, slow enough for a
+    // double-click to fire it twice without this.
+    submitting: string;
   };
   sessionsOverview: {
     heading: string;
@@ -104,6 +109,7 @@ export interface Dictionary {
     // disables the button instead of submitting `startSession` twice.
     startingSession: string;
     endSession: string;
+    endingSession: string;
     confirmEndSessionTitle: string;
     confirmEndSessionBody: string;
     logOut: string;
@@ -213,8 +219,11 @@ export interface Dictionary {
      * synchronously from already-fetched data, so they render immediately even while
      * session.summary is still pending or unconfigured. */
     sessionSummaryDuration: (minutes: number) => string;
-    sessionSummaryMessages: string;
-    sessionSummaryQuestions: string;
+    // Functions, not static strings — like learnersJoinedLabel above, so a count of 1
+    // doesn't render as "1 messages"/"1 questions" (a static string interpolated as
+    // `${count} ${label}` always produced the plural form, even at count 1).
+    sessionSummaryMessages: (count: number) => string;
+    sessionSummaryQuestions: (count: number) => string;
     sessionSummaryMisunderstoodTopics: string;
     analyticsDrawerLabel: string;
     analyticsDrawerOpen: string;
@@ -227,7 +236,13 @@ export interface Dictionary {
     analyticsLanguagesHeading: string;
     analyticsLanguagesRow: (language: string, count: number) => string;
     analyticsConfidenceHeading: string;
-    analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number) => string;
+    // `topRootCause` is the single most-frequent RootCause key across this session's
+    // Medium/Low translations (see facilitator-analytics-view.ts), one of "audio" |
+    // "speech-recognition" | "translation" | "network" — "terminology" is never passed
+    // here, since (per confidence.ts's computeOverallConfidence) it's never itself a
+    // displayed root cause. `null` when there's no Medium/Low translation with a root
+    // cause at all, in which case no extra clause is appended.
+    analyticsConfidenceSummary: (avgPercent: number, mediumCount: number, lowCount: number, topRootCause: string | null) => string;
     analyticsConfusionTrendSummary: (bucketCount: number, highestLevel: string) => string;
     confusionLevelLabel: Record<"CALM" | "SOME" | "HIGH", string>;
     analyticsEmptyState: string;
@@ -335,6 +350,13 @@ export interface Dictionary {
   meeting: {
     raisedHandTitle: (name: string) => string;
     connectionQualityTitle: (quality: string) => string;
+    /** Short localized words for LiveKit's raw `ConnectionQuality` enum values
+     * ("excellent"/"good"/"poor"/"lost"), so `connectionQualityTitle` above never
+     * has to interpolate untranslated English into an otherwise-localized tooltip. */
+    connectionQualityExcellent: string;
+    connectionQualityGood: string;
+    connectionQualityPoor: string;
+    connectionQualityLost: string;
     toolbarLabel: string;
     muteMic: string;
     unmuteMic: string;
@@ -369,6 +391,7 @@ export interface Dictionary {
     pictureInPicture: string;
     copyInviteLink: string;
     linkCopied: string;
+    copyLinkFailed: string;
   };
   common: {
     speaker: string;
@@ -395,7 +418,6 @@ export interface Dictionary {
     confidenceReasonAudio: string;
     confidenceReasonSpeechRecognition: string;
     confidenceReasonTranslation: string;
-    confidenceReasonTerminology: string;
     confidenceReasonNetwork: string;
     confidenceReasonGeneric: string;
     requestClarification: string;
@@ -414,6 +436,23 @@ export interface Dictionary {
     title: string;
     message: string;
     cta: string;
+  };
+  /**
+   * Localized `FormActionResult.error` strings for sendChatMessage (sessions/actions.ts)
+   * — looked up via the *sender's own* resolved language (session.sourceLanguage for a
+   * facilitator, the participant's preferredLanguage for a learner), not the viewer's
+   * page language, so a facilitator and a learner in the same room each see their own
+   * action's validation/lifecycle errors in their own language instead of always
+   * English. Distinct from `error.knownMessages` below: that localizes thrown-`Error`
+   * text intercepted by RouteErrorFallback (a different mechanism, only reachable from
+   * setup/join), not a `FormActionResult` rendered directly by a chat/caption form.
+   */
+  chatErrors: {
+    messageTooLong: (maximum: number) => string;
+    sessionNotLive: string;
+    choosePrivateRecipient: string;
+    learnerPrivateRecipientRestricted: string;
+    rateLimited: string;
   };
   error: {
     title: string;
@@ -519,6 +558,7 @@ const en: Dictionary = {
     strictPrivacyHint:
       "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
+    submitting: "Creating…",
   },
   sessionsOverview: {
     heading: "Sessions",
@@ -561,6 +601,7 @@ const en: Dictionary = {
     startSession: "Start session",
     startingSession: "Starting…",
     endSession: "End session",
+    endingSession: "Ending…",
     confirmEndSessionTitle: "End this session?",
     confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
     logOut: "Log out",
@@ -635,8 +676,8 @@ const en: Dictionary = {
     sessionSummaryPending: "Generating a summary of this session…",
     sessionSummaryUnavailable: "No AI summary is available for this session.",
     sessionSummaryDuration: (minutes) => `${minutes} min`,
-    sessionSummaryMessages: "Messages",
-    sessionSummaryQuestions: "Questions",
+    sessionSummaryMessages: (count) => (count === 1 ? "1 message" : `${count} messages`),
+    sessionSummaryQuestions: (count) => (count === 1 ? "1 question" : `${count} questions`),
     sessionSummaryMisunderstoodTopics: "Misunderstood topics",
     analyticsDrawerLabel: "Analytics",
     analyticsDrawerOpen: "Show analytics",
@@ -644,15 +685,26 @@ const en: Dictionary = {
     analyticsConfusionTrendHeading: "Confusion trend",
     analyticsParticipationHeading: "Participation",
     analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
-      `${displayName} · ${messages} messages · ${questions} questions${isAnonymous ? " · anonymous" : ""}`,
+      `${displayName} · ${messages} message${messages === 1 ? "" : "s"} · ${questions} question${questions === 1 ? "" : "s"}${isAnonymous ? " · anonymous" : ""}`,
     analyticsBlockersHeading: "Blockers",
     analyticsBlockersSummary: (raised, resolved, open) =>
       `${raised} raised · ${resolved} resolved · ${open} open`,
     analyticsLanguagesHeading: "Languages",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} translations`,
     analyticsConfidenceHeading: "Confidence Score",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "audio",
+        "speech-recognition": "speech recognition",
+        translation: "translation",
+        network: "network",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · top cause: ${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `Average ${avgPercent}% · ${mediumCount} needs-attention · ${lowCount} low-confidence${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Confusion trend: ${bucketCount} time buckets, highest level: ${highestLevel}`,
     confusionLevelLabel: { CALM: "Calm", SOME: "Some confusion", HIGH: "High confusion" },
@@ -737,7 +789,8 @@ const en: Dictionary = {
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found).",
+    cameraUnavailable:
+      "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
     enableAudio: "Click to enable audio",
@@ -745,6 +798,10 @@ const en: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} raised their hand`,
     connectionQualityTitle: (quality) => `Connection: ${quality}`,
+    connectionQualityExcellent: "Excellent",
+    connectionQualityGood: "Good",
+    connectionQualityPoor: "Poor",
+    connectionQualityLost: "Lost",
     toolbarLabel: "Meeting controls",
     muteMic: "Mute microphone",
     unmuteMic: "Unmute microphone",
@@ -779,6 +836,7 @@ const en: Dictionary = {
     pictureInPicture: "Picture-in-picture",
     copyInviteLink: "Copy invite link",
     linkCopied: "Link copied!",
+    copyLinkFailed: "Couldn't copy the invite link.",
   },
   common: {
     speaker: "Speaker",
@@ -802,7 +860,6 @@ const en: Dictionary = {
     confidenceReasonAudio: "We couldn't hear you clearly.",
     confidenceReasonSpeechRecognition: "Some words could not be recognised accurately.",
     confidenceReasonTranslation: "This sentence could not be translated reliably.",
-    confidenceReasonTerminology: "Some technical terms may not have translated correctly.",
     confidenceReasonNetwork: "A network issue may have affected this message.",
     confidenceReasonGeneric: "Some content may not have translated correctly.",
     requestClarification: "Request clarification",
@@ -816,6 +873,13 @@ const en: Dictionary = {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
     cta: "Start a new session",
+  },
+  chatErrors: {
+    messageTooLong: (maximum) => `Enter a message of up to ${maximum.toLocaleString()} characters.`,
+    sessionNotLive: "This session is not live — messages can only be sent while it is in progress.",
+    choosePrivateRecipient: "Choose a learner in this session for a private reply.",
+    learnerPrivateRecipientRestricted: "Learners can only message the facilitator privately.",
+    rateLimited: "You're sending messages too quickly. Please wait a moment and try again.",
   },
   error: {
     title: "Something went wrong",
@@ -907,6 +971,7 @@ const zh: Dictionary = {
     strictPrivacyHint:
       "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
+    submitting: "创建中……",
   },
   sessionsOverview: {
     heading: "场次",
@@ -949,6 +1014,7 @@ const zh: Dictionary = {
     startSession: "开始场次",
     startingSession: "正在开始……",
     endSession: "结束场次",
+    endingSession: "正在结束……",
     confirmEndSessionTitle: "确定要结束此场次吗？",
     confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
     logOut: "退出登录",
@@ -1025,8 +1091,8 @@ const zh: Dictionary = {
     sessionSummaryPending: "正在生成此场次的摘要……",
     sessionSummaryUnavailable: "此场次暂无 AI 摘要。",
     sessionSummaryDuration: (minutes) => `${minutes} 分钟`,
-    sessionSummaryMessages: "消息数",
-    sessionSummaryQuestions: "提问数",
+    sessionSummaryMessages: (count) => `${count} 条消息`,
+    sessionSummaryQuestions: (count) => `${count} 个问题`,
     sessionSummaryMisunderstoodTopics: "未理解的主题",
     analyticsDrawerLabel: "数据分析",
     analyticsDrawerOpen: "显示分析",
@@ -1041,8 +1107,19 @@ const zh: Dictionary = {
     analyticsLanguagesHeading: "语言",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} 次翻译`,
     analyticsConfidenceHeading: "置信度",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "音频",
+        "speech-recognition": "语音识别",
+        translation: "翻译",
+        network: "网络",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · 主要原因：${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `平均 ${avgPercent}% · 需关注 ${mediumCount} 条 · 置信度低 ${lowCount} 条${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `困惑趋势：${bucketCount} 个时间区间，最高等级：${highestLevel}`,
     confusionLevelLabel: { CALM: "平静", SOME: "一些困惑", HIGH: "困惑较多" },
@@ -1135,6 +1212,10 @@ const zh: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} 举手了`,
     connectionQualityTitle: (quality) => `连接质量：${quality}`,
+    connectionQualityExcellent: "优秀",
+    connectionQualityGood: "良好",
+    connectionQualityPoor: "较差",
+    connectionQualityLost: "已断开",
     toolbarLabel: "会议控制",
     muteMic: "静音麦克风",
     unmuteMic: "取消静音",
@@ -1169,6 +1250,7 @@ const zh: Dictionary = {
     pictureInPicture: "画中画",
     copyInviteLink: "复制邀请链接",
     linkCopied: "链接已复制！",
+    copyLinkFailed: "复制邀请链接失败。",
   },
   common: {
     speaker: "发言者",
@@ -1192,7 +1274,6 @@ const zh: Dictionary = {
     confidenceReasonAudio: "我们没能听清楚你的声音。",
     confidenceReasonSpeechRecognition: "部分词语未能被准确识别。",
     confidenceReasonTranslation: "这句话未能可靠地翻译。",
-    confidenceReasonTerminology: "部分专业术语可能未能正确翻译。",
     confidenceReasonNetwork: "网络问题可能影响了这条消息。",
     confidenceReasonGeneric: "部分内容可能未能正确翻译。",
     requestClarification: "请求澄清",
@@ -1206,6 +1287,13 @@ const zh: Dictionary = {
     title: "未找到该链接",
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
     cta: "创建新场次",
+  },
+  chatErrors: {
+    messageTooLong: (maximum) => `请输入不超过 ${maximum.toLocaleString()} 个字符的消息。`,
+    sessionNotLive: "此场次尚未开始或已结束——只能在进行中发送消息。",
+    choosePrivateRecipient: "请选择此场次中的一位学员以发送私信回复。",
+    learnerPrivateRecipientRestricted: "学员只能私信主持人。",
+    rateLimited: "你发送消息的速度过快，请稍等片刻后重试。",
   },
   error: {
     title: "出了点问题",
@@ -1299,6 +1387,7 @@ const es: Dictionary = {
     strictPrivacyHint:
       "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
+    submitting: "Creando…",
   },
   sessionsOverview: {
     heading: "Sesiones",
@@ -1341,6 +1430,7 @@ const es: Dictionary = {
     startSession: "Iniciar sesión",
     startingSession: "Iniciando…",
     endSession: "Finalizar sesión",
+    endingSession: "Finalizando…",
     confirmEndSessionTitle: "¿Finalizar esta sesión?",
     confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
     logOut: "Cerrar sesión",
@@ -1415,8 +1505,8 @@ const es: Dictionary = {
     sessionSummaryPending: "Generando un resumen de esta sesión…",
     sessionSummaryUnavailable: "No hay ningún resumen de IA disponible para esta sesión.",
     sessionSummaryDuration: (minutes) => `${minutes} min`,
-    sessionSummaryMessages: "Mensajes",
-    sessionSummaryQuestions: "Preguntas",
+    sessionSummaryMessages: (count) => `${count} mensaje${count === 1 ? "" : "s"}`,
+    sessionSummaryQuestions: (count) => `${count} pregunta${count === 1 ? "" : "s"}`,
     sessionSummaryMisunderstoodTopics: "Temas no comprendidos",
     analyticsDrawerLabel: "Analítica",
     analyticsDrawerOpen: "Mostrar analítica",
@@ -1424,15 +1514,26 @@ const es: Dictionary = {
     analyticsConfusionTrendHeading: "Tendencia de confusión",
     analyticsParticipationHeading: "Participación",
     analyticsParticipationRow: (displayName, messages, questions, isAnonymous) =>
-      `${displayName} · ${messages} mensajes · ${questions} preguntas${isAnonymous ? " · anónimo" : ""}`,
+      `${displayName} · ${messages} mensaje${messages === 1 ? "" : "s"} · ${questions} pregunta${questions === 1 ? "" : "s"}${isAnonymous ? " · anónimo" : ""}`,
     analyticsBlockersHeading: "Bloqueos",
     analyticsBlockersSummary: (raised, resolved, open) =>
       `${raised} planteados · ${resolved} resueltos · ${open} abiertos`,
     analyticsLanguagesHeading: "Idiomas",
     analyticsLanguagesRow: (language, count) => `${language} · ${count} traducciones`,
     analyticsConfidenceHeading: "Puntuación de confianza",
-    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount) =>
-      `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja`,
+    analyticsConfidenceSummary: (avgPercent, mediumCount, lowCount, topRootCause) => {
+      const rootCauseLabel: Record<"audio" | "speech-recognition" | "translation" | "network", string> = {
+        audio: "audio",
+        "speech-recognition": "reconocimiento de voz",
+        translation: "traducción",
+        network: "red",
+      };
+      const topRootCauseClause =
+        topRootCause && topRootCause in rootCauseLabel
+          ? ` · causa principal: ${rootCauseLabel[topRootCause as keyof typeof rootCauseLabel]}`
+          : "";
+      return `Promedio ${avgPercent}% · ${mediumCount} requieren atención · ${lowCount} de confianza baja${topRootCauseClause}`;
+    },
     analyticsConfusionTrendSummary: (bucketCount, highestLevel) =>
       `Tendencia de confusión: ${bucketCount} intervalos de tiempo, nivel máximo: ${highestLevel}`,
     confusionLevelLabel: { CALM: "Tranquilo", SOME: "Algo de confusión", HIGH: "Mucha confusión" },
@@ -1525,6 +1626,10 @@ const es: Dictionary = {
   meeting: {
     raisedHandTitle: (name) => `${name} levantó la mano`,
     connectionQualityTitle: (quality) => `Conexión: ${quality}`,
+    connectionQualityExcellent: "Excelente",
+    connectionQualityGood: "Buena",
+    connectionQualityPoor: "Deficiente",
+    connectionQualityLost: "Perdida",
     toolbarLabel: "Controles de la reunión",
     muteMic: "Silenciar micrófono",
     unmuteMic: "Activar micrófono",
@@ -1559,6 +1664,7 @@ const es: Dictionary = {
     pictureInPicture: "Imagen en imagen",
     copyInviteLink: "Copiar enlace de invitación",
     linkCopied: "¡Enlace copiado!",
+    copyLinkFailed: "No se pudo copiar el enlace de invitación.",
   },
   common: {
     speaker: "Orador",
@@ -1582,7 +1688,6 @@ const es: Dictionary = {
     confidenceReasonAudio: "No pudimos escucharte con claridad.",
     confidenceReasonSpeechRecognition: "Algunas palabras no se reconocieron con precisión.",
     confidenceReasonTranslation: "Esta frase no se pudo traducir de forma fiable.",
-    confidenceReasonTerminology: "Algunos términos técnicos podrían no haberse traducido correctamente.",
     confidenceReasonNetwork: "Un problema de red pudo haber afectado este mensaje.",
     confidenceReasonGeneric: "Parte del contenido podría no haberse traducido correctamente.",
     requestClarification: "Solicitar aclaración",
@@ -1596,6 +1701,13 @@ const es: Dictionary = {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",
     cta: "Crear una nueva sesión",
+  },
+  chatErrors: {
+    messageTooLong: (maximum) => `Ingresa un mensaje de hasta ${maximum.toLocaleString()} caracteres.`,
+    sessionNotLive: "Esta sesión no está en vivo — los mensajes solo se pueden enviar mientras está en curso.",
+    choosePrivateRecipient: "Elige un alumno de esta sesión para responder en privado.",
+    learnerPrivateRecipientRestricted: "Los alumnos solo pueden enviar mensajes privados al facilitador.",
+    rateLimited: "Estás enviando mensajes demasiado rápido. Espera un momento e inténtalo de nuevo.",
   },
   error: {
     title: "Algo salió mal",

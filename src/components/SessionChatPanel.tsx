@@ -115,16 +115,23 @@ export function SessionChatPanel({
             // message (mirrors CaptionComprehensionActions for captions — see
             // TranslationHistoryTab), but not their own words, and never once the
             // composer itself is gone (readOnly: nothing left in the room to answer).
-            const isExplainable = !viewerIsFacilitator && !readOnly && message.sender.id !== viewerUserId;
+            // Also never on a PRIVATE message (message.recipientId set — either the
+            // learner's own private-to-facilitator message, already excluded above by
+            // the sender check, or a facilitator's private reply addressed to this
+            // learner): the generated question always resends the quoted text as a
+            // fully PUBLIC chat message, so offering it here would silently republish
+            // private message content to the entire session.
+            const isExplainable =
+              !viewerIsFacilitator && !readOnly && message.sender.id !== viewerUserId && !message.recipientId;
             const revealed = isExplainable && revealedMessageIds.has(message.id);
             const quotedText = translatedText(message, targetLanguage, translationUnavailable);
             return (
-              <article key={message.id} className="rounded-md border border-border-subtle bg-surface p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-data text-xs font-medium text-[var(--accent-text)]">
+              <article key={message.id} className="animate-fade-in-up min-w-0 rounded-md border border-border-subtle bg-surface p-3">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <p className="font-data min-w-0 break-words text-xs font-medium text-[var(--accent-text)]">
                     {message.isAnonymous && !viewerIsFacilitator ? dict.anonymousLearner : message.sender.displayName}
                   </p>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                     {message.recipientId && (
                       // Distinct accent color from the Anonymous badge below (previously
                       // byte-for-byte identical styling) — "who can see this" and "is the
@@ -151,24 +158,24 @@ export function SessionChatPanel({
                     type="button"
                     aria-expanded={revealed}
                     onClick={() => toggleRevealed(message.id)}
-                    className="mt-1 block w-full rounded-md text-left hover:bg-surface-raised"
+                    className="mt-1 block w-full rounded-md text-left transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   >
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed" lang={targetLanguage}>
                       {quotedText}
                     </p>
                     {message.language !== targetLanguage && (
-                      <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-xs italic text-muted-foreground" lang={message.language}>
                         {message.originalText}
                       </p>
                     )}
                   </button>
                 ) : (
                   <>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" lang={targetLanguage}>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed" lang={targetLanguage}>
                       {quotedText}
                     </p>
                     {message.language !== targetLanguage && (
-                      <p className="mt-2 whitespace-pre-wrap text-xs italic text-muted-foreground" lang={message.language}>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-xs italic text-muted-foreground" lang={message.language}>
                         {message.originalText}
                       </p>
                     )}
@@ -181,15 +188,21 @@ export function SessionChatPanel({
                       explainSimplyLabel={learnerDict.explainSimply}
                       giveExampleLabel={learnerDict.giveExample}
                       sendingLabel={dict.sending}
-                      explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(quotedText))}
-                      giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(quotedText))}
+                      // Quote message.originalText, not the resolved/translated
+                      // `quotedText` — quotedText can hold the localized "Translation
+                      // unavailable" placeholder (or generally the translated text),
+                      // which should never end up quoted in the generated question.
+                      // Matches the caption flow's use of segment.originalText
+                      // (TranslationHistoryTab.tsx / learn/page.tsx).
+                      explainSimplyMessage={learnerDict.explainSimplyQuestion(truncateForQuotedQuestion(message.originalText))}
+                      giveExampleMessage={learnerDict.giveExampleQuestion(truncateForQuotedQuestion(message.originalText))}
                     />
                   </div>
                 )}
                 {viewerIsFacilitator && message.sender.id !== viewerUserId && recipientByUserId.has(message.sender.id) && (
                   <button
                     type="button"
-                    className="font-data mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    className="font-data press-scale mt-3 rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                     onClick={() => {
                       const recipient = recipientByUserId.get(message.sender.id);
                       if (recipient) setSelectedRecipientParticipantId(recipient.participantId);
@@ -232,7 +245,7 @@ export function SessionChatPanel({
             {isPrivateComposer && (
               <button
                 type="button"
-                className="font-data rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                className="font-data press-scale rounded-md border border-border-strong px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                 onClick={() => {
                   setLearnerPrivateMode(false);
                   setSelectedRecipientParticipantId("");
@@ -242,8 +255,8 @@ export function SessionChatPanel({
               </button>
             )}
           </div>
-          <div className="flex items-end justify-between gap-3">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
               {allowQuestions && (
                 <>
                   <div>
@@ -278,13 +291,13 @@ export function SessionChatPanel({
                 </label>
               )}
               {viewerIsFacilitator && privateRecipientOptions.length > 0 && (
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={facilitatorRecipientSelectId}>
+                <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground" htmlFor={facilitatorRecipientSelectId}>
                   {dict.recipientLabel}
                   <select
                     id={facilitatorRecipientSelectId}
                     value={selectedRecipientParticipantId}
                     onChange={(event) => setSelectedRecipientParticipantId(event.target.value)}
-                    className="rounded-md border border-border-strong bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    className="max-w-full rounded-md border border-border-strong bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
                     aria-describedby={privateModeStatusId}
                   >
                     <option value="">{dict.everyone}</option>

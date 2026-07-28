@@ -1,14 +1,35 @@
+"use client";
+
+import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { createSession } from "@/app/setup/actions";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { getDictionary } from "@/lib/i18n";
 import { RequiredFieldMessages } from "@/components/RequiredFieldMessages";
 
+/**
+ * createSession awaits a per-language translateText fan-out (Claude/local-inference)
+ * before it ever touches the DB, so the round-trip is slow enough for a double-click
+ * to fire it twice — two separate Session + facilitator User rows for one intended
+ * click, each paid for via real translation-API calls. Disabling on pending mirrors
+ * JoinSubmitButton/StartSessionButton/ChatSendButton's own fix for the identical
+ * class of bug. Must be its own component — `useFormStatus` only sees the nearest
+ * ancestor `<form>`, so it can't be read by the component that renders that form.
+ */
+function CreateSessionButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" disabled={pending} aria-disabled={pending}>
+      {pending ? pendingLabel : label}
+    </Button>
+  );
+}
+
 export function SetupForm({ lang }: { lang: SupportedLanguage }) {
   const dict = getDictionary(lang);
 
   return (
-    <form className="flex max-w-xl flex-col gap-4" action={createSession}>
+    <form className="animate-fade-in-up flex max-w-xl min-w-0 flex-col gap-4" action={createSession}>
       <RequiredFieldMessages message={dict.common.requiredFieldMessage} />
       {/* The facilitator's language is whatever they've already toggled the
           UI to (see the LanguageSwitcher above this form) — no need to ask
@@ -17,7 +38,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.yourName}
         <input
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="facilitatorName"
           required
           maxLength={80}
@@ -27,7 +48,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.sessionTitle}
         <input
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="title"
           required
           maxLength={120}
@@ -37,7 +58,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.workshopGoal}
         <textarea
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           rows={4}
           required
           name="goal"
@@ -48,7 +69,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
       <label className="flex flex-col gap-2 text-sm font-medium">
         {dict.setup.retention}
         <select
-          className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
           name="retentionDays"
           defaultValue="7"
         >
@@ -69,7 +90,7 @@ export function SetupForm({ lang }: { lang: SupportedLanguage }) {
         {dict.setup.strictPrivacyLabel}
       </label>
       <p className="text-sm text-muted-foreground">{dict.setup.strictPrivacyHint}</p>
-      <Button type="submit">{dict.setup.submit}</Button>
+      <CreateSessionButton label={dict.setup.submit} pendingLabel={dict.setup.submitting} />
     </form>
   );
 }

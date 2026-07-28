@@ -50,7 +50,7 @@ function ToolbarButton({
           disabled={disabled}
           aria-label={label}
           aria-pressed={active}
-          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          className="press-scale flex h-11 w-11 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             background: active ? "var(--accent)" : "var(--surface-raised)",
             color: active ? "var(--accent-foreground)" : "var(--foreground)",
@@ -178,7 +178,13 @@ export function MeetingToolbar({
     if (!node) return;
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (
+        target &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+          target.isContentEditable ||
+          target.closest('[role="listbox"],[role="combobox"],[role="dialog"]'))
+      )
+        return;
       const { mic, camera, toggleRaiseHand, setCaptionsVisible, workspaceMode } = latest.current;
       // The whiteboard (Excalidraw) has its own built-in tool shortcuts on these same
       // keys ('v' = selection tool, 'h' = hand/pan tool) — while it's the active
@@ -254,7 +260,7 @@ export function MeetingToolbar({
             <button
               type="button"
               aria-label={dict.settings}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground"
+              className="press-scale flex h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-surface-raised text-foreground transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <SettingsIcon />
             </button>
@@ -268,7 +274,7 @@ export function MeetingToolbar({
             <Popover.Content
               side="top"
               sideOffset={8}
-              className="z-50 flex w-72 flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
+              className="z-50 flex w-72 max-w-[90vw] flex-col gap-4 rounded-lg border border-border-strong bg-surface-raised p-4 text-sm shadow-lg"
             >
               <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">{dict.settings}</p>
 
@@ -319,7 +325,7 @@ export function MeetingToolbar({
                 <button
                   type="button"
                   onClick={() => pipController.current?.enter()}
-                  className="font-data rounded-md border border-border-strong px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-foreground hover:border-accent"
+                  className="font-data press-scale rounded-md border border-border-strong px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   {dict.pictureInPicture}
                 </button>
@@ -337,7 +343,7 @@ export function MeetingToolbar({
               onClick={handleLeave}
               disabled={leaveButtonProps.disabled}
               aria-label={dict.leave}
-              className="flex h-11 w-11 items-center justify-center rounded-full"
+              className="press-scale flex h-11 w-11 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
               style={{ background: "var(--tick-low)", color: "#fff" }}
             >
               <LeaveIcon />

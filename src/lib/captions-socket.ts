@@ -53,15 +53,18 @@ export function closeWithReason(ws: WebSocket, code: number, reason: string): vo
  * rejected Promise, so the duplicate-guard-interval cleanup is verifiable
  * without needing to await anything.
  */
-export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: CaptionSpeaker, initialLanguage: SupportedLanguage) {
+export function attachCaptionSocket(
+  ws: WebSocket,
+  session: Session,
+  speaker: CaptionSpeaker,
+  initialLanguage: SupportedLanguage,
+  /** The browser `MediaRecorder` mimeType this client is actually sending (see
+   * LiveCaptionStream.tsx's pickRecorderMimeType) — only consulted by the
+   * local-inference tier; see OpenStreamInput.mimeType in speech-to-text.ts. */
+  mimeType?: string,
+) {
   let segmentStartedAt = new Date();
   let firstAudioSubmittedAtMs: number | undefined;
-  // Latest connection-quality report from the browser (LiveCaptionStream.tsx sends a
-  // small JSON text frame alongside its binary audio chunks — see the `isBinary` branch
-  // in the `message` handler below) — read fresh at each segment's publish time, same
-  // reasoning as caption-agent.ts's own connectionQualityByIdentity map for the
-  // server-captured facilitator path.
-  let latestNetworkQuality: string | undefined;
 
   // server.ts's upgrade handler only checks `captionAgentActive` once, at handshake
   // time. If the LiveKit caption-agent worker starts capturing this same
@@ -99,6 +102,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     sttStream = speechToTextProvider.openStream!({
       expectedLanguage: initialLanguage,
       allowCloudFallback: session.translationMode !== "LOCAL_ONLY",
+      mimeType,
       onSegment: (event) => {
         if (!event.isFinal) return;
         // Capture and advance the timestamp synchronously, in the same tick the
@@ -144,7 +148,14 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
             startedAt,
             endedAt,
             sttConfidence: event.confidence,
-            networkQuality: latestNetworkQuality,
+            // No `networkQuality` for this browser-mic path: a participant's LiveKit
+            // connection quality measures their WebRTC publish transport, not this
+            // WebSocket's own audio transport — the two are fully independent, so there's
+            // no correct signal to report here. Leaving it unset means
+            // `estimateNetworkConfidence`/`computeOverallConfidence` treat network as "no
+            // evidence of a problem" rather than a measured value (see confidence.ts's own
+            // doc comments). LiveCaptionStream.tsx used to send a `connection-quality`
+            // sidecar frame here that reported the wrong transport's quality — removed.
             instrumentation: {
               source: "browser-ws",
               audioSubmittedAtMs,
@@ -169,22 +180,12 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
   }
 
   ws.on("message", (data, isBinary) => {
-    // LiveCaptionStream.tsx sends its `MediaRecorder` audio chunks as binary frames and
-    // its connection-quality reports as small JSON text frames over this same socket —
-    // a text frame here is never audio, so it must be branched off before reaching
-    // `sendAudio` (which expects nothing but raw PCM/opus bytes).
-    if (!isBinary) {
-      try {
-        const payload = JSON.parse(data.toString("utf8")) as { type?: string; quality?: string };
-        if (payload.type === "connection-quality" && typeof payload.quality === "string") {
-          latestNetworkQuality = payload.quality;
-        }
-      } catch {
-        // Malformed control frame — ignore it, the next one (or the STT stream itself)
-        // isn't affected.
-      }
-      return;
-    }
+    // LiveCaptionStream.tsx only ever sends its `MediaRecorder` audio chunks as binary
+    // frames over this socket — a non-binary frame here is never audio (and, as of the
+    // removal of the old connection-quality sidecar frame, isn't expected at all), so it
+    // must be ignored rather than handed to `sendAudio` (which expects nothing but raw
+    // PCM/opus bytes).
+    if (!isBinary) return;
     firstAudioSubmittedAtMs ??= captionLatencyNowMs();
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });

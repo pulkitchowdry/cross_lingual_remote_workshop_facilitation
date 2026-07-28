@@ -50,7 +50,7 @@ export function CopyLinkButton({
       // blindly. aria-live (not role="status") to avoid overriding the native button
       // role that's still needed for the element to be announced as interactive.
       aria-live="polite"
-      className={`font-data w-fit shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${
+      className={`font-data w-fit shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
         status === "copied"
           ? "border-[var(--tick-high)] text-[var(--tick-high)]"
           : status === "failed"
@@ -58,7 +58,9 @@ export function CopyLinkButton({
             : "border-border-strong text-foreground hover:border-accent hover:text-accent"
       }`}
     >
-      {status === "copied" ? copiedLabel : status === "failed" ? failedLabel : label}
+      <span key={status} className="inline-block animate-fade-in">
+        {status === "copied" ? copiedLabel : status === "failed" ? failedLabel : label}
+      </span>
     </button>
   );
 }

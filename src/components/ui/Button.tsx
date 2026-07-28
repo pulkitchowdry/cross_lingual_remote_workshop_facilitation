@@ -12,7 +12,7 @@ export function Button({
 
   return (
     <button
-      className={`font-data w-fit rounded-md px-5 py-2 text-xs font-medium uppercase tracking-wider transition-opacity disabled:opacity-40 ${variantStyles} ${className}`}
+      className={`font-data w-fit rounded-md px-5 py-2 text-xs font-medium uppercase tracking-wider press-scale transition-colors transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${variantStyles} ${className}`}
       {...props}
     />
   );

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/Button";
 export function JoinSubmitButton({ label, submittingLabel }: { label: string; submittingLabel: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending} aria-disabled={pending}>
+    <Button type="submit" disabled={pending} aria-disabled={pending} className="press-scale transition-transform duration-150">
       {pending ? submittingLabel : label}
     </Button>
   );

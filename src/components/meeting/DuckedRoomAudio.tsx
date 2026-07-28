@@ -11,8 +11,12 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
  * `RoomAudioRendererProps` in `@livekit/components-react`) so each listener
  * can locally mute a specific speaker's raw mic audio when that speaker's
  * language differs from their own, while a dubbed translation auto-plays
- * instead (`TranslatedAudioPlayer`). This is purely a local rendering choice
- * — it never touches what any other participant hears.
+ * instead (`TranslatedAudioPlayer`). Only ever ducks when `ttsConfigured` is
+ * true — with no text-to-speech backend configured, `TranslatedAudioPlayer`
+ * never renders any dub audio, so ducking the raw mic anyway would leave a
+ * cross-language listener hearing nothing from that speaker at all. This is
+ * purely a local rendering choice — it never touches what any other
+ * participant hears.
  *
  * Must render every non-mic audio source `RoomAudioRenderer` also covered
  * (`ScreenShareAudio`, `Unknown`) at full volume with no ducking — those
@@ -30,7 +34,24 @@ import type { SupportedLanguage } from "@/lib/session-contracts";
 // close to zero is inaudible but stays truthy, so the reapply-on-reattach path still fires.
 const DUCKED_VOLUME = 0.0001;
 
-export function DuckedRoomAudio({ myLanguage, facilitatorSourceLanguage }: { myLanguage: SupportedLanguage; facilitatorSourceLanguage: SupportedLanguage }) {
+export function DuckedRoomAudio({
+  myLanguage,
+  facilitatorSourceLanguage,
+  ttsConfigured,
+}: {
+  myLanguage: SupportedLanguage;
+  facilitatorSourceLanguage: SupportedLanguage;
+  /**
+   * Whether `TranslatedAudioPlayer` actually has a text-to-speech backend to dub
+   * from (`textToSpeechProvider.isConfigured`, threaded down from the route page
+   * through `LiveSessionRoom`). Ducking a cross-language speaker's raw mic audio
+   * is only safe when a dub is actually going to queue up to replace it — without
+   * this gate, an unconfigured TTS provider means `TranslatedAudioPlayer` never
+   * renders any audio at all, so a ducked listener would hear literally nothing
+   * from that speaker for the whole session instead of just their own language.
+   */
+  ttsConfigured: boolean;
+}) {
   const speakerLanguages = useSpeakerLanguages(facilitatorSourceLanguage);
   const tracks = useTracks([
     { source: Track.Source.Microphone, withPlaceholder: false },
@@ -57,8 +78,11 @@ export function DuckedRoomAudio({ myLanguage, facilitatorSourceLanguage }: { myL
         // `SyncParticipantLanguageAttribute` documents) defaults to audible
         // rather than silently ducked — a listener briefly hearing an
         // unexpected language for a moment is a far smaller problem than a
-        // speaker going randomly inaudible.
-        const shouldDuck = isMic && speakerLanguage !== undefined && speakerLanguage !== myLanguage;
+        // speaker going randomly inaudible. Same reasoning for `ttsConfigured`:
+        // never duck the original raw audio unless a dub is actually going to be
+        // available to replace it — otherwise a listener hears nothing at all
+        // from a cross-language speaker for the entire session.
+        const shouldDuck = isMic && ttsConfigured && speakerLanguage !== undefined && speakerLanguage !== myLanguage;
         return <AudioTrack key={`${track.participant.identity}-${track.source}`} trackRef={track} volume={shouldDuck ? DUCKED_VOLUME : 1} />;
       })}
     </>

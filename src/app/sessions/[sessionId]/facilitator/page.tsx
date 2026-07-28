@@ -9,6 +9,7 @@ import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { EndSessionForm } from "@/components/EndSessionForm";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
@@ -319,9 +320,9 @@ export default async function FacilitatorSessionPage({
         // someone is actually about to change the language.
         liveWarning={session.status === SessionStatus.LIVE ? dict.languageChangeLiveWarning : undefined}
       />
-      <div>
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-3" aria-live="polite">
-          <h1 className="font-heading text-2xl font-semibold">{session.title}</h1>
+          <h1 className="font-heading min-w-0 break-words text-2xl font-semibold">{session.title}</h1>
           {session.status !== SessionStatus.DRAFT && (
             <span
               className="font-data rounded-full border border-border-strong px-2.5 py-1 text-xs font-medium uppercase tracking-wider"
@@ -331,7 +332,7 @@ export default async function FacilitatorSessionPage({
             </span>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">{session.goal}</p>
+        <p className="break-words text-sm text-muted-foreground">{session.goal}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3" aria-live="polite">
         {session.status === SessionStatus.DRAFT && (
@@ -340,24 +341,24 @@ export default async function FacilitatorSessionPage({
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
-          <form action={endAction}>
-            <ConfirmSubmitButton
-              label={dict.endSession}
-              pendingLabel={dict.endSession}
-              title={dict.confirmEndSessionTitle}
-              body={dict.confirmEndSessionBody}
-              confirmLabel={getDictionary(lang).common.confirm}
-              cancelLabel={getDictionary(lang).common.cancel}
-              variant="danger"
-            />
-          </form>
+          <EndSessionForm
+            action={endAction}
+            labels={{
+              endSession: dict.endSession,
+              endingSession: dict.endingSession,
+              title: dict.confirmEndSessionTitle,
+              body: dict.confirmEndSessionBody,
+              confirm: getDictionary(lang).common.confirm,
+              cancel: getDictionary(lang).common.cancel,
+            }}
+          />
         )}
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
           {dict.learnersJoinedLabel(session.participants.length)}
         </span>
         <Link
           href={`/sessions/${sessionId}/facilitator/glossary`}
-          className="font-data ml-auto rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-accent"
+          className="font-data press-scale ml-auto rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {dict.glossaryNavLabel}
         </Link>
@@ -368,7 +369,7 @@ export default async function FacilitatorSessionPage({
             <p className="text-muted-foreground">{dict.micCameraHint}</p>
             <Link
               href={`/sessions/${sessionId}/facilitator/room`}
-              className="font-data mt-3 inline-block w-fit rounded-md bg-accent px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+              className="font-data press-scale mt-3 inline-block w-fit rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {getDictionary(lang).common.joinLiveSession}
             </Link>
@@ -396,7 +397,7 @@ export default async function FacilitatorSessionPage({
           <p className="text-sm text-muted-foreground">{dict.sessionEndedSummary}</p>
           <Link
             href={`/sessions/${sessionId}/facilitator/results`}
-            className="font-data inline-flex w-fit rounded-md bg-accent px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground"
+            className="font-data press-scale inline-flex w-fit rounded-md bg-accent-fill px-4 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {dict.viewResults}
           </Link>
@@ -406,8 +407,7 @@ export default async function FacilitatorSessionPage({
                 generateAndPersistSessionSummary finishes and a poll picks it up. */}
             <p className="font-data text-xs text-muted-foreground">
               {sessionSummary.durationMinutes !== null && `${dict.sessionSummaryDuration(sessionSummary.durationMinutes)} · `}
-              {sessionSummary.messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {sessionSummary.questionCount}{" "}
-              {dict.sessionSummaryQuestions.toLowerCase()}
+              {dict.sessionSummaryMessages(sessionSummary.messageCount)} · {dict.sessionSummaryQuestions(sessionSummary.questionCount)}
             </p>
             {sessionSummary.misunderstoodTopics.length > 0 && (
               <div className="mt-2">
@@ -569,7 +569,7 @@ export default async function FacilitatorSessionPage({
                   eyebrow={isConfusion ? dict.confusion : dict.blocker}
                   accent={isConfusion ? "var(--tick-medium)" : "var(--tick-low)"}
                 >
-                  <p>{item.summary}</p>
+                  <p className="break-words">{item.summary}</p>
                   {item.evidenceText && (
                     <p
                       className="mt-2 whitespace-pre-wrap rounded-md border border-border-subtle bg-background p-2 text-xs italic text-muted-foreground"
@@ -579,7 +579,7 @@ export default async function FacilitatorSessionPage({
                     </p>
                   )}
                   <form action={item.resolveAction} className="mt-2">
-                    <button className="font-data rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground hover:border-[var(--tick-high)] hover:text-[var(--tick-high)]">
+                    <button className="font-data press-scale rounded-md border border-border-strong px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground transition-colors hover:border-[var(--tick-high)] hover:text-[var(--tick-high)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                       {dict.resolveBlocker}
                     </button>
                   </form>
@@ -639,7 +639,7 @@ export default async function FacilitatorSessionPage({
             <div className="flex flex-col gap-3">
               {recentContext.map((item) => (
                 <Card key={item.id} eyebrow={item.type === "DECISION" ? dict.decision : dict.activity}>
-                  <p>{item.summary}</p>
+                  <p className="break-words">{item.summary}</p>
                 </Card>
               ))}
             </div>

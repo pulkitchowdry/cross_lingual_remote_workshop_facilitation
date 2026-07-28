@@ -20,7 +20,7 @@ export function StartSessionButton({ label, pendingLabel }: { label: string; pen
       type="submit"
       disabled={pending}
       aria-disabled={pending}
-      className="font-data rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      className="press-scale font-data rounded-md bg-accent-fill px-5 py-2 text-xs font-medium uppercase tracking-wider text-accent-foreground transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? pendingLabel : label}
     </button>

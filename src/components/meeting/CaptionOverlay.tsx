@@ -90,7 +90,11 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
   return (
     <div
       className={`pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-1.5 px-6 ${
-        captionPosition === "bottom" ? "bottom-4" : "top-4"
+        // bottom-4 used to sit directly on top of each tile's own bottom name/mic-status
+        // bar (ParticipantChip's "tile" variant, `absolute inset-x-0 bottom-0`) — the
+        // font-size buttons below landed squarely on top of participant names. bottom-16
+        // clears that bar (and its sm: breakpoint variant) with room to spare.
+        captionPosition === "bottom" ? "bottom-16" : "top-4"
       }`}
     >
       <div
@@ -106,7 +110,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           return (
             <div
               key={segment.id}
-              className="rounded-md px-3 py-1.5 text-center shadow-lg"
+              className="animate-fade-in rounded-md px-3 py-1.5 text-center shadow-lg"
               style={{ background: "rgba(10, 14, 22, 0.78)", fontSize: `${captionFontScale}rem` }}
             >
               <p className="text-white" lang={resolved.lang}>
@@ -139,7 +143,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={shrinkCaptionFont}
           aria-label={dict.shrinkCaptionFont}
-          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data press-scale flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white transition-colors"
         >
           A-
         </button>
@@ -147,7 +151,7 @@ export function CaptionOverlay({ transcript, uiLang }: { transcript: MeetingTran
           type="button"
           onClick={growCaptionFont}
           aria-label={dict.growCaptionFont}
-          className="font-data flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white"
+          className="font-data press-scale flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-xs text-white transition-colors"
         >
           A+
         </button>

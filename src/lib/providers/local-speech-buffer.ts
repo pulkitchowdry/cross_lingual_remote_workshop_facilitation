@@ -15,9 +15,36 @@ export interface StreamingTranscriptEvent {
 export interface SpeechToTextStream {
   sendAudio(chunk: Uint8Array): void;
   close(): void;
+  /**
+   * Optional readiness signal for a stream whose underlying transport isn't
+   * usable the instant it's constructed (e.g. `DeepgramStreamingSession`'s
+   * WebSocket in speech-to-text.ts, which starts CONNECTING, not OPEN — its
+   * `sendAudio` silently no-ops on anything sent before the socket reaches
+   * OPEN). `switchToFallback` below awaits this, with a bounded timeout,
+   * before flushing the audio recovered from the failed local window, so
+   * that window isn't silently dropped into a not-yet-open socket the way it
+   * used to be. Omit (as every stream today does) for a stream that's usable
+   * synchronously — `waitUntilReady` treats a missing `ready` the same as an
+   * already-resolved one.
+   */
+  ready?(): Promise<void>;
 }
 
 const WINDOW_MS = 2_500;
+
+/** Bounded wait for a fallback stream's optional `ready()` — a stream that never
+ * resolves it (e.g. a handshake that hangs) must not block audio forever; after
+ * this, sends proceed anyway and take whatever the stream's own send-time guard
+ * decides, same as before this class had any readiness concept at all. */
+const FALLBACK_READY_TIMEOUT_MS = 5_000;
+
+function waitUntilReady(stream: SpeechToTextStream): Promise<void> {
+  if (!stream.ready) return Promise.resolve();
+  return Promise.race([
+    stream.ready().catch(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, FALLBACK_READY_TIMEOUT_MS)),
+  ]);
+}
 
 interface LocalBufferingSpeechToTextStreamOptions {
   expectedLanguage: SupportedLanguage;
@@ -27,6 +54,11 @@ interface LocalBufferingSpeechToTextStreamOptions {
   /** Lazily invoked exactly once, on the first local failure, if `allowCloudFallback` is true. */
   openCloudFallback: () => SpeechToTextStream;
   encoding?: { format: "linear16"; sampleRate: number; channels: number };
+  /** The browser `MediaRecorder` mimeType in use for a containerized (no `encoding`)
+   * stream — see `OpenStreamInput.mimeType` in speech-to-text.ts. Determines which
+   * container-header-boundary finder `encodeWindow` uses; unrecognized values fall
+   * back to the original WebM-only assumption. */
+  mimeType?: string;
 }
 
 /**
@@ -47,20 +79,31 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   private buffer: Uint8Array[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null;
   private fallbackStream: SpeechToTextStream | null = null;
+  /** False from the moment `fallbackStream` is opened until its `ready()` (if any)
+   * resolves — `sendAudio` queues into `fallbackPending` instead of forwarding
+   * directly while this is false, so audio arriving mid-handshake isn't silently
+   * swallowed the way it used to be. See `switchToFallback`. */
+  private fallbackReady = false;
+  /** Chunks queued by `sendAudio` while `fallbackReady` is false; flushed as one
+   * combined send once the fallback stream signals it's actually ready. */
+  private fallbackPending: Uint8Array[] = [];
   private closed = false;
   private flushing = false;
   /** The most recently started `flush()` call's promise — lets `close()` find and wait out an in-flight flush before issuing its own final one; see `close()`'s comment for why. */
   private flushPromise: Promise<void> | null = null;
   /**
-   * Browser `MediaRecorder` writes the WebM/Matroska container header (EBML +
-   * Segment info + Tracks) only into the very first emitted chunk of a
-   * continuous recording; every later chunk is a headerless Cluster that
-   * can't be decoded on its own. Captured once from the first window and
-   * prepended to every later window so each POST to local-inference is an
-   * independently decodable file. `null` until the first window has been
-   * seen; an empty array if no Cluster boundary was found (best effort).
+   * Browser `MediaRecorder` writes the container's initialization header (WebM's
+   * EBML + Segment info + Tracks, or fragmented-MP4's ftyp + moov) only into the
+   * very first emitted chunk of a continuous recording; every later chunk is a
+   * headerless WebM Cluster or MP4 `moof`/`mdat` fragment that can't be decoded
+   * on its own. Captured once from the first window and prepended to every later
+   * window so each POST to local-inference is an independently decodable file.
+   * `null` until the first window has been seen; an empty array if no boundary
+   * was found (best effort — including for a container this app doesn't know how
+   * to find a boundary for, in which case later windows won't transcribe, but the
+   * first one — the client's own genuinely self-contained chunk — still will).
    */
-  private webmHeader: Uint8Array | null = null;
+  private containerHeader: Uint8Array | null = null;
 
   constructor(private readonly options: LocalBufferingSpeechToTextStreamOptions) {
     this.flushTimer = setInterval(() => {
@@ -77,7 +120,13 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
 
   sendAudio(chunk: Uint8Array): void {
     if (this.fallbackStream) {
-      this.fallbackStream.sendAudio(chunk);
+      // Queue instead of forwarding straight through until the fallback stream has
+      // actually signaled it's ready — see `fallbackReady`'s doc comment.
+      if (this.fallbackReady) {
+        this.fallbackStream.sendAudio(chunk);
+      } else {
+        this.fallbackPending.push(chunk);
+      }
       return;
     }
     this.buffer.push(chunk);
@@ -139,12 +188,20 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
     if (encoding) {
       return { bytes: wrapPcm16AsWav(audio, encoding.sampleRate, encoding.channels), mimeType: "audio/wav" };
     }
-    if (this.webmHeader === null) {
-      const clusterStart = findWebmClusterStart(audio);
-      this.webmHeader = clusterStart >= 0 ? audio.slice(0, clusterStart) : new Uint8Array(0);
-      return { bytes: audio, mimeType: "audio/webm" };
+    // Safari supports neither WebM variant at all (only `audio/mp4`), so a client
+    // that reported an mp4 mimeType (see LiveCaptionStream.tsx's pickRecorderMimeType)
+    // needs the fragmented-MP4 boundary finder instead of WebM's — everything else
+    // (including an absent/unrecognized mimeType, e.g. an older client build) keeps
+    // this app's original WebM-only assumption.
+    const isMp4 = Boolean(this.options.mimeType?.startsWith("audio/mp4"));
+    const outputMimeType = isMp4 ? "audio/mp4" : "audio/webm";
+    const findFragmentStart = isMp4 ? findMp4FragmentStart : findWebmClusterStart;
+    if (this.containerHeader === null) {
+      const fragmentStart = findFragmentStart(audio);
+      this.containerHeader = fragmentStart >= 0 ? audio.slice(0, fragmentStart) : new Uint8Array(0);
+      return { bytes: audio, mimeType: outputMimeType };
     }
-    return { bytes: concat([this.webmHeader, audio]), mimeType: "audio/webm" };
+    return { bytes: concat([this.containerHeader, audio]), mimeType: outputMimeType };
   }
 
   private switchToFallback(error: unknown, failedWindow: Uint8Array[] = []): void {
@@ -163,19 +220,34 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       return;
     }
 
+    let fallbackStream: SpeechToTextStream;
     try {
-      this.fallbackStream = this.options.openCloudFallback();
+      fallbackStream = this.options.openCloudFallback();
     } catch (fallbackError) {
       this.options.onError(fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)));
       return;
     }
-    // Forward the audio that just failed locally, plus anything that arrived
-    // via `sendAudio` while that local call was still pending (it landed back
-    // in `this.buffer` since `fallbackStream` wasn't set yet) — otherwise both
-    // are silently dropped at the exact moment of failover.
-    const recovered = concat([...failedWindow, ...this.buffer]);
+    this.fallbackStream = fallbackStream;
+    this.fallbackReady = false;
+
+    // The audio that just failed locally, plus anything that arrived via `sendAudio`
+    // while that local call was still pending (it landed back in `this.buffer` since
+    // `fallbackStream` wasn't set yet) — otherwise both are silently dropped at the
+    // exact moment of failover. Held here (not sent immediately) until the fallback
+    // stream is actually ready: `openCloudFallback()` returning doesn't mean its
+    // transport is usable yet (e.g. `DeepgramStreamingSession`'s WebSocket is still
+    // CONNECTING at this point), so sending straight away is exactly as lossy as
+    // this method used to be.
+    const recovered = [...failedWindow, ...this.buffer];
     this.buffer = [];
-    if (recovered.byteLength > 0) this.fallbackStream.sendAudio(recovered);
+    void waitUntilReady(fallbackStream).then(() => {
+      if (this.fallbackStream !== fallbackStream) return; // superseded/closed; nothing to flush
+      this.fallbackReady = true;
+      const pending = this.fallbackPending;
+      this.fallbackPending = [];
+      const toSend = concat([...recovered, ...pending]);
+      if (toSend.byteLength > 0) fallbackStream.sendAudio(toSend);
+    });
   }
 }
 
@@ -193,6 +265,52 @@ function findWebmClusterStart(bytes: Uint8Array): number {
     if (WEBM_CLUSTER_ID.every((byte, offset) => bytes[index + offset] === byte)) return index;
   }
   return -1;
+}
+
+/**
+ * Byte offset of the first ISO-BMFF `moof` (movie fragment) box in `bytes`, or
+ * -1 if none is found (or the box structure looks malformed). Safari's
+ * fragmented-MP4 `MediaRecorder` output writes an initialization segment
+ * (`ftyp` + `moov`, analogous to WebM's EBML + Segment info + Tracks) only into
+ * the first emitted chunk; every later chunk is one or more headerless
+ * `moof`+`mdat` fragment pairs. Walks the top-level box sequence (each box:
+ * 4-byte big-endian size + 4-byte ASCII type, or an 8-byte 64-bit "largesize"
+ * when size === 1) rather than searching for a byte pattern like
+ * `findWebmClusterStart` does — ISO-BMFF boxes have no unique magic-number
+ * marker the way a WebM Cluster ID does, so the box sizes must be walked to
+ * find where `moof` actually starts.
+ */
+function findMp4FragmentStart(bytes: Uint8Array): number {
+  let offset = 0;
+  while (offset + 8 <= bytes.length) {
+    const size32 = readUint32BE(bytes, offset);
+    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+    if (type === "moof") return offset;
+
+    let boxSize: number;
+    let headerSize = 8;
+    if (size32 === 1) {
+      if (offset + 16 > bytes.length) return -1;
+      // 64-bit largesize immediately follows the 8-byte size+type header.
+      const high = readUint32BE(bytes, offset + 8);
+      const low = readUint32BE(bytes, offset + 12);
+      boxSize = high * 2 ** 32 + low;
+      headerSize = 16;
+    } else if (size32 === 0) {
+      // A size of 0 means "box extends to the end of the file" — valid for a
+      // truly final box, but there's no further box after it to be `moof`.
+      return -1;
+    } else {
+      boxSize = size32;
+    }
+    if (boxSize < headerSize) return -1; // malformed — refuse to loop forever
+    offset += boxSize;
+  }
+  return -1;
+}
+
+function readUint32BE(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
 }
 
 function concat(chunks: Uint8Array[]): Uint8Array {

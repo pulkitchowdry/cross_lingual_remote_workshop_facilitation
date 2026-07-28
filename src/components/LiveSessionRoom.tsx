@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LiveKitRoom, StartAudio, useDataChannel, useLocalParticipant } from "@livekit/components-react";
+import { LiveKitRoom, StartAudio, useDataChannel, useLocalParticipant, useParticipantAttributes } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
@@ -97,6 +97,25 @@ function PublishStateTracker({ onChange }: { onChange: (patch: PublishState) => 
   return null;
 }
 
+/**
+ * Mirrors the local participant's `raisedHand` attribute (toggled via
+ * MeetingToolbar's `toggleRaiseHand`, deep inside `<MeetingRoom>`) back up to
+ * `LiveSessionRoom`, the same way `PublishStateTracker` mirrors mic/camera/
+ * screen-share state — every freshly issued token defaults `raisedHand` to
+ * "false" (room.ts's `issueCredential`), so without this, a background token
+ * refresh's forced reconnect silently lowered an already-raised hand for
+ * everyone in the room. Must render inside `<LiveKitRoom>` to reach room
+ * context; renders nothing itself.
+ */
+function RaisedHandTracker({ onChange }: { onChange: (raisedHand: boolean) => void }) {
+  const { localParticipant } = useLocalParticipant();
+  const { attributes } = useParticipantAttributes({ participant: localParticipant });
+  useEffect(() => {
+    onChange(attributes?.raisedHand === "true");
+  }, [attributes?.raisedHand, onChange]);
+  return null;
+}
+
 export function LiveSessionRoom({
   sessionId,
   role,
@@ -114,6 +133,7 @@ export function LiveSessionRoom({
   privateRecipientOptions,
   currentLanguage,
   facilitatorSourceLanguage,
+  ttsConfigured,
   onChangeLanguage,
   languageOptions,
   captionsHeader,
@@ -141,6 +161,12 @@ export function LiveSessionRoom({
    * language change (see `SyncParticipantLanguageAttribute`'s doc comment); every other
    * participant's language comes from their own live LiveKit attribute. */
   facilitatorSourceLanguage: SupportedLanguage;
+  /** `textToSpeechProvider.isConfigured`, computed once by the route page (same value
+   * that gates its own `TranslatedAudioPlayer` render) and threaded down to
+   * `DuckedRoomAudio` — see that component's doc comment for why ducking a
+   * cross-language speaker's raw mic audio is only safe when a dub is actually
+   * going to be available to replace it. */
+  ttsConfigured: boolean;
   onChangeLanguage: (lang: SupportedLanguage) => Promise<void>;
   languageOptions?: readonly { value: SupportedLanguage; nativeLabel: string }[];
   /** Above the captions feed — the "play translated audio" opt-in control. */
@@ -152,12 +178,12 @@ export function LiveSessionRoom({
 }) {
   console.log("[room] render");
   useEffect(() => {
-  console.log("[room] mounted");
+    console.log("[room] mounted");
 
-  return () => {
-    console.log("[room] unmounted");
-  };
-}, []);
+    return () => {
+      console.log("[room] unmounted");
+    };
+  }, []);
   const dict = getDictionary(lang).room;
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,6 +224,14 @@ export function LiveSessionRoom({
   useEffect(() => {
     publishStateRef.current = publishState;
   }, [publishState]);
+  // Same ref-not-state rationale as publishStateRef above — kept in sync by
+  // RaisedHandTracker, read by fetchCredentials at the moment a token refresh
+  // fires so the freshly issued token's `raisedHand` attribute (room.ts) matches
+  // whatever the participant's hand state actually is, instead of always "false".
+  const raisedHandRef = useRef(false);
+  const handleRaisedHandChange = useCallback((value: boolean) => {
+    raisedHandRef.current = value;
+  }, []);
   const [screenShareInterrupted, setScreenShareInterrupted] = useState(false);
   // Stable identity (empty deps — `setPublishState` itself is already stable, and this
   // closes over nothing else) avoids giving any downstream consumer (PublishStateTracker,
@@ -308,17 +342,13 @@ export function LiveSessionRoom({
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
       try {
-        console.log("[room] fetchCredentials", {
-        background,
-        time: new Date().toISOString(),
-      });
+        console.log("[room] fetchCredentials", { background, time: new Date().toISOString() });
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, role }),
+          body: JSON.stringify({ sessionId, role, raisedHand: raisedHandRef.current }),
         });
         const payload = (await response.json()) as RoomCredentials & { error?: string };
-        console.log("new token", payload.token.slice(0,20));
         if (!response.ok) throw new Error(payload.error ?? dict.unableToJoin);
         // A background refresh can still be in flight when the user clicks Leave —
         // `hasLeftRef` is set synchronously at that moment (see handleDisconnected), but
@@ -442,26 +472,43 @@ export function LiveSessionRoom({
   }, [credentials, fatalError, fetchCredentials]);
 
   if (error) {
-    return <p className="text-sm" style={{ color: "var(--tick-low)" }}>{error}</p>;
+    return (
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6">
+        <div className="max-w-md rounded-lg border border-border-strong bg-surface-raised p-4 shadow-sm">
+          <p className="break-words text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
+            {error}
+          </p>
+        </div>
+      </div>
+    );
   }
   if (fatalError) {
     return (
-      <div className="flex flex-col items-start gap-2">
-        <p className="text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
-          {fatalError}
-        </p>
-        <button
-          type="button"
-          onClick={handleRejoin}
-          className="rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground"
-        >
-          {dict.rejoin}
-        </button>
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6">
+        <div className="flex max-w-md flex-col items-start gap-3 rounded-lg border border-border-strong bg-surface-raised p-4 shadow-sm">
+          <p className="break-words text-sm" role="alert" style={{ color: "var(--tick-low)" }}>
+            {fatalError}
+          </p>
+          <button
+            type="button"
+            onClick={handleRejoin}
+            className="font-data press-scale rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground transition-colors hover:border-accent hover:text-[var(--accent-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {dict.rejoin}
+          </button>
+        </div>
       </div>
     );
   }
   if (!credentials) {
-    return <p className="text-sm text-muted-foreground">{dict.connecting}</p>;
+    return (
+      <div className="flex h-full min-h-[18rem] items-center justify-center bg-surface p-6" role="status">
+        <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-raised px-4 py-3 shadow-sm">
+          <span className="h-2.5 w-2.5 shrink-0 animate-live-pulse rounded-full bg-accent" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">{dict.connecting}</p>
+        </div>
+      </div>
+    );
   }
 
   const dashboardHref = `/sessions/${sessionId}/${role === "facilitator" ? "facilitator" : "learn"}`;
@@ -469,12 +516,12 @@ export function LiveSessionRoom({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       {deviceWarning && (
-        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in break-words px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {deviceWarning}
         </p>
       )}
       {screenShareInterrupted && (
-        <p role="status" className="px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
+        <p role="status" className="animate-fade-in break-words px-3 py-1.5 text-xs" style={{ color: "var(--tick-low)" }}>
           {dict.screenShareInterrupted}
         </p>
       )}
@@ -519,8 +566,9 @@ export function LiveSessionRoom({
           analyticsView={analyticsView}
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
+        <RaisedHandTracker onChange={handleRaisedHandChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
-        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} />
+        <DuckedRoomAudio myLanguage={currentLanguage} facilitatorSourceLanguage={facilitatorSourceLanguage} ttsConfigured={ttsConfigured} />
         {/* Chrome/Safari autoplay policy blocks ALL audio output until the page has seen a
             real user gesture — `attach()`'s `play()` rejects with NotAllowedError and
             livekit-client emits AudioPlaybackFailed ("could not playback audio"). Nothing

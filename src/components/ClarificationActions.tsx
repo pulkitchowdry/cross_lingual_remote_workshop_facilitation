@@ -41,8 +41,13 @@ export function ClarificationActions({
         {requestClarificationLabel}
       </p>
       <div className="flex flex-wrap gap-2">
-        {CLARIFICATION_REASONS.map((reason) => (
-          <form key={reason} action={action}>
+        {CLARIFICATION_REASONS.map((reason, index) => (
+          <form
+            key={reason}
+            action={action}
+            className="animate-fade-in-up animate-stagger"
+            style={{ "--stagger-index": index } as React.CSSProperties}
+          >
             <input type="hidden" name="kind" value="QUESTION" />
             <input
               type="hidden"
@@ -53,7 +58,7 @@ export function ClarificationActions({
               type="submit"
               disabled={pending}
               aria-disabled={pending}
-              className="font-data rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+              className="font-data press-scale rounded-md border border-border-strong px-3 py-2 text-[0.6875rem] font-medium uppercase tracking-wider text-foreground transition-colors duration-150 hover:border-accent hover:text-[var(--accent-text)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {pending ? sendingLabel : reasonLabels[reason]}
             </button>
@@ -61,7 +66,7 @@ export function ClarificationActions({
         ))}
       </div>
       {state.error && (
-        <p className="text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
+        <p className="animate-fade-in break-words text-xs" role="alert" style={{ color: "var(--tick-low)" }}>
           {state.error}
         </p>
       )}

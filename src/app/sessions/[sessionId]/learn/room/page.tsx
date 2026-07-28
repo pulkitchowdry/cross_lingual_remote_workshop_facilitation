@@ -16,7 +16,7 @@ import { sendChatMessage } from "@/app/sessions/actions";
 import { publishLearnerCaption, updateLearnerLanguage } from "@/app/sessions/[sessionId]/learn/actions";
 import { redactAnonymousSenders, visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { resolveTranslatedText } from "@/lib/translation-view";
-import { SUPPORTED_LANGUAGES } from "@/lib/session-contracts";
+import { MESSAGE_HISTORY_LIMIT, SUPPORTED_LANGUAGES, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 
 export const metadata: Metadata = { title: "Live session" };
 
@@ -48,11 +48,21 @@ export default async function LearnerRoomPage({
     include: {
       session: {
         include: {
-          transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+          // Capped + reversed the same way as the dashboard page (learn/page.tsx) — see
+          // facilitator/room/page.tsx's matching comment for why: this query re-runs every
+          // 2s for the whole LIVE session via SessionAutoRefresh, so an uncapped transcript/
+          // messages history here grew without bound over a session's lifetime instead of
+          // staying bounded like every other page's equivalent query.
+          transcript: {
+            include: { translations: true },
+            orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+            take: TRANSCRIPT_HISTORY_LIMIT,
+          },
           messages: {
             where: visibleSessionMessageWhere(sessionId, accessParticipant.userId),
             include: { sender: true, translations: true },
-            orderBy: { sentAt: "desc" },
+            orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+            take: MESSAGE_HISTORY_LIMIT,
           },
           translations: true,
         },
@@ -61,6 +71,11 @@ export default async function LearnerRoomPage({
   });
   if (!participant) notFound();
   if (participant.session.status !== SessionStatus.LIVE) redirect(`/sessions/${sessionId}/learn`);
+  // transcript is now fetched newest-first (see the `take` cap above) — reversed here to
+  // chronological (oldest-first) order, since CaptionOverlay/TranslationHistoryTab/
+  // TranslatedAudioPlayer below all expect that order (e.g. CaptionOverlay treats the
+  // LAST array entry as "most recent").
+  const orderedTranscript = [...participant.session.transcript].reverse();
 
   const lang = resolveLanguage(participant.preferredLanguage);
   const learnerDict = getDictionary(lang).learner;
@@ -108,7 +123,7 @@ export default async function LearnerRoomPage({
       <LiveCaptionStream sessionId={participant.session.id} lang={lang} agentCapturing={browserCaptureDisabled("learner")} />
       {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
-          segments={participant.session.transcript.map((segment) => ({
+          segments={orderedTranscript.map((segment) => ({
             id: segment.id,
             hasTranslation:
               segment.language === participant.preferredLanguage ||
@@ -134,7 +149,7 @@ export default async function LearnerRoomPage({
           role="learner"
           lang={lang}
           targetLanguage={participant.preferredLanguage}
-          transcript={participant.session.transcript}
+          transcript={orderedTranscript}
           messages={redactAnonymousSenders([...participant.session.messages].reverse())}
           sendChatAction={sendChatAction}
           allowQuestions
@@ -143,6 +158,7 @@ export default async function LearnerRoomPage({
           canMessageFacilitatorPrivately
           currentLanguage={lang}
           facilitatorSourceLanguage={resolveLanguage(participant.session.sourceLanguage)}
+          ttsConfigured={textToSpeechProvider.isConfigured}
           onChangeLanguage={changeLanguageAction}
           languageOptions={learnerLanguageOptions}
           captionsHeader={captionsHeader}

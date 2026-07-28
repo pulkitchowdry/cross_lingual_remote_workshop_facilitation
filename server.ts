@@ -220,6 +220,12 @@ async function main() {
   async function authorizeAndAttachCaptionSocket(req: import("node:http").IncomingMessage, query: import("node:querystring").ParsedUrlQuery, ws: import("ws").WebSocket) {
     const sessionId = typeof query.sessionId === "string" ? query.sessionId : null;
     if (!sessionId) throw new Error("sessionId is required.");
+    // Set by LiveCaptionStream.tsx's pickRecorderMimeType — the actual MediaRecorder
+    // container the browser is sending (e.g. Safari's "audio/mp4" vs Chrome/Firefox's
+    // "audio/webm;codecs=opus"), threaded through to the local-inference tier's window
+    // buffering so it splices each chunk correctly regardless of browser. Absent for an
+    // older client build or a browser this app doesn't have an explicit candidate for.
+    const mimeType = typeof query.mimeType === "string" ? query.mimeType : undefined;
 
     const cookies = parseCookies(req.headers.cookie);
     const speaker = await resolveCaptionSpeaker(sessionId, cookies);
@@ -335,7 +341,7 @@ async function main() {
     ws.on("close", releaseSpeakerKey);
     ws.on("error", releaseSpeakerKey);
 
-    attachCaptionSocket(ws, found, speaker, initialLanguage);
+    attachCaptionSocket(ws, found, speaker, initialLanguage, mimeType);
     // TEMPORARY DIAGNOSTIC: proves the socket was fully wired to an STT stream, so any
     // later close is a *live* connection dying rather than a rejection in disguise.
     console.log(`[captions/diag] attached speaker=${speakerKey} lang=${initialLanguage} mode=${found.translationMode} ${diagLine(ws)}`);

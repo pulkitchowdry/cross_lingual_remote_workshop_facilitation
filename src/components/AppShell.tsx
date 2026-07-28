@@ -24,12 +24,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/setup", label: dict.shell.newSession, confirmBeforeLeavingSession: true },
       ] as const);
   const facilitatorSessionId = pathname?.match(/^\/sessions\/([^/]+)\/facilitator/)?.[1];
-  // The live workshop room (video/screen-share + chat) is the one view where the
-  // 1600px cap actively wastes space — a facilitator or learner running this on a
-  // wide monitor was left with large idle margins on both sides of the video feed.
-  // Every other page (setup forms, history, the join flow) reads better narrower,
-  // so only these two routes drop the cap rather than lifting it globally.
-  const isWorkshopRoomRoute = isLearnerRoute || facilitatorSessionId !== undefined;
+  // The rest of the app is capped at 1000px (see <main> below) for readability. The
+  // one exception is the live workshop room itself (video/screen-share + chat) —
+  // that view genuinely wants the full viewport for the video grid, so only the
+  // /room subpage (not the whole facilitator/learn section, e.g. not the pre-live
+  // "waiting for facilitator"/join screens) drops the cap.
+  const isLiveVideoRoomRoute = /^\/sessions\/[^/]+\/(facilitator|learn)\/room(\/|$)/.test(
+    pathname ?? "",
+  );
 
   return (
     <div className="flex min-h-full flex-col">
@@ -39,14 +41,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {dict.shell.skipToContent}
       </a>
-      <header className="border-b border-border-subtle">
+      <header
+        className="border-b border-border-subtle"
+        // The live video room (below) is a `position: fixed` full-viewport overlay that
+        // paints over this header without unmounting it — without `inert`, its nav
+        // links/Log out/accessibility/theme toggles stay keyboard/screen-reader
+        // reachable despite being completely invisible mid-call.
+        inert={isLiveVideoRoomRoute}
+      >
         {/* flex-wrap + gap-y: without it, this row (wordmark + nav links + the
             accessibility/theme/language controls) has no responsive collapse at all and
             overflows horizontally on any narrow viewport (~375-428px, confirmed down to
             a plain narrow desktop window, not just mobile emulation) — the controls div
             gets clipped off-screen, reachable only by scrolling the whole page
             sideways, on every route including the accessibility panel's own page. */}
-        <nav className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-8 gap-y-2 px-6 py-4">
+        <nav className="mx-auto flex max-w-[1000px] flex-wrap items-center gap-x-8 gap-y-2 px-6 py-4">
           <span className="flex items-center gap-2">
             <span
               className="h-2 w-2 shrink-0 animate-live-pulse rounded-full bg-accent"
@@ -101,7 +110,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </li>
             )}
           </ul>
-          <div className="ml-auto flex items-center gap-2">
+          {/* flex-wrap here too — the same overflow this file's nav-level flex-wrap
+              comment already fixed once recurs one level down: /setup and /sessions
+              (no `#header-language-slot` content) fit 3 buttons at 320px, but every
+              session page (facilitator/learn/room) portals a 4th "Language" button
+              into that slot (see LanguageMenu.tsx), which overflowed the viewport
+              width instead of wrapping to its own line. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <AccessibilityPanel />
             <ThemeToggle />
             {/* Session pages (facilitator/learn) portal their LanguageMenu button in here — see
@@ -119,14 +134,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // (still excluded from the normal Tab order) without changing anything visual.
         tabIndex={-1}
         className={
-          isWorkshopRoomRoute
-            ? // Still wider than the default 1600px cap (the live video grid genuinely
-              // wants the extra room — see the comment above), but not fully unbounded:
-              // the same route also renders the pre-live "waiting for facilitator"/join
-              // state, which has no video grid to fill that space and read as oddly
-              // sparse stretched edge-to-edge on a wide monitor.
-              "mx-auto w-full max-w-[1920px] flex-1 px-3 py-6 sm:px-4"
-            : "mx-auto w-full max-w-[1600px] flex-1 px-6 py-8"
+          isLiveVideoRoomRoute
+            ? // Full viewport width for the live video grid — no cap, no side padding.
+              "w-full max-w-none flex-1"
+            : "mx-auto w-full max-w-[1000px] flex-1 animate-fade-in px-6 py-8"
         }
       >
         {children}

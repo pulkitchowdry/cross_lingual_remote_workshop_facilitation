@@ -177,6 +177,11 @@ model TranscriptSegment {
   session      Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   translations Translation[]
   evidence     InsightEvidence[]
+
+  // Every live facilitator/learner poll fetches this model via
+  // `where: { sessionId }, orderBy: { startedAt: 'desc' }` (see facilitator/page.tsx,
+  // learn/page.tsx, insights.ts) — without this index that's a full table scan per poll.
+  @@index([sessionId, startedAt])
 }
 
 model Translation {
@@ -189,15 +194,28 @@ model Translation {
   /// 0-100 overall Confidence Score for this translation — see src/lib/confidence.ts.
   confidence          Int?
   confidenceLevel     String?
-  /// The signal identified as most responsible for a Medium/Low confidenceLevel, if any — one of
-  /// "audio" | "speech-recognition" | "translation" | "terminology" | "network".
+  /// The signal identified as most responsible for a Low confidenceLevel, if any — one of
+  /// "audio" | "speech-recognition" | "translation" | "network". "terminology" is a legacy
+  /// value some rows persisted before src/lib/confidence.ts's computeOverallConfidence
+  /// stopped ever selecting it as the displayed root cause (a low terminology score still
+  /// drags down `confidence` and can still push `confidenceLevel` to Medium, but is never
+  /// itself surfaced as the reason — see that function's own doc comment) — still a valid
+  /// value to read from old rows, never one a fresh computation produces.
   rootCause           String?
   /// 0-100 per-signal breakdown feeding `confidence` above (translation/terminology always
   /// present; speechRecognition only when the source segment's sttConfidence was reported) —
-  /// see src/lib/confidence.ts's ConfidenceSignals. audioQuality/network are deliberately
-  /// excluded: nothing in this app measures either signal yet (both always default to 100 in
-  /// computeOverallConfidence), so persisting and displaying them would misrepresent an
-  /// unmeasured signal as a confirmed "no problem" reading.
+  /// see src/lib/confidence.ts's ConfidenceSignals. Only translation/terminology get their own
+  /// column here. `network` IS measured — via TranscriptSegment.networkQuality one level up,
+  /// shared across every target-language Translation of that segment — but only for the
+  /// server-side caption-agent's LiveKit-capture path (src/lib/caption-agent.ts); the
+  /// browser-mic WebSocket fallback (captions-socket.ts) has no correct network signal to
+  /// report there (a participant's LiveKit publish-connection quality measures a different
+  /// transport than that path's own WebSocket audio stream) and always leaves it unset.
+  /// `audioQuality` remains fully unmeasured everywhere — nothing in this app has a
+  /// microphone/input-audio-level source yet — so persisting a fake, confirmed-good 100 would
+  /// misrepresent an unmeasured signal as a confirmed "no problem" reading. `terminology` here
+  /// is measured and still feeds the weighted `confidence` average above, but is never itself
+  /// surfaced as `rootCause` (see that column's own comment).
   translationConfidence Int?
   terminologyConfidence Int?
   preservedSpans      Json?
@@ -300,6 +318,11 @@ model Message {
 
   @@index([sessionId, recipientId])
   @@index([sessionId, senderId])
+  // Every message list query (facilitator/learner dashboard + room pages) fetches this
+  // model via `where: { sessionId, ... }, orderBy: { sentAt: 'desc' }, take: <limit>` —
+  // mirrors the TranscriptSegment/Insight indexes above; without this Postgres can't
+  // satisfy that ORDER BY + LIMIT via an index scan.
+  @@index([sessionId, sentAt])
 }
 
 model MessageTranslation {
@@ -323,6 +346,10 @@ model Insight {
   createdAt DateTime          @default(now())
   session   Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   evidence  InsightEvidence[]
+
+  // Queried by `where: { sessionId[, status] }, orderBy: { createdAt: 'desc' }` on every
+  // facilitator poll and every insight-generation pass (see facilitator/page.tsx, insights.ts).
+  @@index([sessionId, createdAt])
 }
 
 model InsightEvidence {

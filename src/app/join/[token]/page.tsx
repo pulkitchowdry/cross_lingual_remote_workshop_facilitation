@@ -119,9 +119,9 @@ export default async function JoinPage({
   );
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6">
+    <div className="animate-fade-in-up mx-auto flex max-w-xl flex-col gap-6">
       <SyncUiLanguage lang={lang} />
-      <div className="flex flex-col gap-1.5">
+      <div className="animate-fade-in-down flex flex-col gap-1.5">
         {/* Visible label, not just the group's aria-label below — a sighted user scanning
             the page shouldn't have to infer from the subtitle paragraph further down that
             these pills are also the caption/translation language, not just cosmetic UI
@@ -136,11 +136,11 @@ export default async function JoinPage({
           ariaLabel={dict.join.languagePickerLabel}
         />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="font-data text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {dict.join.invitedTo}
         </p>
-        <h1 className="font-heading text-2xl font-semibold" lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}>
+        <h1 className="font-heading break-words text-2xl font-semibold" lang={resolvedTitle.hasTranslation ? resolvedTitle.lang : lang}>
           {resolvedTitle.hasTranslation ? resolvedTitle.text : dict.common.translationUnavailable}
         </h1>
         <p className="text-sm text-muted-foreground">{dict.join.subtitle}</p>
@@ -155,7 +155,7 @@ export default async function JoinPage({
         <label className="flex flex-col gap-2 text-sm font-medium">
           {dict.join.yourName}
           <input
-            className="rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="min-w-0 rounded-lg border border-border-strong bg-surface-raised p-3 text-sm text-foreground outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent/30"
             name="displayName"
             required
             maxLength={80}
@@ -163,7 +163,7 @@ export default async function JoinPage({
           />
         </label>
         <label className="flex items-start gap-3 text-sm text-muted-foreground">
-          <input className="mt-1 h-3.5 w-3.5 accent-[var(--accent)]" type="checkbox" name="consent" required />
+          <input className="mt-1 h-3.5 w-3.5 accent-[var(--accent)] transition-transform duration-150" type="checkbox" name="consent" required />
           <span>{dict.join.consent}</span>
         </label>
         <JoinSubmitButton label={dict.join.submit} submittingLabel={dict.join.submitting} />

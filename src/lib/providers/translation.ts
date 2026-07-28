@@ -108,7 +108,15 @@ async function translateWithClaude(
         stop_reason?: string;
       };
       const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
-      if (!translated) return null;
+      if (!translated) {
+        // Mirrors the local-inference tier's identical "200 OK but blank" log a few lines
+        // below — without it, a content-filtered/degenerate Claude response is
+        // indistinguishable from ordinary "nothing to translate" behavior to an operator.
+        console.error(
+          `translateWithClaude: Claude API responded 200 OK but returned no usable translated text (${sourceLanguage}->${targetLanguage}).`,
+        );
+        return null;
+      }
 
       // A truncated translation is still more useful to a learner than none at all, so
       // this returns the (possibly partial) text rather than degrading to null — but
@@ -175,16 +183,27 @@ export async function translateText(
   // no glossary-hint field at all to carry one even if there were. Silently ignoring
   // `glossaryHint` here (the previous behavior) meant the Central Glossary's approved
   // translations were only ever honored when Claude happened to handle the call — i.e.
-  // never, whenever local-inference is configured (the default/primary tier). Skip the
-  // local tier for this call and go straight to Claude, which already applies
-  // `glossaryHint` via its system prompt, so a glossary-preferred translation always wins
-  // regardless of which tier would otherwise have handled it. Only do this when cloud
-  // fallback is actually allowed — a LOCAL_ONLY (strict-privacy) session must still get a
-  // plain NLLB translation (without the glossary hint applied) rather than no translation
-  // at all just because a glossary term happened to match.
-  const skipLocalForGlossary = Boolean(options?.glossaryHint) && allowCloudFallback;
+  // never, whenever local-inference is configured (the default/primary tier). Try Claude
+  // FIRST for this call, since it already applies `glossaryHint` via its system prompt, so
+  // a glossary-preferred translation wins whenever Claude is configured and healthy. Only
+  // do this when cloud fallback is actually allowed — a LOCAL_ONLY (strict-privacy) session
+  // must still get a plain NLLB translation (without the glossary hint applied) rather than
+  // no translation at all just because a glossary term happened to match. Critically, this
+  // is only the *first* attempt: if Claude is unconfigured (no CLAUDE_API_KEY) or fails
+  // after exhausting its own retries, this falls through to the local-inference tier below
+  // (without the glossary hint, since localTranslate can't take one) rather than returning
+  // null outright — a facilitator running local-inference only (no Claude key, a fully
+  // supported config) must not lose the entire message just because it happened to contain
+  // a glossary term, and a transient Claude outage must not sink glossary-matched text when
+  // local-inference is healthy and would have succeeded.
+  const tryClaudeFirstForGlossary = Boolean(options?.glossaryHint) && allowCloudFallback;
 
-  if (isLocalInferenceConfigured() && !skipLocalForGlossary) {
+  if (tryClaudeFirstForGlossary) {
+    const claudeResult = await translateWithClaude(text, sourceLanguage, targetLanguage, options?.glossaryHint);
+    if (claudeResult) return claudeResult;
+  }
+
+  if (isLocalInferenceConfigured()) {
     for (let attempt = 1; attempt <= LOCAL_TRANSLATE_ATTEMPTS; attempt++) {
       try {
         const { text: translated } = await localTranslate(text, sourceLanguage, targetLanguage);
@@ -218,6 +237,11 @@ export async function translateText(
   }
 
   if (!allowCloudFallback) return null;
+  // In the glossary path, Claude was already tried first (and failed/wasn't configured) above
+  // — don't retry it a second time with the exact same inputs; a failed local-inference tier
+  // in that path just means both tiers are down, so fall through to null like any other
+  // double-failure.
+  if (tryClaudeFirstForGlossary) return null;
   return translateWithClaude(text, sourceLanguage, targetLanguage, options?.glossaryHint);
 }
 

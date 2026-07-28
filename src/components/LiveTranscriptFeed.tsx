@@ -97,8 +97,8 @@ export function LiveTranscriptFeed({
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-border-subtle bg-surface">
-      {header && <div className="border-b border-border-subtle p-3">{header}</div>}
-      <div className="relative min-h-0 flex-1">
+      {header && <div key="ltf-header" className="border-b border-border-subtle p-3">{header}</div>}
+      <div key="ltf-body" className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
           onScroll={handleScroll}
@@ -121,7 +121,7 @@ export function LiveTranscriptFeed({
               const isExpandable = hasSecondary || Boolean(entry.actions);
               const revealed = isExpandable && revealedIds.has(entry.id);
               return (
-                <div key={entry.id}>
+                <div key={entry.id} className="animate-fade-in-up">
                   {/* Time/speaker/text all flow as one wrapping paragraph (not a fixed-width
                       time column) so a short line reads as one tidy sentence and a long one
                       wraps naturally instead of leaving a ragged gap under a lonely time
@@ -141,9 +141,9 @@ export function LiveTranscriptFeed({
                       disabled={!isExpandable}
                       aria-expanded={isExpandable ? revealed : undefined}
                       onClick={isExpandable ? () => toggleRevealed(entry.id) : undefined}
-                      className={`min-w-0 flex-1 text-left ${isExpandable ? "cursor-pointer" : ""}`}
+                      className={`min-w-0 flex-1 rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${isExpandable ? "cursor-pointer" : ""}`}
                     >
-                      <p className="text-sm leading-snug">
+                      <p className="min-w-0 break-words text-sm leading-snug">
                         <span className="font-data mr-1.5 text-[10px] tabular-nums text-muted-foreground">
                           {entry.time}
                         </span>
@@ -161,7 +161,7 @@ export function LiveTranscriptFeed({
                         </span>
                       </p>
                       {revealed && hasSecondary && (
-                        <p className="mt-0.5 text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
+                        <p className="mt-0.5 whitespace-pre-wrap break-words text-xs italic text-muted-foreground" lang={entry.secondaryLang}>
                           {entry.secondaryText}
                         </p>
                       )}
@@ -180,13 +180,13 @@ export function LiveTranscriptFeed({
           <button
             type="button"
             onClick={scrollToLatest}
-            className="font-data absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow"
+            className="font-data press-scale animate-fade-in absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-strong bg-surface-raised px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider text-foreground shadow transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {jumpToLatestLabel} ↓
           </button>
         )}
       </div>
-      {composer}
+      {composer && <div key="ltf-composer">{composer}</div>}
     </div>
   );
 }

@@ -12,6 +12,13 @@ import { generateAndPersistSessionSummary } from "@/lib/insights";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
 import type { FormActionResult, SupportedLanguage } from "@/lib/session-contracts";
 import { isSupportedLanguage } from "@/lib/i18n";
+import { isRateLimited } from "@/lib/rate-limit";
+
+/** Mirrors sendChatMessage's CHAT_RATE_LIMIT (src/app/sessions/actions.ts) — this action
+ * fans out to the same paid per-language translation providers (via publishTranslatedCaption)
+ * plus, when configured, an unawaited Claude insight-generation call on every caption, but
+ * unlike sendChatMessage had no throttle of its own before this. */
+const CAPTION_RATE_LIMIT = { max: 10, windowMs: 10_000 };
 
 export async function updateFacilitatorLanguage(sessionId: string, lang: SupportedLanguage) {
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
@@ -56,33 +63,56 @@ export async function startSession(sessionId: string) {
   redirect(`/sessions/${sessionId}/facilitator/room`);
 }
 
-export async function endSession(sessionId: string) {
+export async function endSession(
+  sessionId: string,
+  _prevState: FormActionResult,
+  _formData: FormData,
+): Promise<FormActionResult> {
+  void _prevState;
+  void _formData;
+
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  // Guarded to only leave LIVE — mirrors startSession's own DRAFT-only guard above.
-  // Without this, a stale second tab's "End session" button (or a resubmitted form)
-  // could re-run this on an already-ENDED session: silently resetting `endedAt` to now
-  // (extending the retention deadline indefinitely, see startSession's doc comment on
-  // why that matters) and re-triggering the paid Claude summary call below for no
-  // reason, non-deterministically overwriting whatever summary already finished
-  // generating from the first, legitimate end.
-  const { count } = await prisma.session.updateMany({
-    where: { id: sessionId, status: SessionStatus.LIVE },
-    data: { status: SessionStatus.ENDED, endedAt: new Date() },
-  });
-  if (count === 0) return;
+  try {
+    // Guarded to only leave LIVE — mirrors startSession's own DRAFT-only guard above.
+    // Without this, a stale second tab's "End session" button (or a resubmitted form)
+    // could re-run this on an already-ENDED session: silently resetting `endedAt` to now
+    // (extending the retention deadline indefinitely, see startSession's doc comment on
+    // why that matters) and re-triggering the paid Claude summary call below for no
+    // reason, non-deterministically overwriting whatever summary already finished
+    // generating from the first, legitimate end.
+    const { count } = await prisma.session.updateMany({
+      where: { id: sessionId, status: SessionStatus.LIVE },
+      data: { status: SessionStatus.ENDED, endedAt: new Date() },
+    });
+    if (count === 0) {
+      const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+      return {
+        error:
+          session?.status === SessionStatus.ENDED
+            ? "This session has already ended. Refresh the page to view its results."
+            : "This session is not live anymore. Refresh the page and try again.",
+      };
+    }
 
-  const session = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
-  // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
-  // process stays alive after the response is sent, so a plain unawaited call is enough
-  // to let the summary finish generating without making "End session" wait on a Claude
-  // call. POST_SESSION_INSIGHT_GRACE_MS's short post-end poll (facilitator/page.tsx)
-  // is what picks the result up once it lands.
-  void generateAndPersistSessionSummary(session).catch((error) => {
-    console.error("generateAndPersistSessionSummary failed", error);
-  });
-  revalidatePath(`/sessions/${sessionId}/facilitator`);
-  revalidatePath(`/sessions/${sessionId}/learn`);
+    const session = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
+    // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
+    // process stays alive after the response is sent, so a plain unawaited call is enough
+    // to let the summary finish generating without making "End session" wait on a Claude
+    // call. POST_SESSION_INSIGHT_GRACE_MS's short post-end poll (facilitator/page.tsx)
+    // is what picks the result up once it lands.
+    void generateAndPersistSessionSummary(session).catch((error) => {
+      console.error("generateAndPersistSessionSummary failed", error);
+    });
+    revalidatePath(`/sessions/${sessionId}/facilitator`);
+    revalidatePath(`/sessions/${sessionId}/facilitator/results`);
+    revalidatePath(`/sessions/${sessionId}/learn`);
+  } catch (error) {
+    console.error("endSession failed", error);
+    return { error: "Couldn't end the session. Please try again." };
+  }
+
+  redirect(`/sessions/${sessionId}/facilitator/results`);
 }
 
 export async function publishCaption(
@@ -103,6 +133,14 @@ export async function publishCaption(
   });
   if (!session || session.status !== SessionStatus.LIVE) {
     return { error: "Start the session before publishing captions." };
+  }
+
+  // Keyed by the already-authenticated facilitator's id (not a raw cookie or IP) —
+  // bounds a script that bypasses the UI's disabled-while-pending button and POSTs
+  // directly to this action from fanning out unlimited paid per-language translation
+  // (and, when configured, insight-generation) calls.
+  if (isRateLimited(`caption:${session.facilitatorId}`, CAPTION_RATE_LIMIT.max, CAPTION_RATE_LIMIT.windowMs)) {
+    return { error: "You're publishing captions too quickly. Please wait a moment and try again." };
   }
 
   const now = new Date();

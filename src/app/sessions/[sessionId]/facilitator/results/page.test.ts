@@ -143,7 +143,7 @@ describe("FacilitatorSessionResultsPage", () => {
         startedAt: new Date("2026-07-26T09:00:00.000Z"),
         endedAt: new Date("2026-07-26T10:00:00.000Z"),
         participants: [{ userId: "learner-a", user: { displayName: "Learner A" } }],
-        insights: [{ type: "CONFUSION", summary: "Learners mixed up request validation." }],
+        insights: [{ id: "insight-1", type: "CONFUSION", summary: "Learners mixed up request validation." }],
       }),
     );
     mocks.messageCount.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
@@ -170,7 +170,7 @@ describe("FacilitatorSessionResultsPage", () => {
     expect(html).toContain("Results page test");
     expect(html).toContain("Completed summary");
     expect(html).toContain("3 messages");
-    expect(html).toContain("1 questions");
+    expect(html).toContain("1 question");
     expect(html).toContain("Learners mixed up request validation.");
   });
 

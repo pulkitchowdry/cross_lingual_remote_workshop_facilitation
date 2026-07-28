@@ -53,12 +53,16 @@ function mergeElements(existing: readonly ExcalidrawElement[], incoming: unknown
     const patch = raw as Partial<ExcalidrawElement> & { id?: string };
     if (!patch.id) continue;
     const current = byId.get(patch.id);
-    byId.set(
-      patch.id,
-      current
-        ? ({ ...current, ...patch, customData: { ...current.customData, ...patch.customData } } as ExcalidrawElement)
-        : (patch as ExcalidrawElement),
-    );
+    if (current) {
+      byId.set(patch.id, { ...current, ...patch, customData: { ...current.customData, ...patch.customData } } as ExcalidrawElement);
+    } else if (patch.type) {
+      // A `{id, customData}`-only translation-result patch for an id this client hasn't
+      // synced the base element for yet (late joiner, or a missed live broadcast) has no
+      // `type`/geometry — casting it straight to ExcalidrawElement would inject a fake
+      // element into the scene and corrupt/crash this viewer's render. Only accept an
+      // unknown id when the patch already looks like a complete element; drop it otherwise.
+      byId.set(patch.id, patch as ExcalidrawElement);
+    }
   }
   return Array.from(byId.values());
 }
@@ -85,6 +89,13 @@ export function Whiteboard({
   const pendingBroadcastRef = useRef(new Map<string, ExcalidrawElement>());
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textSettleTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // Remote DataChannel updates (a facilitator drawing/typing) can arrive while
+  // `excalidrawAPI` is still null — it only mounts once the dynamic import resolves and
+  // Excalidraw calls back `setExcalidrawAPI`, a real gap on a slow network. Broadcasts
+  // aren't replayed to a late subscriber and aren't guaranteed to be in the initial DB
+  // snapshot fetch either, so a dropped update here is permanently lost. Buffer it and
+  // replay once the API becomes available (see the effect below).
+  const pendingIncomingRef = useRef<unknown[][]>([]);
   const lastTranslatedTextRef = useRef(new Map<string, string>());
   // Separate from lastTranslatedTextRef (which now only records a *successful* translation —
   // see translateElement) — this tracks requests still in flight, so two settle-timers firing
@@ -124,7 +135,10 @@ export function Whiteboard({
 
   const applyIncoming = useCallback(
     (elements: unknown[]) => {
-      if (!excalidrawAPI) return;
+      if (!excalidrawAPI) {
+        pendingIncomingRef.current.push(elements);
+        return;
+      }
       const merged = mergeElements(excalidrawAPI.getSceneElementsIncludingDeleted(), elements);
       merged.forEach((element) => lastVersionsRef.current.set(element.id, element.version));
       const display = substituteForViewer(merged, uiLang, !canPresent);
@@ -140,6 +154,16 @@ export function Whiteboard({
     },
     [excalidrawAPI, uiLang, canPresent],
   );
+
+  // Flush anything buffered by applyIncoming's own `if (!excalidrawAPI)` branch above, in
+  // the order it arrived, the moment the API becomes available — a plain re-dispatch through
+  // applyIncoming itself so it goes through the same merge/substitute/updateScene path.
+  useEffect(() => {
+    if (!excalidrawAPI || pendingIncomingRef.current.length === 0) return;
+    const queued = pendingIncomingRef.current;
+    pendingIncomingRef.current = [];
+    queued.forEach((elements) => applyIncoming(elements));
+  }, [excalidrawAPI, applyIncoming]);
 
   const { send } = useDataChannel(
     "whiteboard",
@@ -207,7 +231,20 @@ export function Whiteboard({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, elementId: element.id, sourceText: text, sourceLanguage: uiLang }),
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          // Mirrors the catch block's console.error below — without this, a 403/404 from
+          // the route's own "late re-check" (session ended / presenting rights revoked
+          // mid-flight) silently drops the text for the rest of the session with no trace.
+          console.error(`[whiteboard] translate request rejected (status ${response.status})`);
+          return;
+        }
+        // A newer edit to this same element can have started its own translateElement call
+        // (overwriting this map entry with its own text) while this fetch was still in
+        // flight. If that happened, this response is for a version of the text the element
+        // no longer has — applying it now would clobber the newer, correct translation with
+        // stale text, and recording it in lastTranslatedTextRef would wrongly block ever
+        // re-translating this exact (older) text again. Drop it.
+        if (inFlightTranslationRef.current.get(element.id) !== text) return;
         const result = (await response.json()) as { elementId: string; customData: WhiteboardCustomData };
         // Only mark this text as translated once the request actually succeeded — marking it
         // eagerly (before the fetch) meant a single failed/errored request permanently blocked
