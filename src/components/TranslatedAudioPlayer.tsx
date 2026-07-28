@@ -1,7 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useRef, useState } from "react";
-import { MeetingShellContext } from "@/components/meeting/MeetingShellContext";
+import { useEffect, useRef, useState } from "react";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
 
 interface CaptionForPlayback {
@@ -33,34 +32,22 @@ interface QueueEntry {
 /**
  * Translated-audio playback for the learner's caption feed — Part 3 of
  * `docs/TRANSLATION_ARCHITECTURE.md`. A spoken caption in a *different*
- * language than this listener's own auto-plays its dub — but only once this
- * listener has turned captions on (`captionsVisible`, read from
- * `MeetingShellContext` below): raw speaker audio is only ducked for them
- * locally once that's true too (see `DuckedRoomAudio`), so before then the
- * dub would just talk over perfectly audible raw mic audio instead of
- * standing in for it. With captions off, everyone hears everyone else's raw
- * audio regardless of language — that's the default. Facilitator- and
- * learner-typed captions are a second, independent always-play case (once
- * captions are on) — they stand in for a speaker's voice when they can't/
- * didn't speak, not a translation nicety. `enabled` is an opt-*in* for the
- * narrower case of a same-language segment (the listener wants to hear a dub
- * even though they'd understand the original fine), also only once captions
- * are on. Fetches `/api/captions/[segmentId]/audio` on demand for each new
- * segment and queues playback so overlapping captions don't talk over each
- * other.
- *
- * Also rendered standalone on the dashboard's read-only transcript review
- * (facilitator/learn `page.tsx`, outside any `MeetingShellProvider` — no live
- * room, no raw mic audio to duck there at all) — reading the context directly
- * with a `true` fallback (rather than the throwing `useMeetingShell` hook)
- * keeps that usage auto-playing dubs as before instead of crashing.
+ * language than this listener's own auto-plays its dub by default — the
+ * raw speaker audio is ducked for them locally (see `DuckedRoomAudio`), so
+ * without this they'd hear nothing at all for that speaker. Facilitator- and
+ * learner-typed captions are a second, independent always-play case — they
+ * stand in for a speaker's voice when they can't/didn't speak, not a
+ * translation nicety. `enabled` is now only an opt-*in* for the narrow
+ * remaining case of a same-language segment (the listener wants to hear a
+ * dub even though they'd understand the original fine) — everything that
+ * needs a dub to be heard at all already plays without it. Fetches
+ * `/api/captions/[segmentId]/audio` on demand for each new segment and
+ * queues playback so overlapping captions don't talk over each other.
  */
 type PlaybackErrorKind = "blocked" | "skipped";
 
 export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segments: CaptionForPlayback[]; preferredLanguage: string }) {
   const dict = getDictionary(resolveLanguage(preferredLanguage)).learner;
-  const shell = useContext(MeetingShellContext);
-  const captionsVisible = shell?.captionsVisible ?? true;
   const [enabled, setEnabled] = useState(false);
   // The error *kind*, not the already-resolved dictionary string — `dict` is
   // recomputed from `preferredLanguage` on every render, so deriving the displayed
@@ -170,10 +157,6 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       hasMountedRef.current = true;
       return;
     }
-    // No dub ever queues while this listener hasn't turned captions on — see the
-    // component doc comment. Bookkeeping above (seenIdsRef) still runs unconditionally
-    // so nothing is missed once captions do get turned on.
-    if (!captionsVisible) return;
     const toQueue = newlyTranslated.filter((segment) => segment.isTyped || segment.language !== preferredLanguage || enabled);
     if (toQueue.length === 0) return;
 
@@ -187,21 +170,19 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     );
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments, enabled, captionsVisible, preferredLanguage]);
+  }, [segments, enabled, preferredLanguage]);
 
   useEffect(() => {
-    // Unchecking the opt-in box (or the listener turning captions off entirely) must
-    // actually silence playback that exists because of it, not just stop queueing new
-    // segments — without this, whatever was already playing (or queued right behind it)
-    // kept right on talking after the control turned off. Turning captions off cuts off
-    // EVERY queued/playing entry, including `alwaysPlay` ones — with captions off the raw
-    // mic audio is no longer ducked (DuckedRoomAudio), so a dub would just talk over it.
-    // With captions still on but the same-language opt-in unchecked, only entries that
-    // are NOT `alwaysPlay` get cut — typed captions and cross-language segments (see the
-    // doc comment above) keep playing regardless of that opt-in.
+    // Unchecking the box must actually silence playback that exists *because
+    // of* the opt-in, not just stop queueing new segments — without this,
+    // whatever was already playing (or queued right behind it) kept right on
+    // talking after the learner turned the control off. But typed captions and
+    // cross-language segments always play regardless of the opt-in (see the
+    // doc comment above), so only cut off entries that are NOT `alwaysPlay` —
+    // one of those already playing or queued keeps going.
+    if (enabled) return;
     const current = currentRef.current;
-    const cutoffCondition = !captionsVisible || (!enabled && current && !current.alwaysPlay);
-    if (current && cutoffCondition) {
+    if (current && !current.alwaysPlay) {
       audioRef.current?.pause();
       playingRef.current = false;
       currentRef.current = null;
@@ -211,11 +192,6 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       // button around that replays the exact dub they just declined.
       setErrorKind(null);
     }
-    if (!captionsVisible) {
-      queueRef.current = [];
-      return;
-    }
-    if (enabled) return;
     queueRef.current = queueRef.current.filter((entry) => entry.alwaysPlay);
     // If we just cut off a non-always-play current item (or nothing was
     // playing), resume immediately so any surviving always-play entries
@@ -223,7 +199,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     // to trigger playNext.
     if (!playingRef.current && queueRef.current.length > 0) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, captionsVisible]);
+  }, [enabled]);
 
   const preferredLanguageRef = useRef(preferredLanguage);
   useEffect(() => {

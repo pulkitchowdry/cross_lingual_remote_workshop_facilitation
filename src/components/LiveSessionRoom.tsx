@@ -6,6 +6,7 @@ import { LiveKitRoom, useDataChannel, useLocalParticipant, useParticipantAttribu
 import "@livekit/components-styles";
 import { DisconnectReason, type MediaDeviceFailure } from "livekit-client";
 import { MeetingRoom } from "@/components/meeting/MeetingRoom";
+import { DuckedRoomAudio } from "@/components/meeting/DuckedRoomAudio";
 import { SyncParticipantLanguageAttribute } from "@/components/SyncParticipantLanguageAttribute";
 import { scheduleCoordinatedRefresh } from "@/lib/coordinated-refresh";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
@@ -546,11 +547,11 @@ export function LiveSessionRoom({
           captionsHeader={captionsHeader}
           captionComposer={captionComposer}
           analyticsView={analyticsView}
-          ttsConfigured={ttsConfigured}
         />
         <PublishStateTracker onChange={handlePublishStateChange} />
         <RaisedHandTracker onChange={handleRaisedHandChange} />
         <SyncParticipantLanguageAttribute lang={currentLanguage} />
+        <DuckedRoomAudio myLanguage={currentLanguage} transcript={transcript} ttsConfigured={ttsConfigured} />
         <CaptionChannelRefresher />
       </LiveKitRoom>
     </div>
