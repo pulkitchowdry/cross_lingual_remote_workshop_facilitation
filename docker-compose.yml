@@ -65,6 +65,20 @@ services:
   local-inference:
     build:
       context: ./local-inference
+    # web deliberately does NOT depend_on this service (see the comment on
+    # web's depends_on below) — it's optional/degradable, so nothing else in
+    # this file notices or recovers if it dies. Without a restart policy, any
+    # crash (this is a memory-heavy ML process — NLLB + faster-whisper + Piper
+    # all loaded at once — so OOM kills, host sleep/resume, or a Docker daemon
+    # restart can all take it down) leaves it exited indefinitely: `docker ps`
+    # still shows the other three services healthy, so nothing looks wrong,
+    # but every translate/transcribe/synthesize call keeps hitting ECONNREFUSED
+    # forever until a human notices and manually restarts it. `unless-stopped`
+    # makes Compose bring it back automatically on any exit (but not fight an
+    # intentional `docker compose stop`), matching how `web`'s own retry/
+    # fallback logic (src/lib/providers/translation.ts) already assumes a
+    # transient, self-healing outage rather than a permanent one.
+    restart: unless-stopped
     environment:
       LOCAL_INFERENCE_SECRET: ${LOCAL_INFERENCE_SECRET:-devsecret}
       INFERENCE_THREADS: ${INFERENCE_THREADS:-2}
