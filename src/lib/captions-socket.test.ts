@@ -3,7 +3,10 @@ import type { WebSocket } from "ws";
 import type { Session } from "@/generated/prisma/client";
 
 const findUniqueMock = vi.fn();
-vi.mock("@/lib/db", () => ({ prisma: { session: { findUnique: findUniqueMock } } }));
+const participantFindUniqueMock = vi.fn();
+vi.mock("@/lib/db", () => ({
+  prisma: { session: { findUnique: findUniqueMock }, sessionParticipant: { findUnique: participantFindUniqueMock } },
+}));
 vi.mock("@/lib/captions", () => ({ publishTranslatedCaption: vi.fn() }));
 
 const openStreamMock = vi.fn();
@@ -50,6 +53,7 @@ describe("attachCaptionSocket", () => {
   afterEach(() => {
     vi.useRealTimers();
     findUniqueMock.mockReset();
+    participantFindUniqueMock.mockReset();
     openStreamMock.mockReset();
   });
 
@@ -118,5 +122,25 @@ describe("attachCaptionSocket", () => {
     findUniqueMock.mockResolvedValue({ captionAgentActive: false });
     await vi.advanceTimersByTimeAsync(3_500);
     expect(findUniqueMock).toHaveBeenCalled();
+  });
+
+  it("closes a learner socket once caption-agent.ts starts capturing that same participant", async () => {
+    // Per-participant equivalent of the facilitator guard above: the duplicate-capture
+    // interval must check *this* learner's own SessionParticipant.agentCapturing, not the
+    // session-wide captionAgentActive flag (which only ever describes the facilitator).
+    const close = vi.fn();
+    openStreamMock.mockReturnValue({ sendAudio: vi.fn(), close: vi.fn() });
+    const { attachCaptionSocket } = await import("@/lib/captions-socket");
+    const ws = { on: vi.fn(), send: vi.fn(), close, readyState: 1, OPEN: 1 } as unknown as WebSocket;
+    const session = { id: "session-1", sourceLanguage: "en", translationMode: "AUTO" } as unknown as Session;
+
+    attachCaptionSocket(ws, session, { role: "learner", participantId: "participant-1" }, "en");
+
+    participantFindUniqueMock.mockResolvedValue({ agentCapturing: true });
+    await vi.advanceTimersByTimeAsync(3_500);
+
+    expect(participantFindUniqueMock).toHaveBeenCalledWith({ where: { id: "participant-1" }, select: { agentCapturing: true } });
+    expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledWith(1011, "Captions are already being captured automatically for this session.");
   });
 });

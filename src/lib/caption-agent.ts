@@ -14,13 +14,28 @@ import {
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
-import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
+import {
+  clearCaptionAgentCapturing,
+  clearLearnerCaptionAgentCapturing,
+  markCaptionAgentCapturing,
+  markLearnerCaptionAgentCapturing,
+} from "@/lib/caption-source-state";
+import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 const WORKSHOP_ROOM_PREFIX = "workshop-";
 const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
+/** Mirrors `FACILITATOR_IDENTITY_PREFIX` — see `room.ts`'s `issueCredential`, which
+ * mints every learner's LiveKit identity as `learner:${SessionParticipant.id}`. */
+const LEARNER_IDENTITY_PREFIX = "learner:";
+
+/** Extracts the `SessionParticipant.id` from a learner's LiveKit identity, or `null`
+ * if `identity` isn't a learner one. */
+function participantIdFromLearnerIdentity(identity: string): string | null {
+  return identity.startsWith(LEARNER_IDENTITY_PREFIX) ? identity.slice(LEARNER_IDENTITY_PREFIX.length) : null;
+}
 /**
  * Rate the agent asks LiveKit to resample a participant's track to before
  * handing frames to Deepgram — matches the `linear16` PCM framing passed to
@@ -46,12 +61,12 @@ function sessionIdFromRoomName(roomName: string | undefined): string | null {
 }
 
 /**
- * Resolves what language the facilitator's audio should be attributed to —
- * always the session's own `sourceLanguage` (no `SessionParticipant` row
- * exists for the facilitator). Facilitator-only, deliberately: see this
- * file's own top-level doc comment for why learner tracks are never
- * subscribed to here in the first place. Returns `null` for an identity that
- * isn't a recognized facilitator one.
+ * Resolves what language a participant's audio should be attributed to and what
+ * `speakerId` to persist for it — the facilitator always uses the session's own
+ * `sourceLanguage` (no `SessionParticipant` row exists for the facilitator), while a
+ * learner uses their own `preferredLanguage`/display name via `resolveLearnerSpeaker`,
+ * the same helper `captions-socket.ts`'s browser-mic path uses, so both pipelines
+ * resolve a given learner identically. Returns `null` for an identity that's neither.
  */
 async function resolveSpeakerContext(
   session: { id: string; sourceLanguage: string; facilitator: { displayName: string } },
@@ -59,6 +74,11 @@ async function resolveSpeakerContext(
 ): Promise<{ language: SupportedLanguage; speakerId: string | null } | null> {
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
     return { language: session.sourceLanguage as SupportedLanguage, speakerId: `${session.facilitator.displayName} (Facilitator)` };
+  }
+  const participantId = participantIdFromLearnerIdentity(identity);
+  if (participantId) {
+    const resolved = await resolveLearnerSpeaker(session.id, participantId);
+    if (resolved) return { language: resolved.language, speakerId: resolved.speakerId };
   }
   return null;
 }
@@ -100,15 +120,19 @@ async function streamParticipantAudio(
     return;
   }
   activeTracks.set(identity, track);
-  // `captionAgentActive` is only ever about the facilitator's own manual
-  // "Start live captions from mic" fallback (see caption-source-state.ts and
-  // its consumers in server.ts/captions-socket.ts) — that fallback doesn't
-  // exist for learners, so only a facilitator identity should ever flip this
-  // DB flag. Without this guard, a learner speaking would spuriously mark the
-  // flag true (hiding/blocking the facilitator's own unrelated fallback) even
-  // though the facilitator's own audio isn't what's being captured.
+  // Flags this identity as agent-captured so the matching browser-mic fallback
+  // (LiveCaptionStream.tsx) stands down instead of opening a second, independent STT
+  // pipeline for the same speech — `Session.captionAgentActive` for the facilitator,
+  // `SessionParticipant.agentCapturing` for a learner (a per-session boolean can't say
+  // *which* learner, since more than one can be in a room at once). This is the guard
+  // that was missing the last time learner capture lived here (see this file's
+  // top-of-file doc comment) — without it, a learner's audio was captured by both this
+  // worker and the browser fallback at once, duplicating every caption line.
+  const learnerParticipantId = participantIdFromLearnerIdentity(identity);
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
     await markCaptionAgentCapturing(sessionId);
+  } else if (learnerParticipantId) {
+    await markLearnerCaptionAgentCapturing(learnerParticipantId);
   }
 
   // Resolved *after* claiming the `activeTracks` slot above (not before, and not
@@ -218,47 +242,50 @@ async function streamParticipantAudio(
     // identity between this loop ending and this `finally` running; blindly
     // deleting here could otherwise clobber a newer, still-active stream's guard.
     if (activeTracks.get(identity) === track) activeTracks.delete(identity);
-    // Only clear the DB-backed `captionAgentActive` flag once no *facilitator*
-    // track is active — it's set only for facilitator identities above, so
-    // only a facilitator identity's departure can ever need to clear it (a
-    // learner's stream ending never touched the flag in the first place, and
-    // checking regardless of role would be a harmless but pointless DB write
-    // on every learner utterance). An old, already-superseded facilitator
-    // track's cleanup (the guard above correctly skipped deleting the map
-    // entry for it) must not still unconditionally reset the flag to false
-    // while a newer facilitator track is actively capturing, or the
-    // facilitator dashboard shows "Start live captions from mic" as available
-    // while the agent is in fact still streaming, inviting exactly the
-    // duplicate pipeline this flag exists to prevent (see server.ts's
-    // upgrade-handler check).
+    // Only clear the DB-backed capturing flag once no track is still active *for this
+    // same identity/group* — re-checked as a fresh lookup after the (possibly skipped)
+    // delete above, not gated on whether this particular track was the current one. An
+    // old, already-superseded track's cleanup (the guard above correctly skipped
+    // deleting the map entry for it) must not still unconditionally reset the flag to
+    // false while a newer track for the same speaker is actively capturing, or the
+    // dashboard/mic-control shows "Start live captions" as available while the agent is
+    // in fact still streaming, inviting exactly the duplicate pipeline these flags exist
+    // to prevent (see server.ts's/captions-socket.ts's own duplicate-guard checks).
+    // Facilitator uses a per-session flag (there's only ever one facilitator, so
+    // "still active" is checked across every facilitator-prefixed identity); a learner
+    // uses a per-participant flag, since more than one learner can be in the room at
+    // once and each one's flag must be independent.
     if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
       const facilitatorStillActive = [...activeTracks.keys()].some((id) => id.startsWith(FACILITATOR_IDENTITY_PREFIX));
       if (!facilitatorStillActive) await clearCaptionAgentCapturing(sessionId);
+    } else if (learnerParticipantId) {
+      if (!activeTracks.has(identity)) await clearLearnerCaptionAgentCapturing(learnerParticipantId);
     }
   }
 }
 
 /**
- * LiveKit Agents entrypoint — subscribes to the facilitator's audio track
- * server-side so their captions work without opening the mic control's
- * manual fallback in their browser. See `docs/TRANSLATION_ARCHITECTURE.md`
- * Part 2. Registered from `server.ts` in the same process as the rest of the
- * app.
+ * LiveKit Agents entrypoint — subscribes server-side to every participant's mic track
+ * (facilitator and learner alike) so their captions work without depending on the
+ * browser-mic `LiveCaptionStream`/`/api/captions/stream` fallback. See
+ * `docs/TRANSLATION_ARCHITECTURE.md` Part 2. Registered from `server.ts`'s main
+ * process, but each room's `entry` call actually runs in its own forked job process
+ * (see `server.ts`'s `startCaptionAgent` comment) — that's why de-dup against the
+ * browser fallback goes through Postgres (`caption-source-state.ts`) rather than an
+ * in-memory flag shared between the two.
  *
- * Facilitator-only, not "every participant" — this worker used to also
- * subscribe to learner mic tracks, but a learner's browser already runs its
- * own always-on capture (`LiveCaptionStream`'s mic-toggle effect auto-starts
- * whenever their mic is unmuted, same as the facilitator's browser fallback),
- * and nothing de-duplicated the two: a learner speaking produced two
- * independent STT pipelines transcribing and persisting the same utterance
- * as two separate, differently-timed `TranscriptSegment` rows. The
- * `captionAgentActive` guard this file also maintains is deliberately
- * facilitator-only in the DB schema (a single per-session boolean, not
- * per-participant) for the same reason — there's no way to represent "this
- * specific learner is already being captured server-side" without a bigger
- * schema change, so the simpler fix is to never contend for a learner's mic
- * here at all and let the existing browser path be the sole source of truth
- * for it.
+ * This worker previously captured only the facilitator: an earlier attempt to also
+ * subscribe to learner tracks shipped with no de-dup against the browser fallback
+ * (which auto-starts for *any* participant, learner included, the moment their mic is
+ * unmuted), so a learner speaking produced two independent STT pipelines transcribing
+ * and persisting the same utterance as two separate, differently-timed
+ * `TranscriptSegment` rows — see `docs/CAPTION_AUDIO_TROUBLESHOOTING.md`'s "Duplicate
+ * audio capture for learners" postmortem. The fix that time was to strip learner
+ * capture out entirely. This time, `SessionParticipant.agentCapturing` (a
+ * per-participant flag, unlike the facilitator's per-session `captionAgentActive`)
+ * lets `LiveCaptionStream.tsx`/`captions-socket.ts` stand down for exactly the learner
+ * this worker is already capturing, without touching anyone else's — see
+ * `markLearnerCaptionAgentCapturing`'s own doc comment.
  */
 export default defineAgent({
   entry: async (ctx: JobContext) => {
@@ -320,7 +347,9 @@ export default defineAgent({
     // subscribe time (see streamParticipantAudio's own doc comment on the param).
     const connectionQualityByIdentity = new Map<string, string>();
     ctx.room.on(RoomEvent.ConnectionQualityChanged, (quality: ConnectionQuality, participant: Participant) => {
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      const isRecognized =
+        participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX) || participant.identity.startsWith(LEARNER_IDENTITY_PREFIX);
+      if (!isRecognized) return;
       const label = CONNECTION_QUALITY_LABEL[quality];
       if (label) connectionQualityByIdentity.set(participant.identity, label);
     });
@@ -355,16 +384,10 @@ export default defineAgent({
         );
         return;
       }
-      // Facilitator-only, deliberately: see this file's own top-level doc comment.
-      // A learner's mic is captured by the browser-based fallback instead
-      // (LiveCaptionStream/`/api/captions/stream`) — subscribing to it here too
-      // used to run both pipelines at once for the same learner utterance,
-      // producing duplicate, independently-translated transcript segments with
-      // no de-duplication anywhere in the caption pipeline.
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
-        console.log(`[caption-agent] skipping non-facilitator identity "${participant.identity}" in session ${sessionId}.`);
-        return;
-      }
+      // Every other participant (neither `facilitator:` nor `learner:` prefixed) is
+      // rejected further down by `resolveSpeakerContext` returning `null` inside
+      // `streamParticipantAudio` — there's no third identity shape today, so nothing
+      // else needs filtering here.
       const audioTrack = track as RemoteAudioTrack;
       console.log(`[caption-agent] capturing audio for session ${sessionId} (${participant.identity})`);
       // streamParticipantAudio wraps its own body in try/finally once inside the
@@ -417,23 +440,24 @@ export default defineAgent({
       // the same way so a screen-share-audio unsubscribe never clears the mic's guard.
       if (publication.kind !== TrackKind.KIND_AUDIO) return;
       if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });
     // Mirrors streamParticipantAudio's own `finally`-block cleanup, but for the case
     // that loop never gets to run its `finally` at all: a crash, redeploy, or
-    // LiveKit-initiated room disconnect kills this worker process while a track is
-    // still actively streaming. Without this, `captionAgentActive` is left stuck
-    // `true` in the DB forever, permanently hiding the "Start live captions from mic"
-    // fallback for this session (see server.ts's upgrade-handler check). `@livekit/agents`
-    // runs every `addShutdownCallback` on both a room disconnect and a graceful job
-    // shutdown (see job_proc_lazy_main.js), so this one hook covers both. Only a
-    // facilitator track still being active matters here — same reasoning as the
-    // per-stream `finally` block above, since only facilitator identities ever set
-    // this flag true in the first place.
+    // LiveKit-initiated room disconnect kills this worker process while tracks are
+    // still actively streaming. Without this, the DB-backed capturing flags are left
+    // stuck `true` forever, permanently hiding the "Start live captions from mic"
+    // fallback for whichever speakers were mid-capture (see server.ts's/
+    // captions-socket.ts's own duplicate-guard checks). `@livekit/agents` runs every
+    // `addShutdownCallback` on both a room disconnect and a graceful job shutdown (see
+    // job_proc_lazy_main.js), so this one hook covers both — clears the facilitator's
+    // flag if any facilitator-prefixed identity is still active, and every still-active
+    // learner's own flag independently.
     ctx.addShutdownCallback(async () => {
       const facilitatorActive = [...activeTracks.keys()].some((id) => id.startsWith(FACILITATOR_IDENTITY_PREFIX));
       if (facilitatorActive) await clearCaptionAgentCapturing(sessionId);
+      const stillActiveLearnerIds = [...activeTracks.keys()].map(participantIdFromLearnerIdentity).filter((id): id is string => id !== null);
+      await Promise.all(stillActiveLearnerIds.map((id) => clearLearnerCaptionAgentCapturing(id)));
     });
   },
 });

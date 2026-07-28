@@ -233,19 +233,30 @@ async function main() {
       throw new Error("Start the session before streaming captions.");
     }
     // Authoritative server-side backstop against a duplicate STT pipeline: the
-    // caption-agent worker (caption-agent.ts) auto-subscribes to the facilitator's
-    // mic as soon as it's unmuted and sets `captionAgentActive` once it starts
-    // streaming. The client-side guard for this (LiveCaptionStream.tsx hiding its
-    // "Start" button while `agentCapturing` is true) only learns about that via
-    // SessionAutoRefresh's 2s poll, so a facilitator can still click "Start" in the
-    // race window right after the agent begins capturing but before the next poll
-    // lands — without this check, that would open a second, independent Deepgram
-    // stream for the same audio and duplicate/interleave every caption line
-    // (the same class of bug issue #95 fixed client-side, now backstopped here too).
-    // Facilitator-only: `captionAgentActive` has nothing to say about a learner's
-    // audio (see `captions-socket.ts`'s `CaptionSpeaker` doc comment).
-    if (speaker.role === "facilitator" && found.captionAgentActive) {
-      throw new Error("Captions are already being captured automatically for this session.");
+    // caption-agent worker (caption-agent.ts) auto-subscribes to this same speaker's
+    // mic as soon as it's unmuted and sets a DB-backed capturing flag once it starts
+    // streaming — `Session.captionAgentActive` for the facilitator,
+    // `SessionParticipant.agentCapturing` for a learner (per-participant, since more
+    // than one learner can be in the room at once). The client-side guard for this
+    // (LiveCaptionStream.tsx hiding its "Start" button while `agentCapturing` is true)
+    // only learns about that via SessionAutoRefresh's 2s poll, so either role can still
+    // click "Start" in the race window right after the agent begins capturing but
+    // before the next poll lands — without this check, that would open a second,
+    // independent Deepgram stream for the same audio and duplicate/interleave every
+    // caption line (the same class of bug issue #95 fixed client-side, now
+    // backstopped here too).
+    if (speaker.role === "facilitator") {
+      if (found.captionAgentActive) {
+        throw new Error("Captions are already being captured automatically for this session.");
+      }
+    } else {
+      const participant = await prisma.sessionParticipant.findUnique({
+        where: { id: speaker.participantId },
+        select: { agentCapturing: true },
+      });
+      if (participant?.agentCapturing) {
+        throw new Error("Captions are already being captured automatically for this session.");
+      }
     }
 
     // Resolved here (this function is already async) rather than inside

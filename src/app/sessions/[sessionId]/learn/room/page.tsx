@@ -95,13 +95,12 @@ export default async function LearnerRoomPage({
   );
   const captionsHeader = (
     <>
-      {/* No `agentCapturing` prop, deliberately — unlike the facilitator, a learner's mic
-          is never subscribed to by the server-side caption-agent worker at all (see that
-          file's own top-level doc comment for why: it used to, and produced duplicate
-          transcript segments alongside this same browser-based capture with no
-          de-duplication anywhere in the pipeline). This is always the sole capture path
-          for a learner's own speech, so the Start/Stop control always applies. */}
-      <LiveCaptionStream sessionId={participant.session.id} lang={lang} />
+      {/* `agentCapturing` is this learner's own `SessionParticipant.agentCapturing` —
+          the caption-agent worker (caption-agent.ts) now subscribes to learner mics
+          too, per-participant, so this hides the Start/Stop control here exactly when
+          that worker is already capturing this learner (see caption-agent.ts's
+          top-of-file doc comment for the de-dup story). */}
+      <LiveCaptionStream sessionId={participant.session.id} lang={lang} agentCapturing={participant.agentCapturing} />
       {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
           segments={participant.session.transcript.map((segment) => ({

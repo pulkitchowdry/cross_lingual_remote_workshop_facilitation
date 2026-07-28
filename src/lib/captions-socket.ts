@@ -18,9 +18,7 @@ import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 export type CaptionSpeaker = { role: "facilitator" } | { role: "learner"; participantId: string };
 
 /** How often to re-check whether the caption-agent worker has started capturing this
- * same facilitator's mic elsewhere — see the `duplicateGuardInterval` comment below.
- * Facilitator-only: `captionAgentActive` is scoped to the facilitator's own audio (see
- * caption-agent.ts), so it has nothing to say about a learner's browser-mic socket. */
+ * same speaker's mic elsewhere — see the `duplicateGuardInterval` comment below. */
 const DUPLICATE_CAPTURE_CHECK_MS = 3_000;
 
 /** RFC 6455 caps a close frame's reason at 123 bytes. `ws`'s own `close()`
@@ -63,32 +61,30 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
   // server-captured facilitator path.
   let latestNetworkQuality: string | undefined;
 
-  // server.ts's upgrade handler only checks `captionAgentActive` once, at handshake
-  // time. If the LiveKit caption-agent worker starts capturing this same
-  // facilitator's mic while this browser-mic socket is already open (a real race:
-  // click "Start" here, then unmute the ControlBar mic moments later), both
-  // pipelines run and duplicate every caption until the *client's own* ~2s poll
-  // notices `captionAgentActive` flipped true and stops itself
-  // (LiveCaptionStream.tsx) — a window that can stretch further if the tab is
-  // backgrounded and its interval gets throttled. Re-checking here closes the
-  // redundant stream promptly and authoritatively from the server side too,
-  // instead of relying solely on that client-side polling. Facilitator-only (see
-  // `CaptionSpeaker`'s doc comment) — a learner's socket has no such duplicate risk
-  // to guard against today, since `caption-agent.ts` isn't reachably capturing
-  // anyone's audio in the environment this fallback exists for.
-  const duplicateGuardInterval =
-    speaker.role === "facilitator"
-      ? setInterval(() => {
-          void prisma.session
-            .findUnique({ where: { id: session.id }, select: { captionAgentActive: true } })
-            .then((current) => {
-              if (current?.captionAgentActive) {
-                closeWithReason(ws, 1011, "Captions are already being captured automatically for this session.");
-              }
-            })
-            .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
-        }, DUPLICATE_CAPTURE_CHECK_MS)
-      : null;
+  // server.ts's upgrade handler only checks the DB-backed capturing flag once, at
+  // handshake time. If the LiveKit caption-agent worker starts capturing this same
+  // speaker's mic while this browser-mic socket is already open (a real race: click
+  // "Start" here, then unmute the ControlBar mic moments later), both pipelines run
+  // and duplicate every caption until the *client's own* ~2s poll notices
+  // `agentCapturing` flipped true and stops itself (LiveCaptionStream.tsx) — a window
+  // that can stretch further if the tab is backgrounded and its interval gets
+  // throttled. Re-checking here closes the redundant stream promptly and
+  // authoritatively from the server side too, instead of relying solely on that
+  // client-side polling. Covers both roles: `Session.captionAgentActive` for the
+  // facilitator, `SessionParticipant.agentCapturing` for a learner.
+  const duplicateGuardInterval = setInterval(() => {
+    const capturingCheck =
+      speaker.role === "facilitator"
+        ? prisma.session.findUnique({ where: { id: session.id }, select: { captionAgentActive: true } }).then((current) => current?.captionAgentActive)
+        : prisma.sessionParticipant.findUnique({ where: { id: speaker.participantId }, select: { agentCapturing: true } }).then((current) => current?.agentCapturing);
+    void capturingCheck
+      .then((capturing) => {
+        if (capturing) {
+          closeWithReason(ws, 1011, "Captions are already being captured automatically for this session.");
+        }
+      })
+      .catch((error) => console.error(`[captions/stream] duplicate-capture check failed for ${session.id}:`, error));
+  }, DUPLICATE_CAPTURE_CHECK_MS);
 
   // openStream() can throw synchronously (e.g. a strict-privacy session with no
   // local-inference tier configured — see its own "cloud fallback is disabled"
@@ -164,7 +160,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
       },
     });
   } catch (error) {
-    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
+    clearInterval(duplicateGuardInterval);
     throw error;
   }
 
@@ -189,7 +185,7 @@ export function attachCaptionSocket(ws: WebSocket, session: Session, speaker: Ca
     sttStream.sendAudio(new Uint8Array(data as Buffer));
   });
   const releaseResources = () => {
-    if (duplicateGuardInterval) clearInterval(duplicateGuardInterval);
+    clearInterval(duplicateGuardInterval);
     sttStream.close();
   };
   ws.on("close", releaseResources);

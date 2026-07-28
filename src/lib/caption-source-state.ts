@@ -35,3 +35,29 @@ export async function clearCaptionAgentCapturing(sessionId: string): Promise<voi
     console.error(`[caption-source-state] failed to clear session ${sessionId} as capturing:`, error);
   }
 }
+
+/**
+ * Per-learner equivalent of `markCaptionAgentCapturing`/`clearCaptionAgentCapturing`,
+ * backed by `SessionParticipant.agentCapturing` rather than the session-wide
+ * `captionAgentActive` — more than one learner can be in a room at once, so a single
+ * per-session boolean can't say *which* learner the agent is currently capturing. Same
+ * cross-process reasoning applies: `caption-agent.ts` calls these from its own forked
+ * job process, and `LiveCaptionStream.tsx`'s server-rendered `agentCapturing` prop (and
+ * `server.ts`/`captions-socket.ts`'s own duplicate-guard checks) read the result from the
+ * main process, so only the database bridges the two.
+ */
+export async function markLearnerCaptionAgentCapturing(participantId: string): Promise<void> {
+  try {
+    await prisma.sessionParticipant.update({ where: { id: participantId }, data: { agentCapturing: true } });
+  } catch (error) {
+    console.error(`[caption-source-state] failed to mark participant ${participantId} as capturing:`, error);
+  }
+}
+
+export async function clearLearnerCaptionAgentCapturing(participantId: string): Promise<void> {
+  try {
+    await prisma.sessionParticipant.update({ where: { id: participantId }, data: { agentCapturing: false } });
+  } catch (error) {
+    console.error(`[caption-source-state] failed to clear participant ${participantId} as capturing:`, error);
+  }
+}

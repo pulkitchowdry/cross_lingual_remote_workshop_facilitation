@@ -136,6 +136,16 @@ model SessionParticipant {
    * cookie.
    */
   accessTokenHash   String?         @unique
+  /**
+   * Mirrors `Session.captionAgentActive` but per-learner: whether the
+   * server-side caption-agent worker (caption-agent.ts) is currently
+   * streaming *this* participant's mic, so the browser-mic WebSocket
+   * fallback (LiveCaptionStream.tsx) knows to stand down for this specific
+   * learner instead of running both pipelines for the same speech. A single
+   * per-session boolean (like the facilitator's) can't represent this since
+   * more than one learner can be in a room at once.
+   */
+  agentCapturing    Boolean         @default(false)
   session           Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 

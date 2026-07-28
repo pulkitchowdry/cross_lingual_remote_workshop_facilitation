@@ -59,6 +59,24 @@ facilitator only, same as originally.
 should no longer be, as of `388194a` — the duplicate path was removed rather
 than patched with another guard.
 
+**Revisited (2026-07-28): learner captions re-added to `caption-agent.ts`, this
+time with a per-participant guard.** Making the browser-mic WebSocket the
+*sole* learner path also meant learners had no redundancy: unlike the
+facilitator (server-side agent + browser fallback), a learner's captions
+depended entirely on that one WebSocket surviving — see root cause #9 below,
+which kills that exact connection for everyone, but only the learner had no
+fallback to fall back to. This asymmetry was the actual explanation for
+"facilitator→learner captions work, learner→facilitator don't."
+
+The fix this time is per-participant de-dup instead of removing the path:
+`SessionParticipant.agentCapturing` (new column, unlike the facilitator's
+single per-session `Session.captionAgentActive`) lets the agent flag exactly
+which learner it's currently capturing, so `LiveCaptionStream.tsx`/
+`captions-socket.ts` stand down only for that specific learner rather than
+needing an all-or-nothing guard. See `caption-agent.ts`'s top-of-file doc
+comment and `markLearnerCaptionAgentCapturing` in `caption-source-state.ts`
+for the mechanism.
+
 ### 2. Ducked (muted) raw audio randomly becoming audible again
 
 **Root cause:** `DuckedRoomAudio.tsx` mutes a differently-languaged speaker's
