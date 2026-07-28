@@ -4,6 +4,7 @@ buffering design (docs/TRANSLATION_ARCHITECTURE.md Part 5) — this service has
 no notion of streaming or segment timing, only "these bytes -> this text"."""
 
 import io
+import re
 import threading
 
 from faster_whisper import WhisperModel
@@ -26,6 +27,26 @@ _model_instance: WhisperModel | None = None
 # `NO_SPEECH_THRESHOLD` is a second, defense-in-depth check against faster-whisper's
 # own per-segment `no_speech_prob` for whatever borderline audio still gets through.
 NO_SPEECH_THRESHOLD = 0.6
+
+# Second, independent defense layer: faster-whisper's own `no_speech_prob` is
+# a poor signal for this specific failure mode. On silence/background noise
+# Whisper doesn't just hallucinate low-confidence garbage — it frequently
+# hallucinates stock filler phrases with HIGH confidence (low no_speech_prob),
+# because to the model these look like plausible, fluent speech. "You" (and
+# its close cousins) are the single most common of these — see e.g.
+# openai/whisper#679. NO_SPEECH_THRESHOLD alone doesn't catch them, so this
+# blocks a segment's text from surviving on its own when the *entire*
+# finalized segment (not a substring — a real utterance containing "you"
+# mid-sentence is unaffected) is exactly one of these known hallucinations.
+HALLUCINATED_PHRASES = {
+    "you",
+    "thank you",
+    "thanks for watching",
+    "thank you for watching",
+    "please subscribe",
+    "bye",
+    "bye bye",
+}
 
 
 def _model() -> WhisperModel:
@@ -54,5 +75,12 @@ def transcribe(audio_bytes: bytes, expected_language: str) -> str:
         vad_filter=True,
     )
     return " ".join(
-        segment.text.strip() for segment in segments if segment.no_speech_prob < NO_SPEECH_THRESHOLD
+        segment.text.strip()
+        for segment in segments
+        if segment.no_speech_prob < NO_SPEECH_THRESHOLD and not _is_hallucinated(segment.text)
     ).strip()
+
+
+def _is_hallucinated(text: str) -> bool:
+    normalized = re.sub(r"[^\w\s]", "", text).strip().lower()
+    return normalized in HALLUCINATED_PHRASES

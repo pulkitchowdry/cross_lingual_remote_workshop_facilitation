@@ -258,8 +258,13 @@ export function LiveCaptionStream({
   if (agentCapturing) {
     return (
       <div className="flex items-center gap-2">
+        {/* No `shrink-0` here (unlike the `isStreaming` badge below) — that badge's
+            short fixed copy never needs to give up space to a sibling in its row, but
+            this one's full-sentence copy is wider than the sidebar itself; forcing it
+            to hold its intrinsic width instead of shrinking/wrapping pushed the tail
+            of the sentence off the edge of the panel with nothing to scroll to it. */}
         <span
-          className="font-data animate-fade-in shrink-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider"
+          className="font-data animate-fade-in min-w-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider whitespace-normal"
           style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
           role="status"
         >

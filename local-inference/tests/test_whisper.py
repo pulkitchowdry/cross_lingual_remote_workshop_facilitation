@@ -29,3 +29,28 @@ def test_transcribe_enables_vad_and_drops_high_no_speech_segments(monkeypatch):
 
     assert text == "hello world"
     assert captured_kwargs["vad_filter"] is True
+
+
+def test_transcribe_drops_confident_hallucinated_filler(monkeypatch):
+    """"You" (and similar stock filler) is Whisper's most common hallucination on
+    silence/background noise, and — unlike "Thank you for watching" above — it's
+    typically emitted with a LOW no_speech_prob, i.e. the model is confident about
+    it. The no_speech_prob check alone lets this through; the text-based
+    HALLUCINATED_PHRASES check is the second, independent layer that catches it.
+    A real segment merely containing "you" mid-sentence must survive untouched.
+    """
+
+    class _FakeModel:
+        def transcribe(self, _audio, **_kwargs):
+            segments = [
+                SimpleNamespace(text=" You", no_speech_prob=0.05),
+                SimpleNamespace(text="Thank you.", no_speech_prob=0.1),
+                SimpleNamespace(text=" I think you understand", no_speech_prob=0.1),
+            ]
+            return segments, SimpleNamespace()
+
+    monkeypatch.setattr(whisper, "_model", lambda: _FakeModel())
+
+    text = whisper.transcribe(b"fake-audio", "en")
+
+    assert text == "I think you understand"
