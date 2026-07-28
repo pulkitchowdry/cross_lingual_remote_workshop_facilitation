@@ -15,12 +15,15 @@ import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
+import { agentCaptures, captionCaptureMode } from "@/lib/caption-capture-mode";
+import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import { speechToTextProvider } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
 
 const WORKSHOP_ROOM_PREFIX = "workshop-";
 const FACILITATOR_IDENTITY_PREFIX = "facilitator:";
+const LEARNER_IDENTITY_PREFIX = "learner:";
 /**
  * Rate the agent asks LiveKit to resample a participant's track to before
  * handing frames to Deepgram — matches the `linear16` PCM framing passed to
@@ -46,12 +49,16 @@ function sessionIdFromRoomName(roomName: string | undefined): string | null {
 }
 
 /**
- * Resolves what language the facilitator's audio should be attributed to —
- * always the session's own `sourceLanguage` (no `SessionParticipant` row
- * exists for the facilitator). Facilitator-only, deliberately: see this
- * file's own top-level doc comment for why learner tracks are never
- * subscribed to here in the first place. Returns `null` for an identity that
- * isn't a recognized facilitator one.
+ * Resolves what language a participant's audio should be attributed to: the session's own
+ * `sourceLanguage` for the facilitator (no `SessionParticipant` row exists for them), or
+ * the learner's own `preferredLanguage` via the same `resolveLearnerSpeaker` the browser-WS
+ * path uses — shared deliberately, so both capture paths label a speaker identically.
+ *
+ * Returns `null` for an identity this worker isn't supposed to capture (a learner under
+ * `agent-facilitator`/`browser-only` mode) or can't resolve, and callers skip rather than
+ * guess. The learner branch only ever runs under `agent-all`, where the browser WebSocket
+ * is disabled for everyone — see `caption-capture-mode.ts` for why that's the one
+ * arrangement in which capturing a learner here can't duplicate captions.
  */
 async function resolveSpeakerContext(
   session: { id: string; sourceLanguage: string; facilitator: { displayName: string } },
@@ -60,7 +67,25 @@ async function resolveSpeakerContext(
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
     return { language: session.sourceLanguage as SupportedLanguage, speakerId: `${session.facilitator.displayName} (Facilitator)` };
   }
+  if (identity.startsWith(LEARNER_IDENTITY_PREFIX) && agentCaptures("learner")) {
+    // The identity suffix is the learner's `SessionParticipant.id` — the same key
+    // `resolveLearnerSpeaker` expects (see room.ts, which mints these identities).
+    return resolveLearnerSpeaker(session.id, identity.slice(LEARNER_IDENTITY_PREFIX.length));
+  }
   return null;
+}
+
+/**
+ * Whether this worker should capture the given participant identity, per the deployment's
+ * `CAPTION_CAPTURE_MODE`. Centralized so the four places that used to hard-code
+ * `startsWith(FACILITATOR_IDENTITY_PREFIX)` can't drift apart — one of them silently not
+ * matching the others is how a track gets captured but never released, or released but
+ * never captured.
+ */
+function shouldCaptureIdentity(identity: string): boolean {
+  if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return agentCaptures("facilitator");
+  if (identity.startsWith(LEARNER_IDENTITY_PREFIX)) return agentCaptures("learner");
+  return false;
 }
 
 /**
@@ -320,7 +345,7 @@ export default defineAgent({
     // subscribe time (see streamParticipantAudio's own doc comment on the param).
     const connectionQualityByIdentity = new Map<string, string>();
     ctx.room.on(RoomEvent.ConnectionQualityChanged, (quality: ConnectionQuality, participant: Participant) => {
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      if (!shouldCaptureIdentity(participant.identity)) return;
       const label = CONNECTION_QUALITY_LABEL[quality];
       if (label) connectionQualityByIdentity.set(participant.identity, label);
     });
@@ -355,14 +380,15 @@ export default defineAgent({
         );
         return;
       }
-      // Facilitator-only, deliberately: see this file's own top-level doc comment.
-      // A learner's mic is captured by the browser-based fallback instead
-      // (LiveCaptionStream/`/api/captions/stream`) — subscribing to it here too
-      // used to run both pipelines at once for the same learner utterance,
-      // producing duplicate, independently-translated transcript segments with
-      // no de-duplication anywhere in the caption pipeline.
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
-        console.log(`[caption-agent] skipping non-facilitator identity "${participant.identity}" in session ${sessionId}.`);
+      // Whether this identity is ours to capture is a deployment decision, not a fixed
+      // role split — see caption-capture-mode.ts. Under the default
+      // (`agent-facilitator`) this still skips every learner, exactly as before, because a
+      // learner's mic is captured by the browser WebSocket instead and running both
+      // pipelines for one utterance duplicates every caption line (no de-duplication
+      // exists anywhere downstream). Under `agent-all` that WebSocket is disabled for
+      // every role, so capturing learners here is the only path rather than a second one.
+      if (!shouldCaptureIdentity(participant.identity)) {
+        console.log(`[caption-agent] not capturing "${participant.identity}" in session ${sessionId} (CAPTION_CAPTURE_MODE=${captionCaptureMode()}).`);
         return;
       }
       const audioTrack = track as RemoteAudioTrack;
@@ -417,7 +443,11 @@ export default defineAgent({
       // the same way so a screen-share-audio unsubscribe never clears the mic's guard.
       if (publication.kind !== TrackKind.KIND_AUDIO) return;
       if (publication.source !== TrackSource.SOURCE_MICROPHONE) return;
-      if (!participant.identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) return;
+      // Must use the same predicate as the subscribe handler: if this one were narrower,
+      // a captured learner's `activeTracks` slot would never be freed and their captions
+      // would die permanently on the first reconnect (the duplicate-subscription guard in
+      // `streamParticipantAudio` would refuse the new track forever).
+      if (!shouldCaptureIdentity(participant.identity)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
     });
     // Mirrors streamParticipantAudio's own `finally`-block cleanup, but for the case

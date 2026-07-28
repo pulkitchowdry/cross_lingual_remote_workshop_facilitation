@@ -3,6 +3,7 @@ import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { agentCaptureEnabled, browserCaptureDisabled } from "@/lib/caption-capture-mode";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { cookies, headers } from "next/headers";
@@ -87,7 +88,13 @@ export default async function FacilitatorRoomPage({
   );
   const captionsHeader = (
     <>
-      <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={session.captionAgentActive} />
+      {/* Two independent reasons the agent may own this audio: it has actually started
+          capturing (`captionAgentActive`, set by the worker at runtime), or this
+          deployment assigns the facilitator to the agent unconditionally
+          (`CAPTION_CAPTURE_MODE` — see caption-capture-mode.ts). The static one matters
+          before the worker's job dispatch has landed, which is exactly the window where
+          this component would otherwise open a competing stream. */}
+      <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={browserCaptureDisabled("facilitator") || (agentCaptureEnabled() && session.captionAgentActive)} />
       {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
           segments={session.transcript.map((segment) => ({

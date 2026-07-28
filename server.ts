@@ -33,6 +33,7 @@ async function main() {
   const { SessionStatus, ParticipantRole } = await import("@/generated/prisma/client");
   const { facilitatorCookieName, learnerCookieName, hashToken } = await import("@/lib/session-security");
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
+  const { agentCaptureEnabled, browserCaptureDisabled } = await import("@/lib/caption-capture-mode");
   const { AgentServer, ServerOptions, initializeLogger } = await import("@livekit/agents");
 
   const dev = process.env.NODE_ENV !== "production";
@@ -244,8 +245,31 @@ async function main() {
     // (the same class of bug issue #95 fixed client-side, now backstopped here too).
     // Facilitator-only: `captionAgentActive` has nothing to say about a learner's
     // audio (see `captions-socket.ts`'s `CaptionSpeaker` doc comment).
-    if (speaker.role === "facilitator" && found.captionAgentActive) {
+    // `agentCaptureEnabled()` qualifies the flag deliberately. `captionAgentActive` is only
+    // ever cleared by the worker itself (`clearCaptionAgentCapturing`, from its per-stream
+    // `finally` and its shutdown callback), so a worker killed without draining — a Railway
+    // redeploy that SIGKILLs past the drain window, an OOM, a crash — leaves it stuck `true`
+    // in Postgres with nothing able to reset it. If the deployment then switches to
+    // `browser-only` (the documented one-variable rollback), no worker is ever started, so
+    // nothing can clear the flag and this check would refuse the facilitator's socket for the
+    // rest of the session — locking them out of captions in the very mode that exists to give
+    // them one. A stale flag from a worker this deployment doesn't run says nothing about
+    // whether anything is capturing, so it must not gate anything.
+    if (speaker.role === "facilitator" && agentCaptureEnabled() && found.captionAgentActive) {
       throw new Error("Captions are already being captured automatically for this session.");
+    }
+    // Authoritative counterpart to the client-side gating in the room pages: under
+    // `agent-all` the LiveKit worker owns every role's audio, so this socket must never
+    // carry any. Unlike the `captionAgentActive` check above — which is facilitator-scoped
+    // and only true once the worker has actually begun capturing — this is a static
+    // deployment fact, so it holds for learners too and needs no per-participant state.
+    // Without it, a stale browser tab (or a client that ignores the prop) could still open
+    // a second pipeline for a speaker the agent is already transcribing, which is the
+    // duplicate-caption bug this app has hit repeatedly. Scoped to `agent-all` only — see
+    // `browserCaptureDisabled`'s doc comment for why the facilitator's fallback must survive
+    // in the default mode.
+    if (browserCaptureDisabled(speaker.role)) {
+      throw new Error("Captions for this session are captured automatically; the browser microphone stream is disabled.");
     }
 
     // Resolved here (this function is already async) rather than inside
@@ -455,6 +479,16 @@ async function startCaptionAgent({
 }) {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
+  const { agentCaptureEnabled: workerEnabled, captionCaptureMode } = await import("@/lib/caption-capture-mode");
+  // The kill switch. Beyond routing around a broken transport, not starting this worker
+  // takes a whole class of failure out of the web process: it no longer competes for the
+  // CPU budget LiveKit's own default `load_fnc` measures (Next.js request traffic makes
+  // the worker refuse jobs), no longer wants a 10-minute SIGTERM drain from a server that
+  // wants seconds, and can no longer write `captionAgentActive` from a forked subprocess.
+  if (!workerEnabled()) {
+    console.log(`[caption-agent] CAPTION_CAPTURE_MODE=${captionCaptureMode()}; caption agent worker not started (browser microphone stream carries every role).`);
+    return;
+  }
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !speechToTextProvider.isConfigured) {
     console.warn("[caption-agent] LiveKit credentials or a speech-to-text tier (STT_API_KEY / local-inference) are not configured; caption agent worker not started.");
     return;

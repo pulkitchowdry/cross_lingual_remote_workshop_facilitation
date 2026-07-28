@@ -358,6 +358,13 @@ before and after**, since it is the one part of this that reproduces off Railway
 With B fixed, A degrades to what it should always have been: a transient reconnect that
 either recovers or reports a clear error, instead of poisoning the process.
 
+**Before reaching for an infra change:** A is often read as "LiveKit is broken on
+Railway", which it isn't — LiveKit is LiveKit Cloud, the browser reaches it directly, and
+caption *delivery* already rides LiveKit's data channel. The only thing on Railway's edge
+is the browser→server audio upload. See
+[`CAPTION_TRANSPORT_HOSTING_DECISION.md`](CAPTION_TRANSPORT_HOSTING_DECISION.md) for what
+is hosted where and the cheapest-first fix ladder.
+
 ## Still open
 ### Safari / iPhone: live captions never connect
 

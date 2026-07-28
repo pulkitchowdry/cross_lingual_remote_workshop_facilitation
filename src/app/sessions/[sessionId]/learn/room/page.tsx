@@ -3,6 +3,7 @@ import { LiveSessionRoom } from "@/components/LiveSessionRoom";
 import { CaptionPublishForm } from "@/components/CaptionPublishForm";
 import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { LiveCaptionStream } from "@/components/LiveCaptionStream";
+import { browserCaptureDisabled } from "@/lib/caption-capture-mode";
 import { SessionAutoRefresh } from "@/components/SessionAutoRefresh";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { notFound, redirect } from "next/navigation";
@@ -95,13 +96,16 @@ export default async function LearnerRoomPage({
   );
   const captionsHeader = (
     <>
-      {/* No `agentCapturing` prop, deliberately — unlike the facilitator, a learner's mic
-          is never subscribed to by the server-side caption-agent worker at all (see that
-          file's own top-level doc comment for why: it used to, and produced duplicate
-          transcript segments alongside this same browser-based capture with no
-          de-duplication anywhere in the pipeline). This is always the sole capture path
-          for a learner's own speech, so the Start/Stop control always applies. */}
-      <LiveCaptionStream sessionId={participant.session.id} lang={lang} />
+      {/* Whether a learner's mic is captured here or server-side by the caption-agent
+          worker is a deployment decision (`CAPTION_CAPTURE_MODE` — see
+          caption-capture-mode.ts), not a fixed role split. Under the default
+          (`agent-facilitator`) this browser stream is still the sole path for a learner,
+          exactly as before. Under `agent-all` the agent owns it, and passing
+          `agentCapturing` keeps this component from opening a second, duplicating
+          pipeline — the same prop the facilitator page has always used for the same
+          reason. `server.ts` enforces the same rule authoritatively, so a stale tab
+          can't bypass it. */}
+      <LiveCaptionStream sessionId={participant.session.id} lang={lang} agentCapturing={browserCaptureDisabled("learner")} />
       {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
           segments={participant.session.transcript.map((segment) => ({
