@@ -104,6 +104,7 @@ export interface Dictionary {
     // disables the button instead of submitting `startSession` twice.
     startingSession: string;
     endSession: string;
+    endingSession: string;
     confirmEndSessionTitle: string;
     confirmEndSessionBody: string;
     logOut: string;
@@ -572,6 +573,7 @@ const en: Dictionary = {
     startSession: "Start session",
     startingSession: "Starting…",
     endSession: "End session",
+    endingSession: "Ending…",
     confirmEndSessionTitle: "End this session?",
     confirmEndSessionBody: "Learners will be disconnected and captions will stop. This can't be undone.",
     logOut: "Log out",
@@ -974,6 +976,7 @@ const zh: Dictionary = {
     startSession: "开始场次",
     startingSession: "正在开始……",
     endSession: "结束场次",
+    endingSession: "正在结束……",
     confirmEndSessionTitle: "确定要结束此场次吗？",
     confirmEndSessionBody: "学员将被断开连接，字幕也会停止。此操作无法撤销。",
     logOut: "退出登录",
@@ -1380,6 +1383,7 @@ const es: Dictionary = {
     startSession: "Iniciar sesión",
     startingSession: "Iniciando…",
     endSession: "Finalizar sesión",
+    endingSession: "Finalizando…",
     confirmEndSessionTitle: "¿Finalizar esta sesión?",
     confirmEndSessionBody: "Los alumnos se desconectarán y los subtítulos se detendrán. Esta acción no se puede deshacer.",
     logOut: "Cerrar sesión",

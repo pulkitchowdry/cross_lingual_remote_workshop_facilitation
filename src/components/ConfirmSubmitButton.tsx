@@ -36,6 +36,7 @@ export function ConfirmSubmitButton({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const submittedRef = useRef(false);
   const { pending } = useFormStatus();
   // Two of these can render on one page (facilitator/page.tsx's End Session AND
   // Revoke Invite Link) — a stable-but-unique id per instance so aria-labelledby/
@@ -44,6 +45,8 @@ export function ConfirmSubmitButton({
   const bodyId = useId();
 
   const confirm = () => {
+    if (pending || submittedRef.current) return;
+    submittedRef.current = true;
     dialogRef.current?.close();
     buttonRef.current?.closest("form")?.requestSubmit();
   };
@@ -61,7 +64,11 @@ export function ConfirmSubmitButton({
   // without this, a keyboard user who just confirmed "End session" landed on <body> with
   // no way back in except tabbing from the very top of the page.
   useEffect(() => {
-    if (pending) document.getElementById("main-content")?.focus();
+    if (pending) {
+      document.getElementById("main-content")?.focus();
+      return;
+    }
+    submittedRef.current = false;
   }, [pending]);
 
   return (
@@ -99,15 +106,19 @@ export function ConfirmSubmitButton({
           <div className="flex justify-end gap-2">
             <button
               type="button"
+              disabled={pending}
+              aria-disabled={pending}
               onClick={() => dialogRef.current?.close()}
-              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:bg-background"
+              className="font-data rounded-md border border-border-strong px-4 py-2 text-xs font-medium uppercase tracking-wider text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
             >
               {cancelLabel}
             </button>
             <button
               type="button"
+              disabled={pending}
+              aria-disabled={pending}
               onClick={confirm}
-              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white"
+              className="font-data rounded-md px-4 py-2 text-xs font-medium uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-60"
               // --tick-low/--accent are tuned for use as text against a dark surface, not
               // as a solid fill behind white button-label text (fails WCAG AA there) —
               // --danger-fill/--accent-fill are the button-fill-safe equivalents.

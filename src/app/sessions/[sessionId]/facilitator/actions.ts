@@ -63,33 +63,56 @@ export async function startSession(sessionId: string) {
   redirect(`/sessions/${sessionId}/facilitator/room`);
 }
 
-export async function endSession(sessionId: string) {
+export async function endSession(
+  sessionId: string,
+  _prevState: FormActionResult,
+  _formData: FormData,
+): Promise<FormActionResult> {
+  void _prevState;
+  void _formData;
+
   if (!(await hasFacilitatorAccess(sessionId))) redirect("/setup");
 
-  // Guarded to only leave LIVE — mirrors startSession's own DRAFT-only guard above.
-  // Without this, a stale second tab's "End session" button (or a resubmitted form)
-  // could re-run this on an already-ENDED session: silently resetting `endedAt` to now
-  // (extending the retention deadline indefinitely, see startSession's doc comment on
-  // why that matters) and re-triggering the paid Claude summary call below for no
-  // reason, non-deterministically overwriting whatever summary already finished
-  // generating from the first, legitimate end.
-  const { count } = await prisma.session.updateMany({
-    where: { id: sessionId, status: SessionStatus.LIVE },
-    data: { status: SessionStatus.ENDED, endedAt: new Date() },
-  });
-  if (count === 0) return;
+  try {
+    // Guarded to only leave LIVE — mirrors startSession's own DRAFT-only guard above.
+    // Without this, a stale second tab's "End session" button (or a resubmitted form)
+    // could re-run this on an already-ENDED session: silently resetting `endedAt` to now
+    // (extending the retention deadline indefinitely, see startSession's doc comment on
+    // why that matters) and re-triggering the paid Claude summary call below for no
+    // reason, non-deterministically overwriting whatever summary already finished
+    // generating from the first, legitimate end.
+    const { count } = await prisma.session.updateMany({
+      where: { id: sessionId, status: SessionStatus.LIVE },
+      data: { status: SessionStatus.ENDED, endedAt: new Date() },
+    });
+    if (count === 0) {
+      const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+      return {
+        error:
+          session?.status === SessionStatus.ENDED
+            ? "This session has already ended. Refresh the page to view its results."
+            : "This session is not live anymore. Refresh the page and try again.",
+      };
+    }
 
-  const session = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
-  // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
-  // process stays alive after the response is sent, so a plain unawaited call is enough
-  // to let the summary finish generating without making "End session" wait on a Claude
-  // call. POST_SESSION_INSIGHT_GRACE_MS's short post-end poll (facilitator/page.tsx)
-  // is what picks the result up once it lands.
-  void generateAndPersistSessionSummary(session).catch((error) => {
-    console.error("generateAndPersistSessionSummary failed", error);
-  });
-  revalidatePath(`/sessions/${sessionId}/facilitator`);
-  revalidatePath(`/sessions/${sessionId}/learn`);
+    const session = await prisma.session.findUniqueOrThrow({ where: { id: sessionId } });
+    // Fire-and-forget, same pattern as generateSessionInsights (see captions.ts) — this
+    // process stays alive after the response is sent, so a plain unawaited call is enough
+    // to let the summary finish generating without making "End session" wait on a Claude
+    // call. POST_SESSION_INSIGHT_GRACE_MS's short post-end poll (facilitator/page.tsx)
+    // is what picks the result up once it lands.
+    void generateAndPersistSessionSummary(session).catch((error) => {
+      console.error("generateAndPersistSessionSummary failed", error);
+    });
+    revalidatePath(`/sessions/${sessionId}/facilitator`);
+    revalidatePath(`/sessions/${sessionId}/facilitator/results`);
+    revalidatePath(`/sessions/${sessionId}/learn`);
+  } catch (error) {
+    console.error("endSession failed", error);
+    return { error: "Couldn't end the session. Please try again." };
+  }
+
+  redirect(`/sessions/${sessionId}/facilitator/results`);
 }
 
 export async function publishCaption(

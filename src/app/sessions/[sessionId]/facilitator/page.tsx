@@ -9,6 +9,7 @@ import { TranslatedAudioPlayer } from "@/components/TranslatedAudioPlayer";
 import { SyncUiLanguage } from "@/components/SyncUiLanguage";
 import { LanguageMenu } from "@/components/LanguageMenu";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { EndSessionForm } from "@/components/EndSessionForm";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
@@ -340,17 +341,17 @@ export default async function FacilitatorSessionPage({
           </form>
         )}
         {session.status === SessionStatus.LIVE && (
-          <form action={endAction}>
-            <ConfirmSubmitButton
-              label={dict.endSession}
-              pendingLabel={dict.endSession}
-              title={dict.confirmEndSessionTitle}
-              body={dict.confirmEndSessionBody}
-              confirmLabel={getDictionary(lang).common.confirm}
-              cancelLabel={getDictionary(lang).common.cancel}
-              variant="danger"
-            />
-          </form>
+          <EndSessionForm
+            action={endAction}
+            labels={{
+              endSession: dict.endSession,
+              endingSession: dict.endingSession,
+              title: dict.confirmEndSessionTitle,
+              body: dict.confirmEndSessionBody,
+              confirm: getDictionary(lang).common.confirm,
+              cancel: getDictionary(lang).common.cancel,
+            }}
+          />
         )}
         <span className="font-data text-xs text-muted-foreground" title={dict.learnersJoinedHint}>
           {dict.learnersJoinedLabel(session.participants.length)}
