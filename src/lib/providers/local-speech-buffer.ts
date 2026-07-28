@@ -15,9 +15,36 @@ export interface StreamingTranscriptEvent {
 export interface SpeechToTextStream {
   sendAudio(chunk: Uint8Array): void;
   close(): void;
+  /**
+   * Optional readiness signal for a stream whose underlying transport isn't
+   * usable the instant it's constructed (e.g. `DeepgramStreamingSession`'s
+   * WebSocket in speech-to-text.ts, which starts CONNECTING, not OPEN — its
+   * `sendAudio` silently no-ops on anything sent before the socket reaches
+   * OPEN). `switchToFallback` below awaits this, with a bounded timeout,
+   * before flushing the audio recovered from the failed local window, so
+   * that window isn't silently dropped into a not-yet-open socket the way it
+   * used to be. Omit (as every stream today does) for a stream that's usable
+   * synchronously — `waitUntilReady` treats a missing `ready` the same as an
+   * already-resolved one.
+   */
+  ready?(): Promise<void>;
 }
 
 const WINDOW_MS = 2_500;
+
+/** Bounded wait for a fallback stream's optional `ready()` — a stream that never
+ * resolves it (e.g. a handshake that hangs) must not block audio forever; after
+ * this, sends proceed anyway and take whatever the stream's own send-time guard
+ * decides, same as before this class had any readiness concept at all. */
+const FALLBACK_READY_TIMEOUT_MS = 5_000;
+
+function waitUntilReady(stream: SpeechToTextStream): Promise<void> {
+  if (!stream.ready) return Promise.resolve();
+  return Promise.race([
+    stream.ready().catch(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, FALLBACK_READY_TIMEOUT_MS)),
+  ]);
+}
 
 interface LocalBufferingSpeechToTextStreamOptions {
   expectedLanguage: SupportedLanguage;
@@ -52,6 +79,14 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
   private buffer: Uint8Array[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null;
   private fallbackStream: SpeechToTextStream | null = null;
+  /** False from the moment `fallbackStream` is opened until its `ready()` (if any)
+   * resolves — `sendAudio` queues into `fallbackPending` instead of forwarding
+   * directly while this is false, so audio arriving mid-handshake isn't silently
+   * swallowed the way it used to be. See `switchToFallback`. */
+  private fallbackReady = false;
+  /** Chunks queued by `sendAudio` while `fallbackReady` is false; flushed as one
+   * combined send once the fallback stream signals it's actually ready. */
+  private fallbackPending: Uint8Array[] = [];
   private closed = false;
   private flushing = false;
   /** The most recently started `flush()` call's promise — lets `close()` find and wait out an in-flight flush before issuing its own final one; see `close()`'s comment for why. */
@@ -85,7 +120,13 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
 
   sendAudio(chunk: Uint8Array): void {
     if (this.fallbackStream) {
-      this.fallbackStream.sendAudio(chunk);
+      // Queue instead of forwarding straight through until the fallback stream has
+      // actually signaled it's ready — see `fallbackReady`'s doc comment.
+      if (this.fallbackReady) {
+        this.fallbackStream.sendAudio(chunk);
+      } else {
+        this.fallbackPending.push(chunk);
+      }
       return;
     }
     this.buffer.push(chunk);
@@ -179,19 +220,34 @@ export class LocalBufferingSpeechToTextStream implements SpeechToTextStream {
       return;
     }
 
+    let fallbackStream: SpeechToTextStream;
     try {
-      this.fallbackStream = this.options.openCloudFallback();
+      fallbackStream = this.options.openCloudFallback();
     } catch (fallbackError) {
       this.options.onError(fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)));
       return;
     }
-    // Forward the audio that just failed locally, plus anything that arrived
-    // via `sendAudio` while that local call was still pending (it landed back
-    // in `this.buffer` since `fallbackStream` wasn't set yet) — otherwise both
-    // are silently dropped at the exact moment of failover.
-    const recovered = concat([...failedWindow, ...this.buffer]);
+    this.fallbackStream = fallbackStream;
+    this.fallbackReady = false;
+
+    // The audio that just failed locally, plus anything that arrived via `sendAudio`
+    // while that local call was still pending (it landed back in `this.buffer` since
+    // `fallbackStream` wasn't set yet) — otherwise both are silently dropped at the
+    // exact moment of failover. Held here (not sent immediately) until the fallback
+    // stream is actually ready: `openCloudFallback()` returning doesn't mean its
+    // transport is usable yet (e.g. `DeepgramStreamingSession`'s WebSocket is still
+    // CONNECTING at this point), so sending straight away is exactly as lossy as
+    // this method used to be.
+    const recovered = [...failedWindow, ...this.buffer];
     this.buffer = [];
-    if (recovered.byteLength > 0) this.fallbackStream.sendAudio(recovered);
+    void waitUntilReady(fallbackStream).then(() => {
+      if (this.fallbackStream !== fallbackStream) return; // superseded/closed; nothing to flush
+      this.fallbackReady = true;
+      const pending = this.fallbackPending;
+      this.fallbackPending = [];
+      const toSend = concat([...recovered, ...pending]);
+      if (toSend.byteLength > 0) fallbackStream.sendAudio(toSend);
+    });
   }
 }
 

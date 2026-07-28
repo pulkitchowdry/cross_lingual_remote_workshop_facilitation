@@ -71,15 +71,24 @@ export function isPrivateMessageRequest(role: "facilitator" | "learner", formDat
   return role === "facilitator" && typeof recipientParticipantId === "string" && recipientParticipantId.trim() !== "";
 }
 
+/**
+ * No hardcoded error string here — this is a plain, unlocalized lib module,
+ * and every caller already has its own localized `chatErrors` dictionary in
+ * hand (see sessions/actions.ts) for the identical "no valid recipient"
+ * condition (an empty `recipientParticipantId` never reaches the DB lookup
+ * this validates). Returning `recipientId: null` lets the caller reuse that
+ * same localized message instead of this function shipping its own
+ * always-English one.
+ */
 export function validateFacilitatorPrivateRecipient({
   participant,
   sessionId,
 }: {
   participant: ChatRecipientParticipant | null;
   sessionId: string;
-}) {
+}): { recipientId: string | null } {
   if (!participant || participant.sessionId !== sessionId || participant.role !== "LEARNER") {
-    return { error: "Choose a learner in this session for a private reply.", recipientId: null };
+    return { recipientId: null };
   }
-  return { error: null, recipientId: participant.userId };
+  return { recipientId: participant.userId };
 }

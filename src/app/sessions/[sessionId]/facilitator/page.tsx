@@ -407,8 +407,7 @@ export default async function FacilitatorSessionPage({
                 generateAndPersistSessionSummary finishes and a poll picks it up. */}
             <p className="font-data text-xs text-muted-foreground">
               {sessionSummary.durationMinutes !== null && `${dict.sessionSummaryDuration(sessionSummary.durationMinutes)} · `}
-              {sessionSummary.messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {sessionSummary.questionCount}{" "}
-              {dict.sessionSummaryQuestions.toLowerCase()}
+              {dict.sessionSummaryMessages(sessionSummary.messageCount)} · {dict.sessionSummaryQuestions(sessionSummary.questionCount)}
             </p>
             {sessionSummary.misunderstoodTopics.length > 0 && (
               <div className="mt-2">

@@ -108,7 +108,15 @@ async function translateWithClaude(
         stop_reason?: string;
       };
       const translated = payload.content?.find((block) => block.type === "text")?.text?.trim();
-      if (!translated) return null;
+      if (!translated) {
+        // Mirrors the local-inference tier's identical "200 OK but blank" log a few lines
+        // below — without it, a content-filtered/degenerate Claude response is
+        // indistinguishable from ordinary "nothing to translate" behavior to an operator.
+        console.error(
+          `translateWithClaude: Claude API responded 200 OK but returned no usable translated text (${sourceLanguage}->${targetLanguage}).`,
+        );
+        return null;
+      }
 
       // A truncated translation is still more useful to a learner than none at all, so
       // this returns the (possibly partial) text rather than degrading to null — but

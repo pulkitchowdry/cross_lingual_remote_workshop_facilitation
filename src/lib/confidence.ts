@@ -94,7 +94,13 @@ export function computeOverallConfidence(signals: ConfidenceSignals): Confidence
     ["translation", breakdown.translation],
     ["network", breakdown.network],
   ];
-  const severe = severeCauses.find(([, score]) => score < ROOT_CAUSE_THRESHOLD);
+  // The actual worst (lowest-scoring) signal below threshold, not just the first one
+  // in declared order — two signals can simultaneously dip below ROOT_CAUSE_THRESHOLD
+  // (e.g. mildly-noisy audio at 55 alongside a translation truncated at 40), and
+  // `.find()`'s first-match would surface the less severe one as the displayed cause.
+  const severe = severeCauses
+    .filter(([, score]) => score < ROOT_CAUSE_THRESHOLD)
+    .reduce<[RootCause, number] | null>((worst, cause) => (worst === null || cause[1] < worst[1] ? cause : worst), null);
   if (severe) {
     return { overall, level: "low", rootCause: severe[0], breakdown };
   }

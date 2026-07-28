@@ -55,6 +55,11 @@ export interface Dictionary {
     strictPrivacyLabel: string;
     strictPrivacyHint: string;
     submit: string;
+    // Pending-state label for the "Create session" button (mirrors join.submitting/
+    // facilitator.startingSession) — createSession fans out a per-language
+    // translateText call before it ever touches the DB, slow enough for a
+    // double-click to fire it twice without this.
+    submitting: string;
   };
   sessionsOverview: {
     heading: string;
@@ -214,8 +219,11 @@ export interface Dictionary {
      * synchronously from already-fetched data, so they render immediately even while
      * session.summary is still pending or unconfigured. */
     sessionSummaryDuration: (minutes: number) => string;
-    sessionSummaryMessages: string;
-    sessionSummaryQuestions: string;
+    // Functions, not static strings — like learnersJoinedLabel above, so a count of 1
+    // doesn't render as "1 messages"/"1 questions" (a static string interpolated as
+    // `${count} ${label}` always produced the plural form, even at count 1).
+    sessionSummaryMessages: (count: number) => string;
+    sessionSummaryQuestions: (count: number) => string;
     sessionSummaryMisunderstoodTopics: string;
     analyticsDrawerLabel: string;
     analyticsDrawerOpen: string;
@@ -427,6 +435,23 @@ export interface Dictionary {
     message: string;
     cta: string;
   };
+  /**
+   * Localized `FormActionResult.error` strings for sendChatMessage (sessions/actions.ts)
+   * — looked up via the *sender's own* resolved language (session.sourceLanguage for a
+   * facilitator, the participant's preferredLanguage for a learner), not the viewer's
+   * page language, so a facilitator and a learner in the same room each see their own
+   * action's validation/lifecycle errors in their own language instead of always
+   * English. Distinct from `error.knownMessages` below: that localizes thrown-`Error`
+   * text intercepted by RouteErrorFallback (a different mechanism, only reachable from
+   * setup/join), not a `FormActionResult` rendered directly by a chat/caption form.
+   */
+  chatErrors: {
+    messageTooLong: (maximum: number) => string;
+    sessionNotLive: string;
+    choosePrivateRecipient: string;
+    learnerPrivateRecipientRestricted: string;
+    rateLimited: string;
+  };
   error: {
     title: string;
     message: string;
@@ -531,6 +556,7 @@ const en: Dictionary = {
     strictPrivacyHint:
       "Keeps audio and text on this server — nothing goes to Claude or another cloud provider. Needs local-inference configured, or captions and translation stay unavailable all session.",
     submit: "Create session",
+    submitting: "Creating…",
   },
   sessionsOverview: {
     heading: "Sessions",
@@ -648,8 +674,8 @@ const en: Dictionary = {
     sessionSummaryPending: "Generating a summary of this session…",
     sessionSummaryUnavailable: "No AI summary is available for this session.",
     sessionSummaryDuration: (minutes) => `${minutes} min`,
-    sessionSummaryMessages: "Messages",
-    sessionSummaryQuestions: "Questions",
+    sessionSummaryMessages: (count) => (count === 1 ? "1 message" : `${count} messages`),
+    sessionSummaryQuestions: (count) => (count === 1 ? "1 question" : `${count} questions`),
     sessionSummaryMisunderstoodTopics: "Misunderstood topics",
     analyticsDrawerLabel: "Analytics",
     analyticsDrawerOpen: "Show analytics",
@@ -761,7 +787,8 @@ const en: Dictionary = {
     disconnectedDuplicate: "You've been disconnected because this link was opened in another tab or window at the same time.",
     disconnectedOther: "You've been disconnected from the media room.",
     mediaDeviceError: "There was a problem with your microphone or camera.",
-    cameraUnavailable: "Your camera isn't available (permission denied, in use elsewhere, or not found).",
+    cameraUnavailable:
+      "Your camera isn't available (permission denied, in use elsewhere, or not found) — continuing without it. You can still join with audio.",
     microphoneUnavailable: "Your microphone isn't available (permission denied, in use elsewhere, or not found) — continuing without it.",
     rejoin: "Rejoin",
   },
@@ -843,6 +870,13 @@ const en: Dictionary = {
     title: "Link not found",
     message: "This link is invalid, expired, or has been revoked by the facilitator. Ask them for a fresh link.",
     cta: "Start a new session",
+  },
+  chatErrors: {
+    messageTooLong: (maximum) => `Enter a message of up to ${maximum.toLocaleString()} characters.`,
+    sessionNotLive: "This session is not live — messages can only be sent while it is in progress.",
+    choosePrivateRecipient: "Choose a learner in this session for a private reply.",
+    learnerPrivateRecipientRestricted: "Learners can only message the facilitator privately.",
+    rateLimited: "You're sending messages too quickly. Please wait a moment and try again.",
   },
   error: {
     title: "Something went wrong",
@@ -934,6 +968,7 @@ const zh: Dictionary = {
     strictPrivacyHint:
       "音频和文本只留在本服务器——不会发送给 Claude 或其他云端服务。需配置本地推理，否则整场字幕和翻译都不可用。",
     submit: "创建场次",
+    submitting: "创建中……",
   },
   sessionsOverview: {
     heading: "场次",
@@ -1053,8 +1088,8 @@ const zh: Dictionary = {
     sessionSummaryPending: "正在生成此场次的摘要……",
     sessionSummaryUnavailable: "此场次暂无 AI 摘要。",
     sessionSummaryDuration: (minutes) => `${minutes} 分钟`,
-    sessionSummaryMessages: "消息数",
-    sessionSummaryQuestions: "提问数",
+    sessionSummaryMessages: (count) => `${count} 条消息`,
+    sessionSummaryQuestions: (count) => `${count} 个问题`,
     sessionSummaryMisunderstoodTopics: "未理解的主题",
     analyticsDrawerLabel: "数据分析",
     analyticsDrawerOpen: "显示分析",
@@ -1249,6 +1284,13 @@ const zh: Dictionary = {
     message: "此链接无效、已过期，或已被主持人撤销。请向主持人索取新的链接。",
     cta: "创建新场次",
   },
+  chatErrors: {
+    messageTooLong: (maximum) => `请输入不超过 ${maximum.toLocaleString()} 个字符的消息。`,
+    sessionNotLive: "此场次尚未开始或已结束——只能在进行中发送消息。",
+    choosePrivateRecipient: "请选择此场次中的一位学员以发送私信回复。",
+    learnerPrivateRecipientRestricted: "学员只能私信主持人。",
+    rateLimited: "你发送消息的速度过快，请稍等片刻后重试。",
+  },
   error: {
     title: "出了点问题",
     message: "发生了意外错误。你可以重试，或刷新页面。",
@@ -1341,6 +1383,7 @@ const es: Dictionary = {
     strictPrivacyHint:
       "El audio y el texto permanecen en este servidor — nunca se envían a Claude ni a otro proveedor en la nube. Requiere inferencia local configurada, o los subtítulos y traducciones quedarán no disponibles toda la sesión.",
     submit: "Crear sesión",
+    submitting: "Creando…",
   },
   sessionsOverview: {
     heading: "Sesiones",
@@ -1458,8 +1501,8 @@ const es: Dictionary = {
     sessionSummaryPending: "Generando un resumen de esta sesión…",
     sessionSummaryUnavailable: "No hay ningún resumen de IA disponible para esta sesión.",
     sessionSummaryDuration: (minutes) => `${minutes} min`,
-    sessionSummaryMessages: "Mensajes",
-    sessionSummaryQuestions: "Preguntas",
+    sessionSummaryMessages: (count) => `${count} mensaje${count === 1 ? "" : "s"}`,
+    sessionSummaryQuestions: (count) => `${count} pregunta${count === 1 ? "" : "s"}`,
     sessionSummaryMisunderstoodTopics: "Temas no comprendidos",
     analyticsDrawerLabel: "Analítica",
     analyticsDrawerOpen: "Mostrar analítica",
@@ -1653,6 +1696,13 @@ const es: Dictionary = {
     title: "Enlace no encontrado",
     message: "Este enlace no es válido, caducó o fue revocado por el facilitador. Pídele uno nuevo.",
     cta: "Crear una nueva sesión",
+  },
+  chatErrors: {
+    messageTooLong: (maximum) => `Ingresa un mensaje de hasta ${maximum.toLocaleString()} caracteres.`,
+    sessionNotLive: "Esta sesión no está en vivo — los mensajes solo se pueden enviar mientras está en curso.",
+    choosePrivateRecipient: "Elige un alumno de esta sesión para responder en privado.",
+    learnerPrivateRecipientRestricted: "Los alumnos solo pueden enviar mensajes privados al facilitador.",
+    rateLimited: "Estás enviando mensajes demasiado rápido. Espera un momento e inténtalo de nuevo.",
   },
   error: {
     title: "Algo salió mal",

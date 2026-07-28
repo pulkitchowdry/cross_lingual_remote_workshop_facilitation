@@ -38,6 +38,14 @@ describe("computeOverallConfidence", () => {
     expect(result.rootCause).toBe("audio");
   });
 
+  it("picks the worst (lowest-scoring) signal as root cause when two are simultaneously below threshold, not just the first in declared order", () => {
+    // speechRecognition (55) comes before translation (40) in severeCauses' declared
+    // order, but translation is the numerically lower/more severe signal and must win.
+    const result = computeOverallConfidence({ speechRecognition: 55, translation: 40 });
+    expect(result.level).toBe("low");
+    expect(result.rootCause).toBe("translation");
+  });
+
   it("treats missing signals as no evidence of a problem, not zero", () => {
     const result = computeOverallConfidence({});
     expect(result.overall).toBe(100);

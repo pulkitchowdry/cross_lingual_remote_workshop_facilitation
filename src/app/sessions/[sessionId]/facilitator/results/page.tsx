@@ -156,8 +156,7 @@ export default async function FacilitatorSessionResultsPage({
           <Card eyebrow={dict.sessionSummaryHeading}>
             <p className="font-data text-xs text-muted-foreground">
               {durationMinutes !== null && `${dict.sessionSummaryDuration(durationMinutes)} · `}
-              {messageCount} {dict.sessionSummaryMessages.toLowerCase()} · {questionCount}{" "}
-              {dict.sessionSummaryQuestions.toLowerCase()}
+              {dict.sessionSummaryMessages(messageCount)} · {dict.sessionSummaryQuestions(questionCount)}
             </p>
             {misunderstoodTopics.length > 0 && (
               <div className="mt-2">

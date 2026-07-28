@@ -40,7 +40,7 @@ export function findGlossaryMatches(text: string, glossary: CentralGlossaryEntry
   for (const entry of glossary) {
     const key = entry.sourceTerm.toLowerCase();
     if (seenTerms.has(key)) continue;
-    const pattern = new RegExp(`\\b${escapeRegExp(entry.sourceTerm)}\\b`, "i");
+    const pattern = buildTermPattern(entry.sourceTerm);
     const found = pattern.exec(text);
     if (found) {
       seenTerms.add(key);
@@ -52,6 +52,20 @@ export function findGlossaryMatches(text: string, glossary: CentralGlossaryEntry
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** JS `\b` is defined only in terms of `\w` ([A-Za-z0-9_], ASCII-only) — CJK
+ * characters are never `\w`, so a `\b`-anchored pattern never matches around a
+ * Chinese sourceTerm embedded in ordinary (space-less) Chinese text, on either
+ * side. Only add a `\b` on the side(s) where the term itself starts/ends with an
+ * ASCII word character, so Latin-alphabet terms keep the "don't match inside a
+ * longer word" behavior `\b` was there for, while CJK terms fall back to a plain
+ * substring match. */
+function buildTermPattern(term: string): RegExp {
+  const wordChar = /[A-Za-z0-9_]/;
+  const leadingBoundary = wordChar.test(term[0]) ? "\\b" : "";
+  const trailingBoundary = wordChar.test(term[term.length - 1]) ? "\\b" : "";
+  return new RegExp(`${leadingBoundary}${escapeRegExp(term)}${trailingBoundary}`, "i");
 }
 
 /**
@@ -152,6 +166,12 @@ export interface GlossaryCsvRow {
   notes?: string;
 }
 
+/** "Translate?" column values that mean "keep verbatim" — broadened beyond the exact
+ * strings "no"/"false" (case-insensitive match only) so common negative shorthand like
+ * "n" or "0" doesn't silently fall through to the opposite of what a facilitator
+ * marking a term as do-not-translate intended. */
+const NEGATIVE_TRANSLATE_VALUES = new Set(["no", "false", "n", "0", "non", "不"]);
+
 /**
  * Parses the CSV/Excel glossary upload format from issue #131 ("Source Term |
  * Translate? | Chinese (Simplified) | Spanish | Notes"). Column headers for
@@ -189,7 +209,7 @@ export function parseGlossaryRows(headerRow: string[], dataRows: string[][]): Gl
       const translateCell = translateIdx !== -1 ? row[translateIdx]?.trim().toLowerCase() : undefined;
       return {
         sourceTerm: row[sourceTermIdx].trim(),
-        translate: translateCell === undefined ? true : translateCell !== "no" && translateCell !== "false",
+        translate: translateCell === undefined ? true : !NEGATIVE_TRANSLATE_VALUES.has(translateCell),
         translations,
         notes: notesIdx !== -1 ? row[notesIdx]?.trim() || undefined : undefined,
       };

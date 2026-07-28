@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
   const CHUNK_SIZE = 25;
   const deletedSessionIds: string[] = [];
   const failedSessionIds: string[] = [];
+  // Legitimately skipped, not failed: an id that matched the `expiredIds` snapshot
+  // above but no longer matches `status: { not: LIVE }` by the time its chunk's own
+  // transaction actually deletes — see the re-check inside the transaction below.
+  const skippedLiveSessionIds: string[] = [];
 
   for (let i = 0; i < expiredIds.length; i += CHUNK_SIZE) {
     const chunk = expiredIds.slice(i, i + CHUNK_SIZE);
@@ -86,28 +90,58 @@ export async function POST(request: NextRequest) {
       // chunk's sessions gone but their Users un-swept — and permanently
       // un-purgeable, since the next run can only find orphan-User candidates via
       // *currently expired* sessions, which no longer exist for this chunk.
-      await prisma.$transaction(async (tx) => {
-        await tx.session.deleteMany({ where: { id: { in: chunk } } });
+      const { deletedCount, skippedIds } = await prisma.$transaction(async (tx) => {
+        // Re-verify liveness at delete time, not just at the `expiredIds` snapshot above
+        // — this chunk's own two reads above plus every earlier chunk's own transaction
+        // can together take long enough for a facilitator to click "Start Session" on
+        // one of these ids in between, flipping it LIVE with learners actively joining.
+        // `status: { not: LIVE }` makes `deleteMany` only touch rows still matching it
+        // AT DELETE TIME — not just the ids that merely matched it back when
+        // `expiredIds` was snapshotted — so a session that transitioned to LIVE in the
+        // interim is atomically left alone instead of being wiped out mid-meeting.
+        const { count } = await tx.session.deleteMany({
+          where: { id: { in: chunk }, status: { not: SessionStatus.LIVE } },
+        });
+
+        // `count` smaller than `chunk.length` means some ids in this chunk didn't match
+        // the filter above (most likely: they transitioned to LIVE in the interim) —
+        // find out which, inside the same transaction, so the response below can report
+        // them as legitimately skipped rather than assuming (as this code used to) that
+        // every id in `chunk` was actually deleted.
+        const skipped =
+          count < chunk.length
+            ? (await tx.session.findMany({ where: { id: { in: chunk } }, select: { id: true } })).map((s) => s.id)
+            : [];
 
         if (candidateUserIds.length > 0) {
           await tx.user.deleteMany({
             where: { id: { in: candidateUserIds }, sessions: { none: {} }, participations: { none: {} } },
           });
         }
+        return { deletedCount: count, skippedIds: skipped };
         // Prisma's default 5s interactive-transaction timeout is tuned for a single
         // small write; a chunk of expired sessions (each cascading across
         // TranscriptSegment/Message/Insight/GlossaryTerm/SessionParticipant/JoinLink)
         // can take longer. Matches the timeout insights.ts's own transaction already
         // uses for the same reason.
       }, { timeout: 20_000 });
-      deletedSessionIds.push(...chunk);
+
+      const skippedSet = new Set(skippedIds);
+      deletedSessionIds.push(...chunk.filter((id) => !skippedSet.has(id)));
+      if (skippedIds.length > 0) {
+        skippedLiveSessionIds.push(...skippedIds);
+        console.error(
+          `[retention/cleanup] skipped ${skippedIds.length}/${chunk.length} session(s) in a chunk: transitioned ` +
+            `to LIVE between the expiry snapshot and this chunk's delete (deleted ${deletedCount} of the rest).`,
+        );
+      }
     } catch (error) {
       console.error(`[retention/cleanup] failed to purge a chunk of ${chunk.length} session(s):`, error);
       failedSessionIds.push(...chunk);
     }
   }
 
-  return Response.json({ deletedSessionIds, failedSessionIds });
+  return Response.json({ deletedSessionIds, failedSessionIds, skippedLiveSessionIds });
 }
 
 // Some schedulers default to GET rather than POST; support both so any

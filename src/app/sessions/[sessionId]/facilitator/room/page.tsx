@@ -18,6 +18,7 @@ import { sendChatMessage } from "@/app/sessions/actions";
 import { publishCaption, updateFacilitatorLanguage } from "@/app/sessions/[sessionId]/facilitator/actions";
 import { visibleSessionMessageWhere } from "@/lib/message-visibility";
 import { buildFacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view";
+import { MESSAGE_HISTORY_LIMIT, TRANSCRIPT_HISTORY_LIMIT } from "@/lib/session-contracts";
 
 export const metadata: Metadata = { title: "Live session" };
 
@@ -45,17 +46,32 @@ export default async function FacilitatorRoomPage({
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
-      transcript: { include: { translations: true }, orderBy: { startedAt: "asc" } },
+      // Capped + reversed the same way as the dashboard page (facilitator/page.tsx) —
+      // see its own comments on TRANSCRIPT_HISTORY_LIMIT/MESSAGE_HISTORY_LIMIT for why:
+      // this query re-runs every 2s for the whole LIVE session via SessionAutoRefresh, so
+      // an uncapped transcript/messages history here grew without bound over a session's
+      // lifetime instead of staying bounded like every other page's equivalent query.
+      transcript: {
+        include: { translations: true },
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        take: TRANSCRIPT_HISTORY_LIMIT,
+      },
       messages: {
         where: visibleSessionMessageWhere(sessionId, accessSession.facilitatorId),
         include: { sender: true, translations: true },
-        orderBy: { sentAt: "desc" },
+        orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+        take: MESSAGE_HISTORY_LIMIT,
       },
       participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true } },
     },
   });
   if (!session) notFound();
   if (session.status !== SessionStatus.LIVE) redirect(`/sessions/${sessionId}/facilitator`);
+  // transcript is now fetched newest-first (see the `take` cap above) — reversed here to
+  // chronological (oldest-first) order, since CaptionOverlay/TranslationHistoryTab/
+  // TranslatedAudioPlayer below all expect that order (e.g. CaptionOverlay treats the
+  // LAST array entry as "most recent").
+  const orderedTranscript = [...session.transcript].reverse();
 
   const lang = resolveLanguage(session.sourceLanguage);
   const dict = getDictionary(lang).facilitator;
@@ -90,7 +106,7 @@ export default async function FacilitatorRoomPage({
       <LiveCaptionStream sessionId={session.id} lang={lang} agentCapturing={session.captionAgentActive} />
       {textToSpeechProvider.isConfigured ? (
         <TranslatedAudioPlayer
-          segments={session.transcript.map((segment) => ({
+          segments={orderedTranscript.map((segment) => ({
             id: segment.id,
             hasTranslation:
               segment.language === session.sourceLanguage ||
@@ -120,7 +136,7 @@ export default async function FacilitatorRoomPage({
           role="facilitator"
           lang={lang}
           targetLanguage={session.sourceLanguage}
-          transcript={session.transcript}
+          transcript={orderedTranscript}
           messages={chatMessages}
           sendChatAction={sendChatAction}
           title={session.title}

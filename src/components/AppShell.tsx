@@ -41,7 +41,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {dict.shell.skipToContent}
       </a>
-      <header className="border-b border-border-subtle">
+      <header
+        className="border-b border-border-subtle"
+        // The live video room (below) is a `position: fixed` full-viewport overlay that
+        // paints over this header without unmounting it — without `inert`, its nav
+        // links/Log out/accessibility/theme toggles stay keyboard/screen-reader
+        // reachable despite being completely invisible mid-call.
+        inert={isLiveVideoRoomRoute}
+      >
         {/* flex-wrap + gap-y: without it, this row (wordmark + nav links + the
             accessibility/theme/language controls) has no responsive collapse at all and
             overflows horizontally on any narrow viewport (~375-428px, confirmed down to
@@ -103,7 +110,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </li>
             )}
           </ul>
-          <div className="ml-auto flex items-center gap-2">
+          {/* flex-wrap here too — the same overflow this file's nav-level flex-wrap
+              comment already fixed once recurs one level down: /setup and /sessions
+              (no `#header-language-slot` content) fit 3 buttons at 320px, but every
+              session page (facilitator/learn/room) portals a 4th "Language" button
+              into that slot (see LanguageMenu.tsx), which overflowed the viewport
+              width instead of wrapping to its own line. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <AccessibilityPanel />
             <ThemeToggle />
             {/* Session pages (facilitator/learn) portal their LanguageMenu button in here — see

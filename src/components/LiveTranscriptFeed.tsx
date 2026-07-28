@@ -97,8 +97,8 @@ export function LiveTranscriptFeed({
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-border-subtle bg-surface">
-      {header && <div className="border-b border-border-subtle p-3">{header}</div>}
-      <div className="relative min-h-0 flex-1">
+      {header && <div key="ltf-header" className="border-b border-border-subtle p-3">{header}</div>}
+      <div key="ltf-body" className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
           onScroll={handleScroll}
@@ -186,7 +186,7 @@ export function LiveTranscriptFeed({
           </button>
         )}
       </div>
-      {composer}
+      {composer && <div key="ltf-composer">{composer}</div>}
     </div>
   );
 }
