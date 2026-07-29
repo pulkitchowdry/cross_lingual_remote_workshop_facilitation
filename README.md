@@ -190,9 +190,9 @@ A facilitator can create a new session from the page - https://xlingo-production
 
 1. Choose your preferred language
 2. Enter details related to the session,
-   - Your name       *required
-   - Session title   *required
-   - Workshop goal   *required
+   - Your name
+   - Session title
+   - Workshop goal
    - Transcript retention (Choose when the data can be deleted for compliance and privacy)
    - Strict privacy mode   - We support self hosted AI models along with third-party services. When enabled all content flows through our self hosted model offering maximum privacy. 
    
@@ -239,13 +239,13 @@ Following is a detailed explanation of some of the core features,
 
    A. Video conferencing controls
    
-      Microphone     - Enable/disable your mic to speak
-      Video          - Enable/disable your camera
-      Raise hand     - To notify facilitator in case of any questions
-      Screen-share   - If you want to share a screen like a tab/window/complete screen with other participants
-      Whiteboard     - To visually explain concepts or topics to learners and for allowing group activity. More details below.
-      Settings       - Enable/disable captions, choose where captions are displayed and if translated and original text captions need to be shown together. Facilitator also has an additional option of allowing participants to share screen/edit whiteboard for group activities.
-      Exit           - To leave the session
+   - Microphone     - Enable/disable your mic to speak
+   - Video          - Enable/disable your camera
+   - Raise hand     - To notify facilitator in case of any questions
+   - Screen-share   - If you want to share a screen like a tab/window/complete screen with other participants
+   - Whiteboard     - To visually explain concepts or topics to learners and for allowing group activity. More details below.
+   - Settings       - Enable/disable captions, choose where captions are displayed and if translated and original text captions need to be shown together. Facilitator also has an additional option of allowing participants to share screen/edit whiteboard for group activities.
+   - Exit           - To leave the session
    
    B. Chat
    
@@ -266,6 +266,7 @@ Following is a detailed explanation of some of the core features,
    Participants can also type in the captions section and the audio will be played out for the other participants in their respective language.
 
    Confidence score - We are transparent in how the captions are delivered and display a confidence score which shows a breakdown on audio quality, translation and network quality.
+   
    Note - Network quality is not shown for typed captions.
 
    Note - Audio translation works best on Chrome and depends on the network quality.
@@ -295,9 +296,9 @@ Note - for learners to edit the whiteboard, the facilitator needs to provide acc
 
    A. Session Information
    
-      - Goal of the session
-      - Number of learners joined
-      - Start and end time
+   - Goal of the session
+   - Number of learners joined
+   - Start and end time
 
    B. AI session summary
    
