@@ -206,7 +206,9 @@ Click on the edit button to choose if a term should be translated or not. If you
 
 ### How to invite learners or save link as facilitator?
 Bookmark link - This option is for facilitators to join the session.
+
 Learner invitation link - Copy the learner invitation link or scan the QR code to share it with learners on your phone.
+
 *Use the revoke invite link to cancel/stop learners from joining the session.
 
 ### How can a learner join a session?
@@ -214,12 +216,14 @@ A learner can join a session using an invite link provided by the facilitator. F
 https://xlingo-production.up.railway.app/join/81NGC8VQ4uSQFh5AIFBy5UGiacQz143YdMKItWqfvB4
 
 Once on the page, the learner can perform the below,
+
 1. Choose your preferred language
 2. Agree to terms and conditions
 3. Click on "Join session" button.
 
 ### What are the features offered and how to use them?
 Our video conferencing application offers the below features,
+
    - Translation and captions through audio (Speech-to-Text) and typed content (Text-to-Speech)
    - Share individual video using the camera
    - Raise hand (for learners to let the facilitator know that they have a question)
@@ -234,6 +238,7 @@ Our video conferencing application offers the below features,
 Following is a detailed explanation of some of the core features,
 
    A. Video conferencing controls
+   
       Microphone     - Enable/disable your mic to speak
       Video          - Enable/disable your camera
       Raise hand     - To notify facilitator in case of any questions
@@ -243,6 +248,7 @@ Following is a detailed explanation of some of the core features,
       Exit           - To leave the session
    
    B. Chat
+   
    Message typed in the chat window are translated in real-time and shown to each participant in their respective language. 
    For example - Consider facilitator's language in the app is English while learner's language is Chinese. When the facilitator types a message in English, it is translated in real-time and shown to the learner in Chinese.
    
@@ -254,6 +260,7 @@ Following is a detailed explanation of some of the core features,
    Note - To avoid misuse the name will still be shown to the facilitator.
 
    C. Captions
+   
    Audio is translated in real-time and displayed to participants in their respective language (2-5 seconds delay based on connection). 
 
    Participants can also type in the captions section and the audio will be played out for the other participants in their respective language.
@@ -287,26 +294,32 @@ Note - for learners to edit the whiteboard, the facilitator needs to provide acc
    When a session is ended, a summary and a snapshot of the analytics is offered to the facilitator. It displays the following information,
 
    A. Session Information
+   
       - Goal of the session
       - Number of learners joined
       - Start and end time
 
    B. AI session summary
+   
    Our AI session summary highlights the misunderstood topics, important questions asked by the learners, how did they engage in the session and also suggests improvements for future sessions.
 
    C. Analytics snapshot
+   
    Explained above in the analytics section
 
 ### Do we offer accessibility features?
 We are level AA as per  Web Content Accessibility Guidelines (WCAG). In the top right corner of the page you can see the below buttons,
 
    A. "AA"
+   
    Use the AA button in the top right corner of the page to increase or decrease the font size of the page. The page layout changes smoothly.
 
    B. Contrast
+   
    Widgets, cards, input fields on the page have proper borders displayed with high contrast.
 
    C. Themes
+   
    We offer themes for all types of users - Warm dusk, Beige, Ink & copper and Slate night. Some of these are for people who prefer light mode while some are for dark mode users.
    
 ----------------------------------------------------------------------
