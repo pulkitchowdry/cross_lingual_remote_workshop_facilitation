@@ -181,18 +181,14 @@ Full facilitator → learner → facilitator loop; more shots (light mode, acces
 | --- | --- |
 | ![Accessibility settings](docs/screenshots/uat2/accessibility-large-text-high-contrast.png) | ![Session ended](docs/screenshots/uat2/learner-session-ended-fixed.png) |
 
-
+----------------------------------------------------------------------
 ## How to use?
-
-We can use this application as a facilitor or as a learner. Following are details on how different features can be used,
-
-
+We can use this application as a facilitator or as a learner. Following are details on how different features can be used,
 
 ### How to create a new session?
 A facilitator can create a new session from the page - https://xlingo-production.up.railway.app/setup
 
 1. Choose your preferred language
-
 2. Enter details related to the session,
    - Your name       *required
    - Session title   *required
@@ -200,9 +196,8 @@ A facilitator can create a new session from the page - https://xlingo-production
    - Transcript retention (Choose when the data can be deleted for compliance and privacy)
    - Strict privacy mode   - We support self hosted AI models along with third-party services. When enabled all content flows through our self hosted model offering maximum privacy. 
    
-   Note- Currently AI summary is not provided when strict privacy mode is enabled.
-
-Click on "create session" button.
+   Note - Currently AI summary is not provided when strict privacy mode is enabled.
+3. Click on "create session" button.
 
 ### As a facilitator how to prepare translation of technical/domain specific terminology?
 Once the session is created, you can add/edit/remove technical or domain specific terminology using the "manage glossary" button. This is for improved translation specifically for technical terms or product/company names.
@@ -211,25 +206,22 @@ Click on the edit button to choose if a term should be translated or not. If you
 
 ### How to invite learners or save link as facilitator?
 Bookmark link - This option is for facilitators to join the session.
-
 Learner invitation link - Copy the learner invitation link or scan the QR code to share it with learners on your phone.
-
 *Use the revoke invite link to cancel/stop learners from joining the session.
 
 ### How can a learner join a session?
-A learner can join a session using an invite link previded by the facilitator. Following is an example of an invite link,
+A learner can join a session using an invite link provided by the facilitator. Following is an example of an invite link,
 https://xlingo-production.up.railway.app/join/81NGC8VQ4uSQFh5AIFBy5UGiacQz143YdMKItWqfvB4
 
 Once on the page, the learner can perform the below,
 1. Choose your preferred language
 2. Agree to terms and conditions
-
-Click on "Join session" button.
+3. Click on "Join session" button.
 
 ### What are the features offered and how to use them?
 Our video conferencing application offers the below features,
    - Translation and captions through audio (Speech-to-Text) and typed content (Text-to-Speech)
-   - Share individial video using the camera
+   - Share individual video using the camera
    - Raise hand (for learners to let the facilitator know that they have a question)
    - Screen-sharing
    - Whiteboard
@@ -252,7 +244,7 @@ Following is a detailed explanation of some of the core features,
    
    B. Chat
    Message typed in the chat window are translated in real-time and shown to each participant in their respective language. 
-   For example - Consider facilitator's language in the app is english while learner's language is chinese. When the facilitator types a message in english, it is translated in real-time and shown to the learner in chinese.
+   For example - Consider facilitator's language in the app is English while learner's language is Chinese. When the facilitator types a message in English, it is translated in real-time and shown to the learner in Chinese.
    
    Private messaging - We offer private messaging where learners can privately send a message to a facilitator and vice-versa.
    
@@ -281,7 +273,7 @@ Following is a detailed explanation of some of the core features,
 
    Blockers - Metrics on newly raised, open and closed blockers for the group. This is again based on the sentiment analysis performed on the chat and caption messages.
 
-   Languages - Overall how many translations the system performs in the backgroun for all the languages it supports.
+   Languages - Overall how many translations the system performs in the background for all the languages it supports.
 
    Note - If a facilitator joins mid-session then they can still see the old captions, chat messages and the analytics
 
@@ -316,4 +308,5 @@ We are level AA as per  Web Content Accessibility Guidelines (WCAG). In the top 
 
    C. Themes
    We offer themes for all types of users - Warm dusk, Beige, Ink & copper and Slate night. Some of these are for people who prefer light mode while some are for dark mode users.
-
+   
+----------------------------------------------------------------------
