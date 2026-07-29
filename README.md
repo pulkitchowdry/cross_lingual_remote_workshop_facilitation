@@ -246,7 +246,7 @@ Following is a detailed explanation of some of the core features,
       Video          - Enable/disable your camera
       Raise hand     - To notify facilitator in case of any questions
       Screen-share   - If you want to share a screen like a tab/window/complete screen with other participants
-      Whiteboard     - To visually explain concepts or topics to learners and for allowing group activity
+      Whiteboard     - To visually explain concepts or topics to learners and for allowing group activity. More details below.
       Settings       - Enable/disable captions, choose where captions are displayed and if translated and original text captions need to be shown together. Facilitator also has an additional option of allowing participants to share screen/edit whiteboard for group activities.
       Exit           - To leave the session
    
@@ -284,6 +284,12 @@ Following is a detailed explanation of some of the core features,
    Languages - Overall how many translations the system performs in the backgroun for all the languages it supports.
 
    Note - If a facilitator joins mid-session then they can still see the old captions, chat messages and the analytics
+
+### How to use whiteboard?
+Facilitators and learners can create flowcharts, diagrams, etc using whiteboard. The text typed in text boxes or mermaid diagram is translated for every participant in their respective language.
+
+Note - for learners to edit the whiteboard, the facilitator needs to provide access from the settings in meeting controls.
+
 
 ### Can we see a summary of the session and its analytics?
    When a session is ended, a summary and a snapshot of the analytics is offered to the facilitator. It displays the following information,
