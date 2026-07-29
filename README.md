@@ -11,14 +11,14 @@ See [`docs/problem_statement.md`](docs/problem_statement.md) for the official ch
 ```mermaid
 flowchart LR
     subgraph Live[Live session]
-        Mic["Facilitator / learner speech"] --> STT["Speech-to-text\n(Deepgram Nova-3, diarized)"]
-        STT --> MT["Translation\n(Claude API)"]
+        Mic["Facilitator / learner speech"] --> STT["Speech-to-text\n(Whisper/Deepgram Nova-3, diarized)"]
+        STT --> MT["Translation\n(Custom NLLB Model / Claude API)"]
     end
 
     MT --> Captions["Live translated captions\n(learner view)"]
     MT --> Transcript[("Growing transcript\nPostgres")]
 
-    Transcript --> AI["Understanding layer\n(Claude, prompt-cached over transcript)"]
+    Transcript --> AI["Understanding layer\n(Custom NLLB model / Claude, prompt-cached over transcript)"]
     AI --> Guard{{"validateInsightDraft\nreject ungrounded citations"}}
     Guard --> Dashboard["Facilitator dashboard\ngoal / activity / decisions / blockers"]
 
@@ -29,8 +29,8 @@ flowchart LR
 ## Tech Stack
 
 - **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
-- **Speech-to-text:** Deepgram Nova-3 (multi-speaker diarization)
-- **Translation & understanding:** Claude API (prompt-cached over the growing transcript)
+- **Speech-to-text:** self-hosted Whisper and Deepgram Nova-3 (multi-speaker diarization)
+- **Translation & understanding:** self-hosted custom NLLB + Ctranslate2 model (https://huggingface.co/pulkitchowdry/nllb-600m-ct2-int8) and Claude API (prompt-cached over the growing transcript)
 - **Text-to-speech:** self-hosted Piper (via `local-inference`) first, falling back to ElevenLabs — opt-in
 - **Real-time transport:** LiveKit + WebSockets
 - **Database:** PostgreSQL via Prisma, hosted on Railway (see [`docs/AUTH_DATABASE_ARCHITECTURE.md`](docs/AUTH_DATABASE_ARCHITECTURE.md))
