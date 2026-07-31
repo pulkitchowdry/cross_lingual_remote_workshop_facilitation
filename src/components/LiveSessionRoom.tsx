@@ -342,7 +342,6 @@ export function LiveSessionRoom({
   const fetchCredentials = useCallback(
     async ({ background }: { background: boolean }) => {
       try {
-        console.log("[room] fetchCredentials", { background, time: new Date().toISOString() });
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -379,7 +378,6 @@ export function LiveSessionRoom({
           }
         }
         setCredentials(payload);
-        console.log("[room] token", payload.token.substring(0, 20));
         if (!background) setError(null);
       } catch (reason) {
         // A background refresh failing (e.g. a transient network blip) must not tear

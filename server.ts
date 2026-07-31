@@ -485,7 +485,7 @@ async function startCaptionAgent({
 }) {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
-  const { agentCaptureEnabled: workerEnabled, captionCaptureMode } = await import("@/lib/caption-capture-mode");
+  const { agentCaptureEnabled: workerEnabled, captionCaptureMode, CAPTION_AGENT_NAME } = await import("@/lib/caption-capture-mode");
   // The kill switch. Beyond routing around a broken transport, not starting this worker
   // takes a whole class of failure out of the web process: it no longer competes for the
   // CPU budget LiveKit's own default `load_fnc` measures (Next.js request traffic makes
@@ -505,6 +505,11 @@ async function startCaptionAgent({
   const server = new AgentServer(
     new ServerOptions({
       agent: agentPath,
+      // Named, not automatic-dispatch (LiveKit's own docs: unnamed dispatch is "not
+      // recommended for most applications") — see CAPTION_AGENT_NAME's doc comment.
+      // RoomProvider.issueCredential requests this exact name via RoomConfiguration.agents
+      // on every issued token, which is what actually triggers dispatch now.
+      agentName: CAPTION_AGENT_NAME,
       // LIVEKIT_URL is given to browsers too (RoomProvider.issueCredential
       // hands it to the LiveKit client verbatim), so in Docker Compose it's
       // set to a host-reachable address; this worker instead runs inside the
