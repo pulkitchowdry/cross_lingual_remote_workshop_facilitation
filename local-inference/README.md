@@ -50,7 +50,7 @@ fully self-hosted.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `LOCAL_INFERENCE_SECRET` | Yes | Must match the Next.js app's `LOCAL_INFERENCE_SECRET` |
-| `INFERENCE_THREADS` | No (default `2`) | CPU thread count for CTranslate2 and faster-whisper |
+| `INFERENCE_THREADS` | No (default `2`) | CPU thread count for CTranslate2 and faster-whisper — see "Known limitations" below before trusting the default on a multi-vCPU Railway plan |
 | `PORT` | No (default `8080`) | Railway sets this automatically |
 
 ## Running locally
@@ -131,6 +131,25 @@ download, no dependency on Hugging Face being reachable at startup.
 - **Latency budgets** in `docs/TRANSLATION_ARCHITECTURE.md`'s performance
   table (<1s STT/MT) were written against managed cloud APIs; CPU inference
   for all three models sharing one Railway instance may not hit those numbers.
+- **`INFERENCE_THREADS` defaulting to `2` silently wastes a bigger Railway
+  plan, and starves `/translate` under concurrent STT — confirmed live
+  (2026-07-31).** Both `WhisperModel(cpu_threads=...)` (`app/models/whisper.py`)
+  and `ctranslate2.Translator(inter_threads=..., intra_threads=...)`
+  (`app/models/nllb.py`) read this one setting, so it caps CPU parallelism for
+  *all* inference work regardless of how many vCPUs the service is actually
+  allocated — a 32-vCPU plan still only ever uses 2 threads until this is
+  raised. With two facilitator+learner STT streams open at once (`caption-agent.ts`
+  under `CAPTION_CAPTURE_MODE=agent-all`) each submitting ~2.5s audio windows,
+  that 2-thread budget saturates, and a concurrent `/translate` call queues
+  behind it long enough to blow past its 5s client-side timeout
+  (`local-inference-client.ts`) even though this service itself always
+  eventually answers `200 OK` — the client had already given up. Symptom:
+  `[translation] local-inference translate attempt 1/2 failed ... TimeoutError`
+  in the `web` logs while this service's own access log shows nothing but
+  `200 OK`s, just slow ones. Fix: raise `INFERENCE_THREADS` (e.g. `8`) to match
+  the service's actual CPU allocation — set on Railway directly, since
+  `app/config.py`'s and `docker-compose.yml`'s defaults are just local-dev
+  fallbacks, not what a production plan with real vCPU headroom should run at.
 - **Needs at least ~2GB of memory on Railway once all three models have been
   used, confirmed by an actual failed deploy** (not just the "~1-1.5GB
   combined" model-file-size estimate above — real memory use during loading/

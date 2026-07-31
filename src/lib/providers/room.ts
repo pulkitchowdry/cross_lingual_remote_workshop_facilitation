@@ -1,5 +1,6 @@
-import { AccessToken, DataPacket_Kind, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, DataPacket_Kind, RoomAgentDispatch, RoomConfiguration, RoomServiceClient } from "livekit-server-sdk";
 import type { SupportedLanguage } from "@/lib/session-contracts";
+import { agentCaptureEnabled, CAPTION_AGENT_NAME } from "@/lib/caption-capture-mode";
 
 export type RoomRole = "facilitator" | "learner";
 
@@ -110,6 +111,17 @@ class LiveKitRoomProvider implements RoomProvider {
       attributes: { preferredLanguage, raisedHand: String(raisedHand) },
       ttl: "6h",
     });
+    // Explicit dispatch, not automatic — see CAPTION_AGENT_NAME's doc comment. Harmless
+    // to set on every token (including background refreshes of an already-connected
+    // participant): LiveKit only acts on this at the moment a room is first created and
+    // silently ignores it on every later token for a room that already exists, so this
+    // doesn't need to know whether *this* token happens to be the one that creates the
+    // room — whichever one does gets the dispatch, the rest are no-ops.
+    if (agentCaptureEnabled()) {
+      token.roomConfig = new RoomConfiguration({
+        agents: [new RoomAgentDispatch({ agentName: CAPTION_AGENT_NAME })],
+      });
+    }
     token.addGrant({
       roomJoin: true,
       room: `workshop-${sessionId}`,

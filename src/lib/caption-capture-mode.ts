@@ -43,6 +43,20 @@ export type CaptionCaptureMode =
    */
   | "browser-only";
 
+/**
+ * Explicit agent name for `caption-agent.ts`'s LiveKit Agents worker (`server.ts`'s
+ * `ServerOptions.agentName` and `RoomProvider.issueCredential`'s `RoomConfiguration.agents`
+ * both need this exact string to agree, so it lives here rather than duplicated in each).
+ * LiveKit's own docs advise against unnamed/automatic dispatch ("dispatches an agent to
+ * every new room... not recommended for most applications") in favor of naming the agent
+ * and requesting it explicitly per room — the token-embedded `RoomConfiguration.agents`
+ * approach fires reliably at the moment a room is first created (including a room this
+ * app creates only implicitly, via a participant's token, never via an explicit
+ * `createRoom()` call) and is silently ignored on every later reconnect token once the
+ * room already exists.
+ */
+export const CAPTION_AGENT_NAME = "caption-agent";
+
 const DEFAULT_MODE: CaptionCaptureMode = "agent-facilitator";
 
 const VALID_MODES: readonly CaptionCaptureMode[] = ["agent-all", "agent-facilitator", "browser-only"];

@@ -365,6 +365,71 @@ is the browser→server audio upload. See
 [`CAPTION_TRANSPORT_HOSTING_DECISION.md`](CAPTION_TRANSPORT_HOSTING_DECISION.md) for what
 is hosted where and the cheapest-first fix ladder.
 
+### 10. `local-inference` CPU-thread starvation silently timing out translation (2026-07-31)
+
+**Symptom:** audio-sourced captions (both facilitator and learner, under
+`CAPTION_CAPTURE_MODE=agent-all`) never appeared, while manually typed captions worked
+fine. Railway `web` logs showed repeating
+`[translation] local-inference translate attempt 1/2 failed (zh->en): ... TimeoutError`
+pairs for every spoken segment.
+
+**Root cause:** `local-inference`'s `INFERENCE_THREADS` env var (default `2`, caps CPU
+threads for *both* `ctranslate2.Translator` and `WhisperModel` — see
+`local-inference/app/config.py`) was never raised to match this deployment's actual
+Railway CPU allocation (32 vCPU). With two concurrent STT streams open (facilitator +
+learner) each submitting ~2.5s whisper transcription windows, the 2-thread budget
+saturated, so a concurrent `/translate` call queued behind it long enough to blow past
+its 5s client-side abort (`local-inference-client.ts`) — confirmed by pulling
+`local-inference`'s own access log for the same window, which showed every `/translate`
+and `/stt/transcribe` call eventually returning `200 OK`, just slower than the caller was
+willing to wait. Typed captions never competed with a live whisper transcription for the
+same two threads, so they stayed comfortably under the timeout.
+
+**Fix:** `INFERENCE_THREADS=8` set directly on the `local-inference` Railway service
+(overrides `app/config.py`'s and `docker-compose.yml`'s defaults, which remain low/local-
+dev-appropriate — see `local-inference/README.md`'s "Known limitations"). Needs a
+restart/redeploy of that service to take effect — env vars are read once at process
+start (`settings = Settings()`).
+
+### 11. Automatic (unnamed) LiveKit Agent dispatch unreliable (2026-07-31)
+
+**Symptom:** after #10's fix, audio captions still didn't work. `caption-agent`'s worker
+registered cleanly every time (`starting worker` → `registered worker`, no errors), and
+its CPU-load self-report never once flipped to `WS_FULL` — yet for some brand-new
+sessions it received **zero** `received job request` log lines despite a participant
+joining and publishing a track. Confirmed directly against LiveKit Cloud's Room Service
+API (`RoomServiceClient.listParticipants()`): the room had two real human participants
+and **no agent participant at all**.
+
+**Root cause:** `server.ts` registered the worker with no `agentName`, which puts it in
+LiveKit's *automatic* dispatch mode. LiveKit's own docs describe this as "not recommended
+for most applications... dispatches an agent to every new room, regardless of whether one
+is needed" — and in practice on this deployment it was simply unreliable, for reasons
+LiveKit's docs don't further specify. Compounding factor: `RoomProvider.issueCredential`
+(`room.ts`) never calls `createRoom()` — every room is created implicitly by whichever
+participant's token connects first, which is exactly the shape automatic dispatch is
+least documented/tested against.
+
+**Fix:** name the agent (`CAPTION_AGENT_NAME` in `caption-capture-mode.ts`, wired into
+`server.ts`'s `ServerOptions.agentName`) and request it *explicitly* on every token
+`issueCredential` mints, via `token.roomConfig = new RoomConfiguration({ agents: [new
+RoomAgentDispatch({ agentName: CAPTION_AGENT_NAME })] })`. This works cleanly with the
+implicit-room-creation shape above: LiveKit only acts on a token's `roomConfig` at the
+moment its room is first created and silently ignores it on every subsequent token for a
+room that already exists — so whichever participant happens to join first is the one
+whose token actually triggers dispatch, and it costs nothing to set it on every token
+rather than trying to know in advance which one that will be. See
+`docs/TRANSLATION_ARCHITECTURE.md` Part 2 for the fuller mechanism writeup.
+
+**Not the same bug as the "Still open" LiveKit Cloud connectivity item below** — that one
+is a genuine outbound-network failure (`ENETUNREACH`) preventing the worker from
+connecting/registering at all, which still reproduces intermittently. This bug looked
+similar from a facilitator's perspective (captions just don't start) but the worker was
+always fully connected and healthy; the job simply never arrived. Worth distinguishing
+when debugging a future report of "captions aren't starting" — check for `registered
+worker` (rules this bug in/out) separately from `received job request` (rules the
+connectivity item in/out).
+
 ## Still open
 ### Safari / iPhone: live captions never connect
 
@@ -407,7 +472,12 @@ This is why the browser-mic fallback exists at all, and why `caption-agent.ts`
 capturing the facilitator is itself intermittent — when it fails to connect,
 the facilitator's own browser-mic fallback picks up the slack (same pattern
 as the learner side, minus the duplicate-capture risk since that path is
-facilitator-only).
+facilitator-only). **Distinct from #11 above:** this section is specifically about the
+worker failing to *connect/register* at all (`ENETUNREACH`, no `registered worker` log
+line); #11 was a separate bug where the worker connected and registered fine but never
+received a job, fixed by switching to explicit dispatch. Both can produce the same
+user-visible symptom ("captions never start"), so check which log line is actually
+missing before assuming this is the cause.
 
 **This is documented, expected Railway behavior, not a mystery** (found
 2026-07-28, postdating the entry above): *"Outbound IPv6 is disabled by
