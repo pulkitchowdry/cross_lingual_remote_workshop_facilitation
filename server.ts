@@ -499,6 +499,7 @@ async function startCaptionAgent({
   initializeLogger: typeof import("@livekit/agents").initializeLogger;
   dev: boolean;
 }) {
+  console.log(`[caption-agent] Entered startCaptionAgent`);
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
   const { agentCaptureEnabled: workerEnabled, captionCaptureMode, CAPTION_AGENT_NAME } = await import("@/lib/caption-capture-mode");
@@ -516,7 +517,21 @@ async function startCaptionAgent({
     return;
   }
 
-  initializeLogger({ pretty: dev, level: dev ? "debug" : "info" });
+  // TEMPORARY DIAGNOSTIC (2026-07-31) — remove once dispatch-delivery reliability is
+  // root-caused. `lk dispatch list <room>` confirms LiveKit Cloud DOES create a dispatch
+  // record for a failing room, but this worker's own logs never show `received job
+  // request` for it — so the gap is specifically between "LiveKit Cloud decided to
+  // dispatch" and "this worker's persistent WebSocket actually received that push".
+  // `@livekit/agents`' own worker<->LiveKit-Cloud WebSocket (`#runWS` in worker.js) has no
+  // application-level ping/pong heartbeat on this connection — only a `close` event
+  // check — so a half-open connection that never receives a proper close frame (the same
+  // failure class this file's own `/api/captions/stream` socket needed a 30s keepalive
+  // sweep for, above) would leave this worker "connected" from its own perspective
+  // forever, silently unable to receive further dispatches, with nothing here ever
+  // logging an error. "debug" (always, not just dev) surfaces the library's own internal
+  // `connected to LiveKit server` / reconnect-retry logs that are silently dropped at
+  // "info" level in production.
+  initializeLogger({ pretty: dev, level: "debug" });
   const agentPath = fileURLToPath(new URL("./src/lib/caption-agent.ts", import.meta.url));
   const server = new AgentServer(
     new ServerOptions({
@@ -536,10 +551,39 @@ async function startCaptionAgent({
       apiKey: LIVEKIT_API_KEY,
       apiSecret: LIVEKIT_API_SECRET,
       production: !dev,
-      logLevel: dev ? "debug" : "info",
+      logLevel: "debug",
     }),
   );
-  server.run().catch((error) => console.error("[caption-agent] worker stopped:", error));
+  // Only one named event exists on this EventEmitter beyond its internal "worker_msg"
+  // plumbing (grepped worker.js): "worker_registered", emitted every time the worker's
+  // WebSocket completes registration with LiveKit Cloud — including reconnects, not just
+  // the first connect. `server.event`'s declared type (`EventEmitter<[never]>`) is
+  // deliberately unhelpful — this isn't a documented public API — but at runtime it's a
+  // real Node EventEmitter and this event does fire; using `as any` here is a deliberate,
+  // best-effort diagnostic tap, not something to build real behavior on. A SECOND
+  // registration during one deploy's lifetime is the smoking gun for "the connection
+  // silently died and reconnected" — distinct from the first, expected one at startup.
+  let registrationCount = 0;
+  (server.event as { on(event: string, listener: (...args: unknown[]) => void): void }).on(
+    "worker_registered",
+    (workerId) => {
+      registrationCount++;
+      console.log(`[caption-agent] worker_registered event #${registrationCount} (workerId=${workerId})${registrationCount > 1 ? " — RECONNECTED, was previously registered" : ""}`);
+    },
+  );
+  // A silent gap in this heartbeat (rather than an explicit error) is itself the signal
+  // for "the worker is stuck/hung with nothing detecting it" — the exact failure mode
+  // this whole block exists to catch. `activeJobs` is `AgentServer`'s own public getter.
+  const heartbeat = setInterval(() => {
+    console.log(`[caption-agent] worker heartbeat: registrations=${registrationCount} activeJobs=${server.activeJobs.length}`);
+  }, 120_000);
+  heartbeat.unref();
+  console.log(`[caption-agent] Starting worker`);
+  server
+    .run()
+    .then(() => console.log("[caption-agent] worker run() resolved — the worker has fully stopped (drained/closed), not just one connection cycling"))
+    .catch((error) => console.error("[caption-agent] worker stopped:", error));
+  console.log("[caption-agent] worker invoked");
 }
 
 main();

@@ -488,19 +488,19 @@ export function LiveCaptionStream({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMicrophoneEnabled, agentCapturing]);
 
-  if (agentCapturing) {
-    return (
-      <div className="flex items-center gap-2">
-        <span
-          className="font-data animate-fade-in min-w-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider whitespace-normal"
-          style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
-          role="status"
-        >
-          {dict.agentCapturing}
-        </span>
-      </div>
-    );
-  }
+  // if (agentCapturing) {
+  //   return (
+  //     <div className="flex items-center gap-2">
+  //       <span
+  //         className="font-data animate-fade-in min-w-0 rounded-md border px-4 py-2 text-xs font-medium uppercase tracking-wider whitespace-normal"
+  //         style={{ color: "var(--tick-high)", borderColor: "var(--tick-high)" }}
+  //         role="status"
+  //       >
+  //         {dict.agentCapturing}
+  //       </span>
+  //     </div>
+  //   );
+  // }
 
   if (!isMicrophoneEnabled) return null;
 

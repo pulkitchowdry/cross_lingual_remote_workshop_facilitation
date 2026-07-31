@@ -5,7 +5,8 @@ import { SessionChatPanel, type PrivateRecipientOption } from "@/components/Sess
 import { TranslationHistoryTab } from "@/components/meeting/TranslationHistoryTab";
 import { AnalyticsPanelContent } from "@/components/AnalyticsDrawer";
 import { useMeetingShell, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "@/components/meeting/MeetingShellContext";
-import { ChatIcon, CloseIcon } from "@/components/meeting/icons";
+import { ChatIcon, CloseIcon, WarningIcon } from "@/components/meeting/icons";
+import { useCaptionAgentStatus } from "@/components/meeting/use-caption-agent-status";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { getDictionary } from "@/lib/i18n";
 import type { MeetingChatMessage, MeetingTranscriptSegment } from "@/components/meeting/types";
@@ -15,6 +16,7 @@ import type { FacilitatorAnalyticsView } from "@/lib/facilitator-analytics-view"
 type SidebarTab = "chat" | "captions" | "analytics";
 
 export function MeetingSidebar({
+  sessionId,
   uiLang,
   targetLanguage,
   messages,
@@ -31,6 +33,7 @@ export function MeetingSidebar({
   defaultTab = "chat",
   analyticsView,
 }: {
+  sessionId: string;
   uiLang: SupportedLanguage;
   targetLanguage: string;
   messages: MeetingChatMessage[];
@@ -62,6 +65,12 @@ export function MeetingSidebar({
   const [tab, setTab] = useState<SidebarTab>(defaultTab);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const isMobile = useMediaQuery("(max-width: 767px)");
+  // General UX for everyone in the room, not just the facilitator — a learner reading
+  // captions cares just as much whether the pipeline producing them is actually working.
+  // The route itself decides whether this is even meaningful for the deployment
+  // (CAPTION_CAPTURE_MODE=browser-only has no agent to report on) via "not-applicable".
+  const captionAgentStatus = useCaptionAgentStatus(sessionId, true);
+  const captionAgentWarning = captionAgentStatus === "failed";
 
   function onResizePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     dragState.current = { startX: event.clientX, startWidth: sidebarWidth };
@@ -188,11 +197,16 @@ export function MeetingSidebar({
               tabIndex={tab === value ? 0 : -1}
               onClick={() => setTab(value)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
-              className={`font-data press-scale min-w-0 flex-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+              className={`font-data press-scale flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 tab === value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <span className="block truncate">{label}</span>
+              {value === "captions" && captionAgentWarning && (
+                <span className="shrink-0" style={{ color: "var(--tick-low)" }} role="img" aria-label={dict.captionAgentWarningLabel}>
+                  <WarningIcon className="h-3.5 w-3.5" />
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -230,7 +244,32 @@ export function MeetingSidebar({
               transcript={transcript}
               uiLang={uiLang}
               emptyLabel={captionsEmptyLabel}
-              header={captionsHeader}
+              header={
+                <>
+                  {captionAgentStatus && captionAgentStatus !== "not-applicable" && (
+                    <p
+                      className="mb-1.5 flex items-center gap-1.5 text-xs"
+                      style={{
+                        color:
+                          captionAgentStatus === "connected"
+                            ? "var(--tick-high)"
+                            : captionAgentStatus === "failed"
+                              ? "var(--tick-low)"
+                              : "var(--muted-foreground)",
+                      }}
+                      role={captionAgentStatus === "failed" ? "alert" : "status"}
+                    >
+                      {captionAgentStatus === "failed" && <WarningIcon className="h-3.5 w-3.5 shrink-0" />}
+                      {captionAgentStatus === "pending"
+                        ? dict.captionAgentPending
+                        : captionAgentStatus === "connected"
+                          ? dict.captionAgentConnected
+                          : dict.captionAgentFailed}
+                    </p>
+                  )}
+                  {captionsHeader}
+                </>
+              }
               composer={captionComposer}
               sendChatAction={sendChatAction}
               viewerIsFacilitator={viewerIsFacilitator}
