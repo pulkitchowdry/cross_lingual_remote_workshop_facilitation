@@ -135,20 +135,8 @@ function MeetingRoomInner({
         <div className="flex min-h-0 min-w-[200px] flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle">
           {focusMode && <ParticipantStrip uiLang={uiLang} cameraTracks={cameraTracks} micTracks={micTracks} />}
           <div
-            className={`relative min-h-0 flex-1 ${
-              // Reserves room for CaptionOverlay's own floating content (caption
-              // bubbles + font-size buttons, `bottom-16` from this same box) so it
-              // never has to render on top of video-tile content. Without this, a
-              // short/narrow viewport with multiple participants — where
-              // ParticipantGrid's tiles stack into more than one row and each row
-              // still needs at least its own `minmax(140px, ...)` height — has no
-              // guaranteed gap at the bottom for the grid to shrink into: the
-              // overlay's fixed pixel offset from this box's bottom edge can land
-              // in the middle of the last row's tile instead of below it. Matches
-              // CaptionOverlay's own early-return condition exactly, so this only
-              // shrinks the video area when the overlay is actually going to render.
-              captionsVisible && transcript.length > 0 ? "pb-24" : ""
-            }`}
+          // Removed the padding here that was added in commit 0c3071e as it caused the video participant section to change size impacting UX
+            className={`relative min-h-0 flex-1`}
           >
             {workspaceMode === "whiteboard" ? (
               <Whiteboard sessionId={sessionId} uiLang={uiLang} canPresent={canPresent} />
