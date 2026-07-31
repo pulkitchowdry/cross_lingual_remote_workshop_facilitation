@@ -121,6 +121,9 @@ async function streamParticipantAudio(
   // resolveSpeakerContext being re-resolved per segment rather than reused from
   // `initialSpeaker`.
   connectionQualityByIdentity: Map<string, string>,
+  // Populated with this call's own AudioStream so `entry`'s RoomEvent.Disconnected
+  // handler can force it closed — see that handler's doc comment for why this exists.
+  activeAudioStreams: Map<string, AudioStream>,
 ) {
   if (!speechToTextProvider.openStream) {
     console.warn(`[caption-agent] STT provider has no streaming support; not capturing session ${sessionId}.`);
@@ -181,6 +184,7 @@ async function streamParticipantAudio(
   // exhaust its budget on old, already-recovered-from blips.
   let reconnectAttempts = 0;
   let sttStream: SpeechToTextStream | undefined;
+  let audioStream: AudioStream | undefined;
 
   function openSttStream(): SpeechToTextStream {
     const stream = openStreamFn({
@@ -271,7 +275,8 @@ async function streamParticipantAudio(
     sttStream = openSttStream();
     console.log(`[caption-agent] STT stream opened for ${identity} in session ${sessionId} (expectedLanguage: ${initialSpeaker.language}).`);
 
-    const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
+    audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
+    activeAudioStreams.set(identity, audioStream);
     for await (const frame of audioStream) {
       if (stopped) break;
       firstAudioSubmittedAtMs ??= captionLatencyNowMs();
@@ -298,6 +303,7 @@ async function streamParticipantAudio(
     // ever closes again.
     stopped = true;
     sttStream?.close();
+    if (audioStream && activeAudioStreams.get(identity) === audioStream) activeAudioStreams.delete(identity);
     // Only clear this identity's guard if `track` is still the one on record — a
     // `TrackUnsubscribed`-triggered clear (or a newer `TrackSubscribed` superseding
     // it) may have already happened for a *different* track under this same
@@ -435,6 +441,15 @@ export default defineAgent({
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
+    // Every currently-open AudioStream, keyed the same way as activeTracks — lets the
+    // RoomEvent.Disconnected handler below force them all closed. See that handler's
+    // doc comment for why this exists: confirmed live (2026-07-31) that a session's
+    // `captionAgentActive` flag can get stuck `true` after the session ends, blocking
+    // this worker from ever being offered a new job for the next session — the
+    // existing `ctx.addShutdownCallback` safety net (below) depends on
+    // `@livekit/agents` itself detecting the disconnect and running a shutdown, and
+    // that didn't happen reliably; this is a more direct, immediate hook.
+    const activeAudioStreams = new Map<string, AudioStream>();
     // Latest reported connection quality per identity — the Confidence Score's network
     // signal (issue #130's "Future Enhancements") for whatever this facilitator is
     // saying *right now*, read fresh at each segment's publish time rather than once at
@@ -500,6 +515,7 @@ export default defineAgent({
         activeTracks,
         participant.identity,
         connectionQualityByIdentity,
+        activeAudioStreams,
       ).catch((error) => console.error(`[caption-agent] streamParticipantAudio failed for ${sessionId}:`, error));
     };
     ctx.room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
@@ -545,6 +561,27 @@ export default defineAgent({
       // `streamParticipantAudio` would refuse the new track forever).
       if (!shouldCaptureIdentity(participant.identity)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
+    });
+    // Forces every still-open AudioStream closed the moment this agent's own room
+    // connection disconnects — confirmed live (2026-07-31) that relying solely on
+    // `TrackUnsubscribed`/`ctx.addShutdownCallback` below isn't enough: a session whose
+    // room disconnected (facilitator ended it) left `captionAgentActive` stuck `true`
+    // with no further caption-agent log lines at all, and the *next* session's room
+    // never received a job dispatch — consistent with this worker still being
+    // considered occupied by a job that never told anyone it was done.
+    // `AudioStream extends ReadableStream`, so `.cancel()` is the standard, safe way to
+    // end it from outside — the `for await` loop in `streamParticipantAudio` completes
+    // cleanly (not as an error) and falls straight into its own `finally` block, which
+    // already has the correct cleanup logic (close the STT stream, clear `activeTracks`,
+    // clear `captionAgentActive`) — no need to duplicate any of that here.
+    ctx.room.on(RoomEvent.Disconnected, () => {
+      console.log(`[caption-agent] room disconnected for session ${sessionId}; closing ${activeAudioStreams.size} audio stream(s).`);
+      for (const stream of activeAudioStreams.values()) {
+        void stream.cancel().catch(() => {
+          // Already closed/erroring — the loop it belonged to is tearing down (or has
+          // already torn down) regardless, so there's nothing further to do here.
+        });
+      }
     });
     // Mirrors streamParticipantAudio's own `finally`-block cleanup, but for the case
     // that loop never gets to run its `finally` at all: a crash, redeploy, or
