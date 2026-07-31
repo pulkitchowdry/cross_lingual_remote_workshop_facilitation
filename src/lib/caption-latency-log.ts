@@ -24,11 +24,17 @@ export interface CaptionInstrumentationContext {
 }
 
 /**
- * Development-only timing for manual caption-quality tests. Opt-in with
- * CAPTION_LATENCY_LOGS=1; never logs audio bytes or caption text.
+ * Opt-in with CAPTION_LATENCY_LOGS=1; never logs audio bytes or caption text. Originally
+ * dev-only, but the payload (translationProviders, missingTargetLanguages, per-stage
+ * timing) is exactly the production diagnostic signal that was missing during
+ * 2026-07-31's caption incident — every provider call site only logs its own failures,
+ * never a success, so this was the one place that could show "this segment succeeded,
+ * and here's which provider actually served it" end to end. Now available in production
+ * too (still opt-in, so default log volume is unchanged) — flip it on via the
+ * CAPTION_LATENCY_LOGS Railway variable during a live incident, no deploy required.
  */
 export function isCaptionLatencyLogEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV !== "production" && env.CAPTION_LATENCY_LOGS === "1";
+  return env.CAPTION_LATENCY_LOGS === "1";
 }
 
 export function captionLatencyNowMs(): number {

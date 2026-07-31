@@ -38,6 +38,22 @@ async function main() {
 
   const dev = process.env.NODE_ENV !== "production";
   const port = Number(process.env.PORT) || 3000;
+  // Server actions that call redirect() try to stream the target page's RSC payload
+  // back directly, by having Next.js's own action-handler make an internal self-fetch
+  // to the ORIGINAL request's origin (the browser-facing one — e.g. Railway's public
+  // `https://...up.railway.app` domain). That domain doesn't loop back into the same
+  // container from the inside on Railway (or most reverse-proxy hosts), so every single
+  // redirecting server action (startSession, session creation, ...) logged a noisy
+  // `failed to get redirect response [TypeError: fetch failed] ... ECONNREFUSED` and
+  // silently fell back to a plain (slower, non-streamed) redirect — functional, but
+  // adds latency and noise to every action, on every deploy, not just Railway.
+  // `__NEXT_PRIVATE_ORIGIN` (an internal-only escape hatch, hence the name) overrides
+  // that self-fetch's target to the actual address this process is listening on, so it
+  // never leaves the container. Confirmed as the standard fix for exactly this
+  // self-hosted-behind-a-proxy symptom (2026-07-31) — see
+  // docs/CAPTION_AUDIO_TROUBLESHOOTING.md for how this was found (it was noise present
+  // on every session-creation redirect, initially mistaken for caption-related).
+  process.env.__NEXT_PRIVATE_ORIGIN = `http://127.0.0.1:${port}`;
   const app = next({ dev });
   const handle = app.getRequestHandler();
 

@@ -363,13 +363,43 @@ export default defineAgent({
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
-      include: { facilitator: { select: { displayName: true } } },
-    });
+    // Dispatch fires the instant a participant's browser connects to LiveKit (room
+    // creation), which races the DB write that flips the session LIVE — a token is only
+    // ever minted for an already-LIVE session (src/app/api/livekit/token/route.ts), so
+    // in the overwhelmingly common case this resolves on the very first attempt, but a
+    // slow job-subprocess fork (LiveKit Agents forks one per dispatch — see this file's
+    // own "runner initialization timed out" history) can occasionally still lose that
+    // race. A one-shot check here has zero tolerance for that: confirmed live
+    // (2026-07-31) via `[caption-agent] Session ... is not live; skipping.` firing on a
+    // session that had, in fact, just gone LIVE — dispatch itself worked, this bailed
+    // for nothing. Retrying briefly costs nothing in the normal case (only the first
+    // check runs) and only adds latency on the genuine-skip path (session really is
+    // still DRAFT, or already ENDED) — both of which return null/non-LIVE on every
+    // attempt regardless, so retrying can't turn a real skip into a false capture.
+    const SESSION_LIVE_CHECK_ATTEMPTS = 5;
+    const SESSION_LIVE_CHECK_DELAY_MS = 1_000;
+    let session = null;
+    let liveCheckAttempt = 0;
+    for (; liveCheckAttempt < SESSION_LIVE_CHECK_ATTEMPTS; liveCheckAttempt++) {
+      session = await prisma.session.findUnique({
+        where: { id: sessionId },
+        include: { facilitator: { select: { displayName: true } } },
+      });
+      if (session?.status === SessionStatus.LIVE) break;
+      if (liveCheckAttempt < SESSION_LIVE_CHECK_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, SESSION_LIVE_CHECK_DELAY_MS));
+      }
+    }
     if (!session || session.status !== SessionStatus.LIVE) {
-      console.warn(`[caption-agent] Session ${sessionId} is not live; skipping.`);
+      console.warn(`[caption-agent] Session ${sessionId} is not live after ${SESSION_LIVE_CHECK_ATTEMPTS} attempts; skipping.`);
       return;
+    }
+    // Visibility into how often the race in the comment above actually bites — a healthy
+    // deployment should see this rarely or never; a recurring `attempt 2+` here means the
+    // job-subprocess fork is routinely slow enough to be worth investigating on its own,
+    // not just tolerated by the retry.
+    if (liveCheckAttempt > 0) {
+      console.warn(`[caption-agent] Session ${sessionId} only became live on live-check attempt ${liveCheckAttempt + 1}/${SESSION_LIVE_CHECK_ATTEMPTS}.`);
     }
 
     try {
