@@ -178,6 +178,28 @@ isolation model, preserving `tsx`'s `execArgv` so the forked process can still
 load the `.ts` entry file) — that's internal to the worker, not a second
 deployable service.
 
+**Dispatch is explicit, not automatic (fixed 2026-07-31).** The worker
+registers under a real name (`ServerOptions.agentName`, the shared
+`CAPTION_AGENT_NAME` constant in `caption-capture-mode.ts`), and
+`RoomProvider.issueCredential` (`room.ts`) requests that exact agent via
+`RoomConfiguration.agents` embedded directly in every access token it mints.
+Previously the worker registered with no name at all, which puts it in
+LiveKit's *automatic* dispatch mode — LiveKit's own docs call this "not
+recommended for most applications," and in practice it was outright
+unreliable here: a fully healthy, registered, non-overloaded worker went long
+stretches receiving zero `received job request` log lines for brand-new
+sessions, with nothing in this app's own logs to explain why (confirmed via a
+direct `RoomServiceClient.listParticipants()` query showing a live room with
+real participants and no agent). Token-embedded dispatch fixes this
+structurally rather than by retrying harder: LiveKit only acts on
+`roomConfig` at the moment a room is first created and silently ignores it on
+every later token for a room that already exists — which fits this app's
+"rooms are created implicitly by the first participant's token, never via an
+explicit `createRoom()` call" shape exactly, so whichever of
+facilitator/learner happens to join first is the one whose token actually
+triggers dispatch, and every other token for that session is a harmless
+no-op. See `docs/CAPTION_AUDIO_TROUBLESHOOTING.md` for the full incident.
+
 **Verified locally** against a real LiveKit Cloud project: `server.ts`
 registers the worker successfully on startup (`starting worker` /
 `registered worker` in the logs) alongside the Next.js app on the same port.

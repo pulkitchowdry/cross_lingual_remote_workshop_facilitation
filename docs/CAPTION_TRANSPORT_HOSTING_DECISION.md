@@ -113,6 +113,13 @@ Two caveats remain for `agent-all`:
 - It makes the worker's intermittent LiveKit-connect problem load-bearing for *all*
   captions rather than just the facilitator's. If the worker can't connect, `browser-only`
   is the one-variable rollback — and vice versa. That is the point of having the switch.
+  **Note (2026-07-31):** part of what presented as "the worker can't connect" was actually
+  a separate, now-fixed bug — automatic (unnamed) LiveKit Agent dispatch turned out to be
+  unreliable even when the worker connected and registered fine, so it silently never
+  received a job for some sessions. Fixed by naming the agent and requesting its dispatch
+  explicitly via `RoomConfiguration` on every issued token (see
+  `docs/TRANSLATION_ARCHITECTURE.md` Part 2, `docs/CAPTION_AUDIO_TROUBLESHOOTING.md` §10).
+  The genuine connectivity failure mode below (IPv6 `ENETUNREACH`) is unrelated and still open.
 - There is no per-learner liveness signal (`captionAgentActive` is facilitator-scoped by
   design), so if a job dies mid-room, learner captions stop while the badge still reads
   "Live captions are already running from your mic", with no error and no automatic
@@ -205,6 +212,13 @@ only reason A exists.
 `CAPTION_CAPTURE_MODE=agent-all` set on the Railway `web` service and a redeploy. That
 should restore captions in both directions, because it removes the broken transport from
 the path entirely rather than trying to repair it.
+
+**Update (2026-07-31): `agent-all` alone was not sufficient in practice** — it makes the
+worker load-bearing for every role, so two separate worker-side bugs (`local-inference`
+CPU-thread starvation under concurrent STT; unreliable automatic agent dispatch) each had
+to be fixed before captions actually worked end-to-end. See
+`CAPTION_AUDIO_TROUBLESHOOTING.md` §10–11. If captions are still silent after setting
+`agent-all`, check those two before assuming this switch itself failed.
 
 Only if the worker itself proves unreliable does root cause A need solving at all — and
 then it is step 2 (hours), not a hosting migration. Do not start step 3 until step 2 has
