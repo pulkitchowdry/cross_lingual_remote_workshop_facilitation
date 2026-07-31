@@ -328,8 +328,10 @@ export default async function LearnerSessionPage({
                       segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
                     isTyped: segment.isTyped,
                     language: segment.language,
+                    speakerId: segment.speakerId,
                   }))}
                   preferredLanguage={participant.preferredLanguage}
+                  viewerSpeakerId={participant.user.displayName}
                 />
               ) : (
                 <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>

@@ -7,6 +7,17 @@ export interface ResolvedLearnerSpeaker {
 }
 
 /**
+ * The `TranscriptSegment.speakerId` persisted for every facilitator-originated segment
+ * (typed or spoken) — shared so the two write sites (`facilitator/actions.ts`,
+ * `caption-agent.ts`) and any read site that needs to recognize "this is the
+ * facilitator's own segment" (`TranslatedAudioPlayer`'s self-echo exclusion) can't drift
+ * out of sync on the exact string shape.
+ */
+export function facilitatorSpeakerId(displayName: string): string {
+  return `${displayName} (Facilitator)`;
+}
+
+/**
  * Given a learner's `SessionParticipant.id`, resolves the language their speech/typed
  * captions should be attributed to (their own `preferredLanguage`, not the session's
  * `sourceLanguage`) and the `speakerId` to persist (their display name, matching the

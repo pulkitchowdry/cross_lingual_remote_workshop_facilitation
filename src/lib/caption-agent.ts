@@ -16,7 +16,7 @@ import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { agentCaptures, captionCaptureMode } from "@/lib/caption-capture-mode";
-import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
+import { facilitatorSpeakerId, resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
@@ -79,7 +79,7 @@ async function resolveSpeakerContext(
   identity: string,
 ): Promise<{ language: SupportedLanguage; speakerId: string | null } | null> {
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
-    return { language: session.sourceLanguage as SupportedLanguage, speakerId: `${session.facilitator.displayName} (Facilitator)` };
+    return { language: session.sourceLanguage as SupportedLanguage, speakerId: facilitatorSpeakerId(session.facilitator.displayName) };
   }
   if (identity.startsWith(LEARNER_IDENTITY_PREFIX) && agentCaptures("learner")) {
     // The identity suffix is the learner's `SessionParticipant.id` — the same key
@@ -376,7 +376,12 @@ export default defineAgent({
     // check runs) and only adds latency on the genuine-skip path (session really is
     // still DRAFT, or already ENDED) — both of which return null/non-LIVE on every
     // attempt regardless, so retrying can't turn a real skip into a false capture.
-    const SESSION_LIVE_CHECK_ATTEMPTS = 5;
+    // Widened from 5×1s (2026-07-31): confirmed live that the race can outlast a 5s
+    // budget entirely — LiveKit Agents' own `job_proc_lazy_main.js` logs "room not
+    // connect after job_entry was called after 10 seconds" purely as a diagnostic
+    // `logger.warn` with no follow-up kill/exit, so there's no hard ceiling forcing this
+    // to stay under 10s. 20s gives real headroom past the observed failure.
+    const SESSION_LIVE_CHECK_ATTEMPTS = 20;
     const SESSION_LIVE_CHECK_DELAY_MS = 1_000;
     let session = null;
     let liveCheckAttempt = 0;
