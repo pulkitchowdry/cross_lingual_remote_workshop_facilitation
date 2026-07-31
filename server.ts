@@ -499,6 +499,7 @@ async function startCaptionAgent({
   initializeLogger: typeof import("@livekit/agents").initializeLogger;
   dev: boolean;
 }) {
+  console.log(`[caption-agent] Entered startCaptionAgent`);
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   const { speechToTextProvider } = await import("@/lib/providers/speech-to-text");
   const { agentCaptureEnabled: workerEnabled, captionCaptureMode, CAPTION_AGENT_NAME } = await import("@/lib/caption-capture-mode");
@@ -539,6 +540,7 @@ async function startCaptionAgent({
       logLevel: dev ? "debug" : "info",
     }),
   );
+  console.log(`[caption-agent] Before server.run()`);
   server.run().catch((error) => console.error("[caption-agent] worker stopped:", error));
 }
 

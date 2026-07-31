@@ -363,6 +363,7 @@ export default defineAgent({
     // is the dispatch's own `proto.Room` (job.js's `RunningJobInfo.job.room`), whose
     // `name` is a plain string field set at dispatch time, independent of the RTC
     // connection — that's the one to check before connecting.
+    console.log(`Going to fetch sessionId`);
     const sessionId = sessionIdFromRoomName(ctx.job.room?.name);
     if (!sessionId) {
       console.warn(`[caption-agent] Room name "${ctx.job.room?.name}" doesn't match "workshop-<sessionId>"; skipping.`);
