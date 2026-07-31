@@ -11,6 +11,7 @@ import { notFound, redirect } from "next/navigation";
 import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { facilitatorSpeakerId } from "@/lib/speaker-resolution";
 import { resolveAppUrl } from "@/lib/env";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { getDictionary, resolveLanguage } from "@/lib/i18n";
@@ -47,6 +48,10 @@ export default async function FacilitatorRoomPage({
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
+      // Needed for TranslatedAudioPlayer's viewerSpeakerId below — matches how
+      // TranscriptSegment.speakerId is persisted for the facilitator's own segments
+      // (facilitatorSpeakerId), so the facilitator's own captions never play back to them.
+      facilitator: { select: { displayName: true } },
       // Capped + reversed the same way as the dashboard page (facilitator/page.tsx) —
       // see its own comments on TRANSCRIPT_HISTORY_LIMIT/MESSAGE_HISTORY_LIMIT for why:
       // this query re-runs every 2s for the whole LIVE session via SessionAutoRefresh, so
@@ -120,8 +125,10 @@ export default async function FacilitatorRoomPage({
               segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
             isTyped: segment.isTyped,
             language: segment.language,
+            speakerId: segment.speakerId,
           }))}
           preferredLanguage={session.sourceLanguage}
+          viewerSpeakerId={facilitatorSpeakerId(session.facilitator.displayName)}
         />
       ) : (
         <p className="text-xs text-muted-foreground">{getDictionary(lang).learner.audioUnavailable}</p>

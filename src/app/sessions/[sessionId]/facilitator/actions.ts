@@ -7,6 +7,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess } from "@/lib/session-access";
 import { publishTranslatedCaption } from "@/lib/captions";
+import { facilitatorSpeakerId } from "@/lib/speaker-resolution";
 import { roomProvider } from "@/lib/providers/room";
 import { generateAndPersistSessionSummary } from "@/lib/insights";
 import { facilitatorCookieName, hashToken } from "@/lib/session-security";
@@ -146,7 +147,7 @@ export async function publishCaption(
   const now = new Date();
   try {
     await publishTranslatedCaption(session, {
-      speakerId: `${session.facilitator.displayName} (Facilitator)`,
+      speakerId: facilitatorSpeakerId(session.facilitator.displayName),
       originalText: captionText.trim(),
       language: session.sourceLanguage as SupportedLanguage,
       startedAt: now,

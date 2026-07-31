@@ -430,6 +430,37 @@ when debugging a future report of "captions aren't starting" — check for `regi
 worker` (rules this bug in/out) separately from `received job request` (rules the
 connectivity item in/out).
 
+**Follow-up, same day: a second race surfaced once dispatch itself was fixed.** After
+shipping the above, some sessions still showed no agent — but this time `received job
+request` *did* fire, immediately followed by
+`[caption-agent] Session <id> is not live; skipping.` A token is only ever minted for an
+already-`LIVE` session (`src/app/api/livekit/token/route.ts` checks this before issuing
+one), but dispatch fires the instant the browser's LiveKit connection creates the room —
+a race against the DB write that flips the session `LIVE`, with zero tolerance for it:
+`caption-agent.ts`'s `entry()` checked `session.status` exactly once and gave up
+permanently on anything but an immediate `LIVE`. A slow job-subprocess fork (LiveKit
+Agents forks one per dispatch — see #9's "runner initialization timed out") is enough to
+lose that race even though the session really did just go live. **Fix:** retry the check
+up to 5 times over 5 seconds before giving up (`SESSION_LIVE_CHECK_ATTEMPTS`/
+`SESSION_LIVE_CHECK_DELAY_MS` in `caption-agent.ts`) — free in the common case (first
+check almost always succeeds), and only adds latency on a genuine skip (session really
+still `DRAFT`, or already `ENDED`), which can't be turned into a false capture by
+retrying since every attempt reads the same authoritative DB row.
+
+**Unrelated red herring investigated the same day:** the `failed to get redirect
+response [TypeError: fetch failed] ... ECONNREFUSED` lines visible in every `web` log
+dump throughout this incident (including the very first one that kicked it off) were
+initially suspected of being related, since they clustered around session creation. They
+aren't a caption bug at all — they're Next.js server actions' own internal "stream the
+redirect target" self-fetch (`startSession`, session creation, and every other
+`redirect()`-ending action), which targets the *original request's* public origin
+(Railway's `https://...up.railway.app`) and fails because that public domain doesn't
+loop back into the same container from the inside. Fixed in `server.ts` by pointing
+`__NEXT_PRIVATE_ORIGIN` at the process's own local address — see that file's comment for
+the full mechanism. Functionally harmless either way (Next falls back to a plain
+redirect on failure), but worth knowing this pattern is a generic self-hosted-behind-a-
+proxy issue, not a signal to chase inside the caption pipeline.
+
 ## Still open
 ### Safari / iPhone: live captions never connect
 

@@ -134,6 +134,22 @@ export async function publishTranslatedCaption(
   const translatedTargetLanguageSet = new Set(successfulTranslations.map((translation) => translation.targetLanguage));
   const translatedTargetLanguages = successfulTranslations.map((translation) => translation.targetLanguage);
   const missingTargetLanguages = requestedTargetLanguages.filter((target) => !translatedTargetLanguageSet.has(target));
+  // Always-on (not gated behind CAPTION_LATENCY_LOGS, unlike logCaptionLatency below) —
+  // this only fires when something actually degraded, so it costs nothing in the healthy
+  // path, but gives production visibility into exactly which segment/session/language lost
+  // a translation without needing to already know to enable latency logging. Both
+  // translateWithClaude and the local-inference tier only log their own failures, never a
+  // success, so without this a segment with e.g. 1 of 2 target languages missing is
+  // otherwise indistinguishable from "everything worked" at the publishTranslatedCaption
+  // level — exactly the ambiguity that slowed down diagnosing 2026-07-31's incident.
+  if (missingTargetLanguages.length > 0) {
+    console.warn(
+      `[captions] session ${session.id}: ${missingTargetLanguages.length}/${requestedTargetLanguages.length} ` +
+        `target language(s) failed to translate (${input.language} -> ${missingTargetLanguages.join(", ")}); ` +
+        `source=${input.instrumentation?.source ?? (input.isTyped ? "typed" : "unknown")}. ` +
+        `See preceding "[translation] ... failed" lines for why.`,
+    );
+  }
 
   // Every caller checks LIVE status before starting this function, but the
   // translation batch above can take up to ~16s worst case (each language tries

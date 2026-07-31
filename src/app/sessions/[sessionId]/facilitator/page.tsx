@@ -16,6 +16,7 @@ import { ParticipantRole, SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { learnerInviteCookieName } from "@/lib/session-security";
 import { hasFacilitatorAccess } from "@/lib/session-access";
+import { facilitatorSpeakerId } from "@/lib/speaker-resolution";
 import { resolveAppUrl } from "@/lib/env";
 import { insightProvider } from "@/lib/providers/insight";
 import { textToSpeechProvider } from "@/lib/providers/text-to-speech";
@@ -87,6 +88,10 @@ export default async function FacilitatorSessionPage({
     prisma.session.findUnique({
       where: { id: sessionId },
       include: {
+        // Needed for TranslatedAudioPlayer's viewerSpeakerId below — matches how
+        // TranscriptSegment.speakerId is persisted for the facilitator's own segments
+        // (facilitatorSpeakerId), so the facilitator's own captions never play back to them.
+        facilitator: { select: { displayName: true } },
         participants: { where: { role: ParticipantRole.LEARNER }, include: { user: true }, orderBy: { joinedAt: "asc" } },
         // A secondary `id` tiebreaker: `startedAt`/`sentAt` are millisecond-precision
         // timestamps, so two rows created within the same millisecond (e.g. several
@@ -502,8 +507,10 @@ export default async function FacilitatorSessionPage({
                       segment.translations.some((item) => item.targetLanguage === session.sourceLanguage),
                     isTyped: segment.isTyped,
                     language: segment.language,
+                    speakerId: segment.speakerId,
                   }))}
                   preferredLanguage={session.sourceLanguage}
+                  viewerSpeakerId={facilitatorSpeakerId(session.facilitator.displayName)}
                 />
               ) : (
                 <p className="text-xs text-muted-foreground">{getDictionary(lang).learner.audioUnavailable}</p>

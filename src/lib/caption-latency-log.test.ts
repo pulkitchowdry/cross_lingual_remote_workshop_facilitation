@@ -13,7 +13,7 @@ describe("caption latency logging", () => {
     vi.restoreAllMocks();
   });
 
-  it("is disabled unless explicitly enabled outside production", async () => {
+  it("is disabled unless explicitly enabled, in any environment", async () => {
     const { isCaptionLatencyLogEnabled } = await import("./caption-latency-log");
 
     vi.stubEnv("NODE_ENV", "development");
@@ -23,7 +23,13 @@ describe("caption latency logging", () => {
     process.env.CAPTION_LATENCY_LOGS = "1";
     expect(isCaptionLatencyLogEnabled()).toBe(true);
 
+    // Deliberately available in production too — see this module's doc comment for why
+    // this is opt-in-anywhere rather than dev-only: it's the production diagnostic an
+    // operator needs to flip on during a live incident, not just a local dev tool.
     vi.stubEnv("NODE_ENV", "production");
+    expect(isCaptionLatencyLogEnabled()).toBe(true);
+
+    delete process.env.CAPTION_LATENCY_LOGS;
     expect(isCaptionLatencyLogEnabled()).toBe(false);
   });
 

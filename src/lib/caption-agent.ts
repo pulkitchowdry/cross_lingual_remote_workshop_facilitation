@@ -16,7 +16,7 @@ import { prisma } from "@/lib/db";
 import { publishTranslatedCaption } from "@/lib/captions";
 import { clearCaptionAgentCapturing, markCaptionAgentCapturing } from "@/lib/caption-source-state";
 import { agentCaptures, captionCaptureMode } from "@/lib/caption-capture-mode";
-import { resolveLearnerSpeaker } from "@/lib/speaker-resolution";
+import { facilitatorSpeakerId, resolveLearnerSpeaker } from "@/lib/speaker-resolution";
 import { speechToTextProvider, type SpeechToTextStream } from "@/lib/providers/speech-to-text";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { captionLatencyNowMs } from "@/lib/caption-latency-log";
@@ -79,7 +79,7 @@ async function resolveSpeakerContext(
   identity: string,
 ): Promise<{ language: SupportedLanguage; speakerId: string | null } | null> {
   if (identity.startsWith(FACILITATOR_IDENTITY_PREFIX)) {
-    return { language: session.sourceLanguage as SupportedLanguage, speakerId: `${session.facilitator.displayName} (Facilitator)` };
+    return { language: session.sourceLanguage as SupportedLanguage, speakerId: facilitatorSpeakerId(session.facilitator.displayName) };
   }
   if (identity.startsWith(LEARNER_IDENTITY_PREFIX) && agentCaptures("learner")) {
     // The identity suffix is the learner's `SessionParticipant.id` — the same key
@@ -121,6 +121,9 @@ async function streamParticipantAudio(
   // resolveSpeakerContext being re-resolved per segment rather than reused from
   // `initialSpeaker`.
   connectionQualityByIdentity: Map<string, string>,
+  // Populated with this call's own AudioStream so `entry`'s RoomEvent.Disconnected
+  // handler can force it closed — see that handler's doc comment for why this exists.
+  activeAudioStreams: Map<string, AudioStream>,
 ) {
   if (!speechToTextProvider.openStream) {
     console.warn(`[caption-agent] STT provider has no streaming support; not capturing session ${sessionId}.`);
@@ -181,6 +184,7 @@ async function streamParticipantAudio(
   // exhaust its budget on old, already-recovered-from blips.
   let reconnectAttempts = 0;
   let sttStream: SpeechToTextStream | undefined;
+  let audioStream: AudioStream | undefined;
 
   function openSttStream(): SpeechToTextStream {
     const stream = openStreamFn({
@@ -271,7 +275,8 @@ async function streamParticipantAudio(
     sttStream = openSttStream();
     console.log(`[caption-agent] STT stream opened for ${identity} in session ${sessionId} (expectedLanguage: ${initialSpeaker.language}).`);
 
-    const audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
+    audioStream = new AudioStream(track, STREAM_SAMPLE_RATE, STREAM_CHANNELS);
+    activeAudioStreams.set(identity, audioStream);
     for await (const frame of audioStream) {
       if (stopped) break;
       firstAudioSubmittedAtMs ??= captionLatencyNowMs();
@@ -298,6 +303,7 @@ async function streamParticipantAudio(
     // ever closes again.
     stopped = true;
     sttStream?.close();
+    if (audioStream && activeAudioStreams.get(identity) === audioStream) activeAudioStreams.delete(identity);
     // Only clear this identity's guard if `track` is still the one on record — a
     // `TrackUnsubscribed`-triggered clear (or a newer `TrackSubscribed` superseding
     // it) may have already happened for a *different* track under this same
@@ -363,13 +369,48 @@ export default defineAgent({
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
-      include: { facilitator: { select: { displayName: true } } },
-    });
+    // Dispatch fires the instant a participant's browser connects to LiveKit (room
+    // creation), which races the DB write that flips the session LIVE — a token is only
+    // ever minted for an already-LIVE session (src/app/api/livekit/token/route.ts), so
+    // in the overwhelmingly common case this resolves on the very first attempt, but a
+    // slow job-subprocess fork (LiveKit Agents forks one per dispatch — see this file's
+    // own "runner initialization timed out" history) can occasionally still lose that
+    // race. A one-shot check here has zero tolerance for that: confirmed live
+    // (2026-07-31) via `[caption-agent] Session ... is not live; skipping.` firing on a
+    // session that had, in fact, just gone LIVE — dispatch itself worked, this bailed
+    // for nothing. Retrying briefly costs nothing in the normal case (only the first
+    // check runs) and only adds latency on the genuine-skip path (session really is
+    // still DRAFT, or already ENDED) — both of which return null/non-LIVE on every
+    // attempt regardless, so retrying can't turn a real skip into a false capture.
+    // Widened from 5×1s (2026-07-31): confirmed live that the race can outlast a 5s
+    // budget entirely — LiveKit Agents' own `job_proc_lazy_main.js` logs "room not
+    // connect after job_entry was called after 10 seconds" purely as a diagnostic
+    // `logger.warn` with no follow-up kill/exit, so there's no hard ceiling forcing this
+    // to stay under 10s. 20s gives real headroom past the observed failure.
+    const SESSION_LIVE_CHECK_ATTEMPTS = 20;
+    const SESSION_LIVE_CHECK_DELAY_MS = 1_000;
+    let session = null;
+    let liveCheckAttempt = 0;
+    for (; liveCheckAttempt < SESSION_LIVE_CHECK_ATTEMPTS; liveCheckAttempt++) {
+      session = await prisma.session.findUnique({
+        where: { id: sessionId },
+        include: { facilitator: { select: { displayName: true } } },
+      });
+      if (session?.status === SessionStatus.LIVE) break;
+      if (liveCheckAttempt < SESSION_LIVE_CHECK_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, SESSION_LIVE_CHECK_DELAY_MS));
+      }
+    }
     if (!session || session.status !== SessionStatus.LIVE) {
-      console.warn(`[caption-agent] Session ${sessionId} is not live; skipping.`);
+      console.warn(`[caption-agent] Session ${sessionId} is not live after ${SESSION_LIVE_CHECK_ATTEMPTS} attempts; skipping.`);
       return;
+    }
+    // Visibility into how often the race in the comment above actually bites — a healthy
+    // deployment should see this rarely or never; a recurring `attempt 2+` here means the
+    // job-subprocess fork is routinely slow enough to be worth investigating on its own,
+    // not just tolerated by the retry.
+    if (liveCheckAttempt > 0) {
+      console.warn(`[caption-agent] Session ${sessionId} only became live on live-check attempt ${liveCheckAttempt + 1}/${SESSION_LIVE_CHECK_ATTEMPTS}.`);
     }
 
     try {
@@ -400,6 +441,15 @@ export default defineAgent({
     // Scoped to this job/room (one `entry` call per room), so this never leaks
     // state across sessions — see the guard inside streamParticipantAudio.
     const activeTracks = new Map<string, RemoteAudioTrack>();
+    // Every currently-open AudioStream, keyed the same way as activeTracks — lets the
+    // RoomEvent.Disconnected handler below force them all closed. See that handler's
+    // doc comment for why this exists: confirmed live (2026-07-31) that a session's
+    // `captionAgentActive` flag can get stuck `true` after the session ends, blocking
+    // this worker from ever being offered a new job for the next session — the
+    // existing `ctx.addShutdownCallback` safety net (below) depends on
+    // `@livekit/agents` itself detecting the disconnect and running a shutdown, and
+    // that didn't happen reliably; this is a more direct, immediate hook.
+    const activeAudioStreams = new Map<string, AudioStream>();
     // Latest reported connection quality per identity — the Confidence Score's network
     // signal (issue #130's "Future Enhancements") for whatever this facilitator is
     // saying *right now*, read fresh at each segment's publish time rather than once at
@@ -465,6 +515,7 @@ export default defineAgent({
         activeTracks,
         participant.identity,
         connectionQualityByIdentity,
+        activeAudioStreams,
       ).catch((error) => console.error(`[caption-agent] streamParticipantAudio failed for ${sessionId}:`, error));
     };
     ctx.room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
@@ -510,6 +561,27 @@ export default defineAgent({
       // `streamParticipantAudio` would refuse the new track forever).
       if (!shouldCaptureIdentity(participant.identity)) return;
       if (activeTracks.get(participant.identity) === track) activeTracks.delete(participant.identity);
+    });
+    // Forces every still-open AudioStream closed the moment this agent's own room
+    // connection disconnects — confirmed live (2026-07-31) that relying solely on
+    // `TrackUnsubscribed`/`ctx.addShutdownCallback` below isn't enough: a session whose
+    // room disconnected (facilitator ended it) left `captionAgentActive` stuck `true`
+    // with no further caption-agent log lines at all, and the *next* session's room
+    // never received a job dispatch — consistent with this worker still being
+    // considered occupied by a job that never told anyone it was done.
+    // `AudioStream extends ReadableStream`, so `.cancel()` is the standard, safe way to
+    // end it from outside — the `for await` loop in `streamParticipantAudio` completes
+    // cleanly (not as an error) and falls straight into its own `finally` block, which
+    // already has the correct cleanup logic (close the STT stream, clear `activeTracks`,
+    // clear `captionAgentActive`) — no need to duplicate any of that here.
+    ctx.room.on(RoomEvent.Disconnected, () => {
+      console.log(`[caption-agent] room disconnected for session ${sessionId}; closing ${activeAudioStreams.size} audio stream(s).`);
+      for (const stream of activeAudioStreams.values()) {
+        void stream.cancel().catch(() => {
+          // Already closed/erroring — the loop it belonged to is tearing down (or has
+          // already torn down) regardless, so there's nothing further to do here.
+        });
+      }
     });
     // Mirrors streamParticipantAudio's own `finally`-block cleanup, but for the case
     // that loop never gets to run its `finally` at all: a crash, redeploy, or

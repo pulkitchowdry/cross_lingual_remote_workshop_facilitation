@@ -46,6 +46,10 @@ export default async function LearnerRoomPage({
   const participant = await prisma.sessionParticipant.findFirst({
     where: { id: participantId, sessionId, role: ParticipantRole.LEARNER },
     include: {
+      // Needed for TranslatedAudioPlayer's viewerSpeakerId below — matches how
+      // TranscriptSegment.speakerId is persisted for a learner's own segments
+      // (resolveLearnerSpeaker), so this learner's own captions never play back to them.
+      user: { select: { displayName: true } },
       session: {
         include: {
           // Capped + reversed the same way as the dashboard page (learn/page.tsx) — see
@@ -130,8 +134,10 @@ export default async function LearnerRoomPage({
               segment.translations.some((item) => item.targetLanguage === participant.preferredLanguage),
             isTyped: segment.isTyped,
             language: segment.language,
+            speakerId: segment.speakerId,
           }))}
           preferredLanguage={participant.preferredLanguage}
+          viewerSpeakerId={participant.user.displayName}
         />
       ) : (
         <p className="text-xs text-muted-foreground">{learnerDict.audioUnavailable}</p>

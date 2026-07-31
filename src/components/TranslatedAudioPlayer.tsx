@@ -11,6 +11,10 @@ interface CaptionForPlayback {
    * to decide whether this listener should hear a dub automatically (see the doc
    * comment below). */
   language: string;
+  /** `TranscriptSegment.speakerId` — compared against this viewer's own `viewerSpeakerId`
+   * so a caption's own author never hears it played back to themselves (see the doc
+   * comment below). Free-text (no FK), matching how it's persisted. */
+  speakerId: string | null;
 }
 
 // alwaysPlay travels with each queue entry (not just a bare id) so the
@@ -43,10 +47,29 @@ interface QueueEntry {
  * needs a dub to be heard at all already plays without it. Fetches
  * `/api/captions/[segmentId]/audio` on demand for each new segment and
  * queues playback so overlapping captions don't talk over each other.
+ *
+ * A segment's own author never hears it played back to themselves, regardless of
+ * `isTyped`/language-mismatch/opt-in — those all decide whether *other* participants
+ * should hear a dub standing in for a speaker, which never applies to the speaker's own
+ * view of their own words. Enforced via `viewerSpeakerId` (this viewer's own
+ * `speakerId`, computed by the caller the same way it's persisted — see
+ * `facilitatorSpeakerId`/`resolveLearnerSpeaker`) matched against each segment's
+ * `speakerId`.
  */
 type PlaybackErrorKind = "blocked" | "skipped";
 
-export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segments: CaptionForPlayback[]; preferredLanguage: string }) {
+export function TranslatedAudioPlayer({
+  segments,
+  preferredLanguage,
+  viewerSpeakerId,
+}: {
+  segments: CaptionForPlayback[];
+  preferredLanguage: string;
+  /** This viewer's own `speakerId`, or `null` if unknown — see this component's doc
+   * comment. `null` disables self-exclusion entirely rather than risking an accidental
+   * match against another segment's own `null` speakerId. */
+  viewerSpeakerId: string | null;
+}) {
   const dict = getDictionary(resolveLanguage(preferredLanguage)).learner;
   const [enabled, setEnabled] = useState(false);
   // The error *kind*, not the already-resolved dictionary string — `dict` is
@@ -157,7 +180,11 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
       hasMountedRef.current = true;
       return;
     }
-    const toQueue = newlyTranslated.filter((segment) => segment.isTyped || segment.language !== preferredLanguage || enabled);
+    const toQueue = newlyTranslated.filter(
+      (segment) =>
+        (!viewerSpeakerId || segment.speakerId !== viewerSpeakerId) &&
+        (segment.isTyped || segment.language !== preferredLanguage || enabled),
+    );
     if (toQueue.length === 0) return;
 
     queueRef.current.push(
@@ -170,7 +197,7 @@ export function TranslatedAudioPlayer({ segments, preferredLanguage }: { segment
     );
     if (!playingRef.current) playNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments, enabled, preferredLanguage]);
+  }, [segments, enabled, preferredLanguage, viewerSpeakerId]);
 
   useEffect(() => {
     // Unchecking the box must actually silence playback that exists *because
