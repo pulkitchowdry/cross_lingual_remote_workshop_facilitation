@@ -215,6 +215,26 @@ const AGENT_DISPATCH_MAX_ATTEMPTS = 6;
 // must only ever run once per session.
 const sessionsCheckedForAgentDispatch = new Set<string>();
 
+export type AgentDispatchStatus = "pending" | "connected" | "failed";
+// In-memory only, matching sessionsCheckedForAgentDispatch above — read by
+// getAgentDispatchStatus (consumed by /api/sessions/[sessionId]/caption-agent-status,
+// which the captions tab UI polls) so a facilitator can see "still trying" vs "gave up"
+// instead of just silence. Resets on redeploy like everything else in this module, which
+// is fine: a fresh process just means a fresh ensureAgentDispatched run for the next
+// token issued, correctly starting the UI back at "pending" rather than showing a stale
+// "failed" from before the redeploy.
+const agentDispatchStatusBySession = new Map<string, AgentDispatchStatus>();
+
+/**
+ * Current state of the retry loop below for this session — "pending" (including "never
+ * started", e.g. before the first token is issued) unless the loop has recorded
+ * otherwise. Used by the captions tab UI (via the API route) to show a pending/connected/
+ * failed indicator instead of silence — see docs/CAPTION_AUDIO_TROUBLESHOOTING.md §12.
+ */
+export function getAgentDispatchStatus(sessionId: string): AgentDispatchStatus {
+  return agentDispatchStatusBySession.get(sessionId) ?? "pending";
+}
+
 // `ParticipantInfo_Kind.AGENT` from `@livekit/protocol` (a transitive dependency via
 // `livekit-server-sdk`, not declared directly in package.json, and not re-exported by
 // `livekit-server-sdk` itself — `ParticipantInfo.permission.agent` is the alternative but
@@ -258,6 +278,7 @@ export function ensureAgentDispatched(sessionId: string): void {
   if (!agentCaptureEnabled()) return; // browser-only: no agent to ever dispatch
   if (sessionsCheckedForAgentDispatch.has(sessionId)) return;
   sessionsCheckedForAgentDispatch.add(sessionId);
+  agentDispatchStatusBySession.set(sessionId, "pending");
 
   const roomName = `workshop-${sessionId}`;
   const serverUrl = internalLiveKitUrl();
@@ -274,11 +295,13 @@ export function ensureAgentDispatched(sessionId: string): void {
         const participants = await roomClient.listParticipants(roomName);
         const agentAlreadyPresent = participants.some((participant) => participant.kind === PARTICIPANT_KIND_AGENT);
         if (agentAlreadyPresent) {
+          agentDispatchStatusBySession.set(sessionId, "connected");
           if (attempt > 1) console.log(`[room] agent joined ${roomName} after ${attempt} presence check(s).`);
           return;
         }
 
         if (attempt > AGENT_DISPATCH_MAX_ATTEMPTS) {
+          agentDispatchStatusBySession.set(sessionId, "failed");
           console.error(
             `[room] no agent joined ${roomName} after ${AGENT_DISPATCH_MAX_ATTEMPTS} dispatch retries ` +
               `(~${(AGENT_DISPATCH_MAX_ATTEMPTS * AGENT_DISPATCH_RETRY_DELAY_MS) / 1000}s); giving up.`,
@@ -297,7 +320,11 @@ export function ensureAgentDispatched(sessionId: string): void {
         // connected with this token) are all fine to just log and move past, but still
         // worth another round rather than giving up on a single transient failure.
         console.error(`[room] ensureAgentDispatched check failed for session ${sessionId} (attempt ${attempt}):`, error);
-        if (attempt <= AGENT_DISPATCH_MAX_ATTEMPTS) setTimeout(checkAndRetry, AGENT_DISPATCH_RETRY_DELAY_MS);
+        if (attempt <= AGENT_DISPATCH_MAX_ATTEMPTS) {
+          setTimeout(checkAndRetry, AGENT_DISPATCH_RETRY_DELAY_MS);
+        } else {
+          agentDispatchStatusBySession.set(sessionId, "failed");
+        }
       }
     })();
   };

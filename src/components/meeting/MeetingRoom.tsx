@@ -149,6 +149,7 @@ function MeetingRoomInner({
           </div>
         </div>
         <MeetingSidebar
+          sessionId={sessionId}
           uiLang={uiLang}
           targetLanguage={targetLanguage}
           messages={messages}

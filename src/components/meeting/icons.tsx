@@ -154,6 +154,16 @@ export function LeaveIcon({ className }: IconProps) {
   );
 }
 
+export function WarningIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M10 2.5 18 16H2Z" />
+      <path d="M10 8v3.5" />
+      <circle cx="10" cy="14" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 export function ChevronIcon({ className, direction = "down" }: IconProps & { direction?: "up" | "down" | "left" | "right" }) {
   const rotation = { up: "rotate-180", down: "rotate-0", left: "rotate-90", right: "-rotate-90" }[direction];
   return (

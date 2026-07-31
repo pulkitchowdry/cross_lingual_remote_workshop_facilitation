@@ -378,6 +378,16 @@ export interface Dictionary {
     captionPositionLabel: string;
     captionPositionBottom: string;
     captionPositionTop: string;
+    /** Shown in the captions tab (and as a warning badge on the tab label itself),
+     * visible to facilitator and learner alike, while `ensureAgentDispatched` (room.ts)
+     * is still retrying to get the server-side caption agent into the room — see
+     * docs/CAPTION_AUDIO_TROUBLESHOOTING.md §12. */
+    captionAgentPending: string;
+    captionAgentConnected: string;
+    captionAgentFailed: string;
+    /** aria-label for the warning icon shown on the "Captions" tab label itself when
+     * `captionAgentFailed` above applies — the icon alone has no visible text. */
+    captionAgentWarningLabel: string;
     allowLearnerPresenting: string;
     allowLearnerPresentingFailed: string;
     leave: string;
@@ -823,6 +833,10 @@ const en: Dictionary = {
     captionPositionLabel: "Caption position",
     captionPositionBottom: "Bottom",
     captionPositionTop: "Top",
+    captionAgentPending: "Trying to get live captions ready, please wait…",
+    captionAgentConnected: "Live captions are ready",
+    captionAgentFailed: "Audio captions couldn't be enabled for this session. Typed captions still work.",
+    captionAgentWarningLabel: "Audio captions aren't working for this session.",
     allowLearnerPresenting: "Allow participants to share screen & use whiteboard",
     allowLearnerPresentingFailed: "Couldn't update — try again",
     leave: "Leave meeting",
@@ -1237,6 +1251,10 @@ const zh: Dictionary = {
     captionPositionLabel: "字幕位置",
     captionPositionBottom: "底部",
     captionPositionTop: "顶部",
+    captionAgentPending: "正在尝试启用实时字幕，请稍候……",
+    captionAgentConnected: "实时字幕已就绪",
+    captionAgentFailed: "本场会话无法启用语音字幕，但手动输入的字幕仍可正常使用。",
+    captionAgentWarningLabel: "本场会话的语音字幕未正常工作",
     allowLearnerPresenting: "允许参与者共享屏幕和使用白板",
     allowLearnerPresentingFailed: "更新失败——请重试",
     leave: "离开会议",
@@ -1651,6 +1669,10 @@ const es: Dictionary = {
     captionPositionLabel: "Posición de subtítulos",
     captionPositionBottom: "Abajo",
     captionPositionTop: "Arriba",
+    captionAgentPending: "Intentando preparar los subtítulos en vivo, espera un momento…",
+    captionAgentConnected: "Los subtítulos en vivo están listos",
+    captionAgentFailed: "No se pudieron habilitar los subtítulos de audio para esta sesión. Los subtítulos escritos siguen funcionando.",
+    captionAgentWarningLabel: "Los subtítulos de audio no funcionan en esta sesión",
     allowLearnerPresenting: "Permitir que los participantes compartan pantalla y usen la pizarra",
     allowLearnerPresentingFailed: "No se pudo actualizar — inténtalo de nuevo",
     leave: "Salir de la reunión",
