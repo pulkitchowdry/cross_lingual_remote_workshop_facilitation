@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { SessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { hasFacilitatorAccess, learnerParticipantId } from "@/lib/session-access";
-import { roomProvider, type RoomRole } from "@/lib/providers/room";
+import { ensureAgentDispatched, roomProvider, type RoomRole } from "@/lib/providers/room";
 import { resolveLanguage } from "@/lib/i18n";
 
 function isRequestedRole(value: unknown): value is RoomRole {
@@ -73,6 +73,10 @@ export async function POST(request: NextRequest) {
     // the participant's hand was actually still up.
     raisedHand: body.raisedHand === true,
   });
+
+  // Fire-and-forget defensive retry for a confirmed LiveKit Cloud dispatch-delivery gap
+  // (see that function's own doc comment) — must never block or fail this response.
+  ensureAgentDispatched(session.id);
 
   return Response.json(credential);
 }

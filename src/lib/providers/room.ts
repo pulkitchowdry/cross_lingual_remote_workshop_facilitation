@@ -1,4 +1,4 @@
-import { AccessToken, DataPacket_Kind, RoomAgentDispatch, RoomConfiguration, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, DataPacket_Kind, RoomAgentDispatch, RoomConfiguration, RoomServiceClient } from "livekit-server-sdk";
 import type { SupportedLanguage } from "@/lib/session-contracts";
 import { agentCaptureEnabled, CAPTION_AGENT_NAME } from "@/lib/caption-capture-mode";
 
@@ -203,3 +203,104 @@ class LiveKitRoomProvider implements RoomProvider {
 }
 
 export const roomProvider: RoomProvider = new LiveKitRoomProvider();
+
+// How long to wait between presence checks — both before the very first check (giving
+// the token-embedded dispatch request a fair chance) and between each retry after that.
+// See ensureAgentDispatched's own doc comment for the evidence behind this number.
+const AGENT_DISPATCH_RETRY_DELAY_MS = 10_000;
+// Bounds the retry loop so a genuinely broken config (not just a slow/lost delivery)
+// doesn't poll forever — 6 attempts * 10s ≈ 60s of total retrying before giving up.
+const AGENT_DISPATCH_MAX_ATTEMPTS = 6;
+// Per-process, not per-request — see ensureAgentDispatched's doc comment for why this
+// must only ever run once per session.
+const sessionsCheckedForAgentDispatch = new Set<string>();
+
+// `ParticipantInfo_Kind.AGENT` from `@livekit/protocol` (a transitive dependency via
+// `livekit-server-sdk`, not declared directly in package.json, and not re-exported by
+// `livekit-server-sdk` itself — `ParticipantInfo.permission.agent` is the alternative but
+// is marked `@deprecated` in favor of this `kind` field). Using the raw wire value here
+// rather than importing an undeclared package.
+const PARTICIPANT_KIND_AGENT = 4;
+
+/**
+ * Defensive fallback for a confirmed LiveKit Cloud dispatch-delivery gap (2026-07-31):
+ * `issueCredential`'s token-embedded `RoomConfiguration.agents` request is one-shot, fired
+ * the instant a room is created. `lk dispatch list <room>` has repeatedly confirmed
+ * LiveKit Cloud *does* create the dispatch record, but the "received job request" push to
+ * our registered worker sometimes never arrives — the leading theory, from live evidence,
+ * is a race against this worker's own idle-process-pool warm-up (`numIdleProcesses`, ~4
+ * subprocesses, observed taking several real seconds after registration), with no retry
+ * once a worker becomes ready. This doesn't fix that gap — it's on LiveKit Cloud's side,
+ * out of reach from here — it polls for up to `AGENT_DISPATCH_MAX_ATTEMPTS` rounds,
+ * re-requesting dispatch via `AgentDispatchClient.createDispatch()` on each round the agent
+ * still hasn't joined, giving the room repeated chances at the race window above instead
+ * of just one.
+ *
+ * **Known tradeoff, accepted deliberately:** each retry re-checks presence immediately
+ * before calling `createDispatch` again, so the loop stops the round *after* an agent
+ * successfully joins — but there's no way from here to know whether an *earlier* attempt
+ * is still silently in flight (that's exactly the undetectable state this whole mitigation
+ * exists to route around). If two separate dispatch attempts both eventually land, two
+ * agent instances would join and duplicate every caption line — the same class of bug
+ * `caption-agent.ts`'s own duplicate-subscription guards exist to prevent, but this path
+ * has no equivalent guard against it. Accepted because the observed failure mode is
+ * "never delivered at all", not "delivered twice" — if that changes, this needs a real
+ * fix (e.g. checking `AgentDispatchClient.listDispatch()` for an already-outstanding
+ * dispatch before creating another), not just a shorter retry window.
+ *
+ * Fire-and-forget by design — callers never await this, and it must never block or fail a
+ * token request over what is, worst case, a redundant check. Deduped per `sessionId` via
+ * an in-memory `Set` for this process's lifetime: `/api/livekit/token` calls this on every
+ * join *and* every background token refresh, but only the very first caller for a given
+ * session needs to actually run the check/retry loop.
+ */
+export function ensureAgentDispatched(sessionId: string): void {
+  if (!agentCaptureEnabled()) return; // browser-only: no agent to ever dispatch
+  if (sessionsCheckedForAgentDispatch.has(sessionId)) return;
+  sessionsCheckedForAgentDispatch.add(sessionId);
+
+  const roomName = `workshop-${sessionId}`;
+  const serverUrl = internalLiveKitUrl();
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!apiKey || !apiSecret) return;
+
+  let attempt = 0;
+  const checkAndRetry = () => {
+    void (async () => {
+      attempt++;
+      try {
+        const roomClient = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+        const participants = await roomClient.listParticipants(roomName);
+        const agentAlreadyPresent = participants.some((participant) => participant.kind === PARTICIPANT_KIND_AGENT);
+        if (agentAlreadyPresent) {
+          if (attempt > 1) console.log(`[room] agent joined ${roomName} after ${attempt} presence check(s).`);
+          return;
+        }
+
+        if (attempt > AGENT_DISPATCH_MAX_ATTEMPTS) {
+          console.error(
+            `[room] no agent joined ${roomName} after ${AGENT_DISPATCH_MAX_ATTEMPTS} dispatch retries ` +
+              `(~${(AGENT_DISPATCH_MAX_ATTEMPTS * AGENT_DISPATCH_RETRY_DELAY_MS) / 1000}s); giving up.`,
+          );
+          return;
+        }
+
+        console.warn(`[room] no agent participant in ${roomName} (attempt ${attempt}/${AGENT_DISPATCH_MAX_ATTEMPTS}); retrying explicit dispatch.`);
+        const dispatchClient = new AgentDispatchClient(serverUrl, apiKey, apiSecret);
+        const dispatch = await dispatchClient.createDispatch(roomName, CAPTION_AGENT_NAME);
+        console.log(`[room] retry dispatch created for ${roomName} (attempt ${attempt}): dispatchId=${dispatch.id}`);
+        setTimeout(checkAndRetry, AGENT_DISPATCH_RETRY_DELAY_MS);
+      } catch (error) {
+        // Best-effort — a session already ended (room gone), a transient LiveKit API
+        // hiccup, or the room simply never having been created (nobody ever actually
+        // connected with this token) are all fine to just log and move past, but still
+        // worth another round rather than giving up on a single transient failure.
+        console.error(`[room] ensureAgentDispatched check failed for session ${sessionId} (attempt ${attempt}):`, error);
+        if (attempt <= AGENT_DISPATCH_MAX_ATTEMPTS) setTimeout(checkAndRetry, AGENT_DISPATCH_RETRY_DELAY_MS);
+      }
+    })();
+  };
+
+  setTimeout(checkAndRetry, AGENT_DISPATCH_RETRY_DELAY_MS);
+}

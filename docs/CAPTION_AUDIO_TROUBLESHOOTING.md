@@ -461,6 +461,62 @@ the full mechanism. Functionally harmless either way (Next falls back to a plain
 redirect on failure), but worth knowing this pattern is a generic self-hosted-behind-a-
 proxy issue, not a signal to chase inside the caption pipeline.
 
+### 12. LiveKit Cloud dispatch delivery gap — explicit dispatch created, never delivered to the worker (still open, mitigated 2026-07-31)
+
+**Symptom:** intermittent, no consistent trigger found — a session goes LIVE, a
+participant joins and unmutes, and no caption-agent activity appears at all. No `[caption-
+agent] Session ... is not live` skip (§11's fix), no error, nothing — `received job
+request` simply never logs for that room.
+
+**Root-caused as far as this app's boundary allows, using `lk dispatch list <room>` (the
+official LiveKit CLI — `brew install livekit-cli`):**
+
+```sh
+lk dispatch list workshop-<sessionId>
+```
+
+This confirmed, repeatedly, that **LiveKit Cloud does create the dispatch record** (a
+real `AD_...` ID, correct `agentName`) — the token-embedded `RoomConfiguration.agents`
+request (§11's fix) is working exactly as intended on our side. The gap is entirely
+between "LiveKit Cloud decided to dispatch" and "our registered worker's persistent
+WebSocket actually received the `received job request` push" — confirmed via a heartbeat
+log (`server.ts`) showing `activeJobs=0` and only one `worker_registered` event (i.e. not
+a stale/reconnected connection either) for the whole session.
+
+**Leading theory:** a race against this worker's own idle-process-pool warm-up.
+`numIdleProcesses` (`@livekit/agents`, default `min(availableParallelism(), 4)` in
+production) spawns several subprocesses after registration — debug-level logs
+(`initializing job runner` / `job runner initialized`, only visible once `server.ts`
+raised the log level off the production default) show this taking real, non-trivial time.
+If LiveKit Cloud's dispatcher makes its "is a worker available" decision in that window —
+after the worker has registered but before its process pool is ready — and doesn't retry
+once the pool warms up, the dispatch record is created but never delivered. This is a gap
+on LiveKit Cloud's own side; nothing on our end can force it to retry.
+
+**Mitigation (not a fix — the underlying gap is still open):** `RoomProvider.
+ensureAgentDispatched` (`src/lib/providers/room.ts`), called fire-and-forget from `/api/
+livekit/token`'s route on every credential issuance. Every 10 seconds, up to
+`AGENT_DISPATCH_MAX_ATTEMPTS` (6) rounds, it checks (via `RoomServiceClient.
+listParticipants`) whether an agent participant (`ParticipantInfo.kind === AGENT`) has
+actually joined the room; the moment it has, the loop stops. If not, it explicitly calls
+`AgentDispatchClient.createDispatch()` to re-request dispatch — another attempt at the
+exact race window above — before waiting and checking again, giving up with a clear log
+line after ~70s if the agent still hasn't joined. Deduped per `sessionId` via an in-memory
+`Set` for the process's lifetime, so only the first caller for a session runs the loop.
+**Known accepted risk:** each round only knows whether the agent has joined *yet*, not
+whether an earlier `createDispatch` call is still silently in flight — if two separate
+attempts both eventually land, two agent instances would join and duplicate every caption
+line (the same bug class `caption-agent.ts`'s own duplicate-subscription guards exist to
+prevent, but this loop has no equivalent guard against). Accepted because the observed
+failure mode is "never delivered", not "delivered twice"; if that changes, this needs a
+real fix (checking `AgentDispatchClient.listDispatch()` for an already-outstanding
+dispatch before creating another), not just tuning the retry count.
+
+**Still worth escalating to LiveKit support directly** if this keeps recurring after the
+mitigation — the evidence above (a specific dispatch ID, worker ID, and timeline showing
+clean registration but no delivery) is concrete enough for their team to investigate on
+their backend, which is the only place the actual root cause can be fixed.
+
 ## Still open
 ### Safari / iPhone: live captions never connect
 
